@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- Share one Mac with two friends using authenticated per-person MCP paths, separate processes, private volumes and worker sockets.
+- Keep build IDs, retained trade searches and recommendation state scoped to the individual's instance; only public Scout snapshots are cached together.
+- Add operator commands for member registration, targeted build import and revocation, with retired identities reserved to prevent accidental data reassignment.
+- Limit the isolated PoB workers to one calculation batch at a time using a shared empty lease file.
+- Test foreign build/dataset/search access, forged identity headers, three-container private imports and real calculations on both CPU architectures.
+
+The operator retains administrative access to all files. Self-service upload and character-name lookup remain unimplemented. Real Cloudflare and ChatGPT acceptance tests are required after deployment.
+
 ## 0.5.0
 
 - Cloudflare Access Managed OAuth deployment with origin-side JWT signature, issuer, audience, expiry and single-owner checks.

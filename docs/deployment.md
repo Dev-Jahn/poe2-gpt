@@ -48,4 +48,4 @@ Before upgrading, read the changelog and pin a release tag or image digest. Stop
 
 Verify `/health` on the worker through its private socket, the MCP tool list through MCP Inspector, and then the [ChatGPT acceptance cases](evaluation.md). Confirm file ACLs, worker isolation, and actual Unix-socket transport on the homelab. These deployment properties cannot be established by a unit-test-only pass.
 
-This is a single-user deployment. Public multi-user hosting requires per-user authorization, isolated stores and caches where appropriate, quotas, and a privacy policy for the actual service operator.
+Each MCP instance serves one authenticated owner. The optional [friends deployment](friends.md) runs up to three isolated instances on one Mac with separate private stores and a shared calculation lease. It is intended for a small trusted group; public multi-user hosting needs additional operational controls and an actual operator privacy policy.

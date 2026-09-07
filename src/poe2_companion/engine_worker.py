@@ -6,6 +6,8 @@ LuaJIT process; failures discard all private diagnostics.
 """
 from __future__ import annotations
 import asyncio
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 import resource
@@ -38,10 +40,27 @@ def limits():
 
 
 class PrivateEngine:
-    def __init__(self, private_dir: Path, engine_dir: Path, luajit='luajit', timeout=85):
+    def __init__(self, private_dir: Path, engine_dir: Path, luajit='luajit', timeout=85, lock_file: Path | None = None):
         self.private_dir,self.engine_dir=Path(private_dir),Path(engine_dir)
         self.luajit,self.timeout=luajit,timeout
         self.lock=asyncio.Lock()
+        self.lock_file = lock_file
+
+    @contextmanager
+    def compute_lease(self):
+        """One calculation across isolated workers; the file contains no user data."""
+        fd = None
+        try:
+            if self.lock_file is not None:
+                try:
+                    fd = os.open(self.lock_file, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    raise EngineError('engine_busy') from None
+            yield
+        finally:
+            if fd is not None:
+                os.close(fd)
 
     def check_version(self):
         try:
@@ -56,53 +75,57 @@ class PrivateEngine:
         if self.lock.locked():
             raise EngineError('engine_busy')
         async with self.lock:
+            with self.compute_lease():
+                return await self._calculate(request)
+
+    async def _calculate(self, request: WorkerRequest) -> WorkerResult:
+        try:
+            code=read_regular_file(self.private_dir/(request.build_id+'.pob'),MAX_CODE_BYTES)
+            xml=decode_pob(code)
+            projection=project_pob(xml,request.build_id)
+            # PoB's build format target is 0_1; the current passive tree is
+            # 0_5. These are distinct version fields in GameVersions.lua.
+            if projection.summary.target_version != [0,1]:
+                raise EngineError('engine_version_mismatch')
+            job={'xml':xml.decode('utf-8-sig'),'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
+        except EngineError:
+            raise
+        except Exception:
+            raise EngineError('engine_invalid_build') from None
+        # Temporary files exist only in the private worker's tmpfs. Neither
+        # filenames nor process arguments contain the PoB payload.
+        with tempfile.TemporaryDirectory(prefix='pob-job-') as td:
+            inp,out=Path(td)/'input.json',Path(td)/'result.json'
+            inp.write_text(json.dumps(job,allow_nan=False),encoding='utf-8');inp.chmod(0o600)
+            env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),
+                 'LUA_PATH':str(self.engine_dir/'runtime/lua/?.lua')+';'+str(self.engine_dir/'runtime/lua/?/init.lua')+';;',
+                 'LUA_CPATH':os.environ.get('LUA_CPATH',';;'), 'LANG':'C.UTF-8'}
+            process=None
             try:
-                code=read_regular_file(self.private_dir/(request.build_id+'.pob'),MAX_CODE_BYTES)
-                xml=decode_pob(code)
-                projection=project_pob(xml,request.build_id)
-                # PoB's build format target is 0_1; the current passive tree is
-                # 0_5. These are distinct version fields in GameVersions.lua.
-                if projection.summary.target_version != [0,1]:
-                    raise EngineError('engine_version_mismatch')
-                job={'xml':xml.decode('utf-8-sig'),'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
+                with inp.open('rb') as stdin, out.open('wb') as stdout:
+                    process=await asyncio.create_subprocess_exec(self.luajit,str(Path(__file__).parent/'lua/calculate.lua'),
+                        cwd=self.engine_dir/'src',stdin=stdin,stdout=stdout,stderr=asyncio.subprocess.DEVNULL,
+                        env=env,preexec_fn=limits,start_new_session=True)
+                    async with asyncio.timeout(self.timeout):
+                        await process.wait()
+                if process.returncode:
+                    raise EngineError('engine_calculation_failed')
+                result=WorkerResult.model_validate_json(read_regular_file(out,MAX_RESULT))
+                if len(result.results)!=len(request.scenarios):
+                    raise EngineError('engine_protocol_error')
+                return result
+            except TimeoutError:
+                raise EngineError('engine_timeout') from None
             except EngineError:
                 raise
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                raise EngineError('engine_invalid_build') from None
-            # Temporary files exist only in the private worker's tmpfs. Neither
-            # filenames nor process arguments contain the PoB payload.
-            with tempfile.TemporaryDirectory(prefix='pob-job-') as td:
-                inp,out=Path(td)/'input.json',Path(td)/'result.json'
-                inp.write_text(json.dumps(job,allow_nan=False),encoding='utf-8');inp.chmod(0o600)
-                env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),
-                     'LUA_PATH':str(self.engine_dir/'runtime/lua/?.lua')+';'+str(self.engine_dir/'runtime/lua/?/init.lua')+';;',
-                     'LUA_CPATH':os.environ.get('LUA_CPATH',';;'), 'LANG':'C.UTF-8'}
-                process=None
-                try:
-                    with inp.open('rb') as stdin, out.open('wb') as stdout:
-                        process=await asyncio.create_subprocess_exec(self.luajit,str(Path(__file__).parent/'lua/calculate.lua'),
-                            cwd=self.engine_dir/'src',stdin=stdin,stdout=stdout,stderr=asyncio.subprocess.DEVNULL,
-                            env=env,preexec_fn=limits,start_new_session=True)
-                        async with asyncio.timeout(self.timeout):
-                            await process.wait()
-                    if process.returncode:
-                        raise EngineError('engine_calculation_failed')
-                    result=WorkerResult.model_validate_json(read_regular_file(out,MAX_RESULT))
-                    if len(result.results)!=len(request.scenarios):
-                        raise EngineError('engine_protocol_error')
-                    return result
-                except TimeoutError:
-                    raise EngineError('engine_timeout') from None
-                except EngineError:
-                    raise
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    raise EngineError('engine_calculation_failed') from None
-                finally:
-                    if process is not None and process.returncode is None:
-                        os.killpg(process.pid,signal.SIGKILL)
-                        await process.wait()
+                raise EngineError('engine_calculation_failed') from None
+            finally:
+                if process is not None and process.returncode is None:
+                    os.killpg(process.pid,signal.SIGKILL)
+                    await process.wait()
 
 
 def worker_app(engine: PrivateEngine):
@@ -134,6 +157,8 @@ def main():
     import sys
     os.umask(0o077)
     engine=PrivateEngine(Path(os.environ['POE2_PRIVATE_DIR']),Path(os.environ['POE2_ENGINE_DIR']),os.environ.get('POE2_LUAJIT','luajit'))
+    if os.environ.get('POE2_ENGINE_LOCK_FILE'):
+        engine.lock_file = Path(os.environ['POE2_ENGINE_LOCK_FILE'])
     socket=Path(os.environ.get('POE2_ENGINE_SOCKET','/engine-socket/pob.sock'))
     socket.parent.mkdir(exist_ok=True,mode=0o700)
     try:

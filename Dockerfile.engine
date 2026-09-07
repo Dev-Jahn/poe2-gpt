@@ -10,7 +10,9 @@ COPY --from=engine-build /opt/lua /opt/lua
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
 RUN pip install --no-cache-dir . && useradd --create-home --uid 10001 companion \
-    && mkdir /engine-socket /private-builds && chown companion:companion /engine-socket /private-builds && chmod 700 /engine-socket /private-builds
+    && mkdir /engine-socket /private-builds /engine-coordination \
+    && chown companion:companion /engine-socket /private-builds /engine-coordination \
+    && chmod 700 /engine-socket /private-builds /engine-coordination
 ENV POE2_LUAJIT=/opt/lua/bin/luajit LUA_CPATH="/opt/lua/lib/lua/5.1/?.so;;" POE2_ENGINE_DIR=/opt/pob POE2_PRIVATE_DIR=/private-builds
 USER companion
 ENTRYPOINT ["poe2-pob-worker"]

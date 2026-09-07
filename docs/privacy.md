@@ -15,6 +15,13 @@ Raw PoB files remain in the operator's private store and optional network-isolat
 
 Scout snapshots are stored in a local SQLite cache. Retained trade queries are in process memory and expire after ten minutes. Imported files and projections remain until the operator deletes them. Worker request files are temporary and cleaned up. No analytics or telemetry endpoint is implemented in the project.
 
+In the [friends deployment](friends.md), only the public Scout cache is shared.
+Each person's build files, projections, worker socket and in-memory trade state
+belong to a separate instance. Membership and email mappings remain in local
+operator files. Revocation removes that person's containers but retains private
+volumes until the operator backs up or deletes them. The operator can read all
+stores administratively; this service isolation does not hide data from its host.
+
 Do not log request bodies, imported files, private paths, or arbitrary worker output. Restrict backups and filesystem permissions. To remove a build, stop access as appropriate and delete its raw file and corresponding projection using the operator's own filesystem tools. Do not expose those operations as model tools.
 
 This document describes repository behavior, not a legal policy for a future public service. A public operator must publish their own actual retention, contact, and authorization practices before accepting other users' data.

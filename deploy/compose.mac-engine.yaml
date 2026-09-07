@@ -10,6 +10,7 @@ services:
       pob-engine:
         condition: service_healthy
   pob-engine:
+    image: poe2-gpt-engine:local
     build:
       context: ..
       dockerfile: Dockerfile.engine
@@ -27,9 +28,11 @@ services:
       - /tmp:rw,noexec,nosuid,size=256m,mode=1777
     environment:
       POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+      POE2_ENGINE_LOCK_FILE: /engine-coordination/compute.lock
     volumes:
       - engine-socket:/engine-socket
       - private-builds:/private-builds:ro
+      - engine-coordination:/engine-coordination
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
@@ -60,3 +63,4 @@ volumes:
   engine-socket:
   private-builds:
   build-projections:
+  engine-coordination:

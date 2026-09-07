@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -102,8 +103,11 @@ class QuoteItem(BaseModel):
     quantity: Annotated[float, Field(gt=0, le=1e9, allow_inf_nan=False)] = 1
 
 
-def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None):
+def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp"):
+    if not re.fullmatch(r"/(?:u/[a-z][a-z0-9-]{0,23}/)?mcp", mcp_path):
+        raise ValueError("MCP path must be /mcp or /u/<member-id>/mcp")
     server = ProjectionMCP("POE2 GPT", host=host, port=port, stateless_http=True, json_response=True,
+        streamable_http_path=mcp_path,
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=True,
             allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *(allowed_hosts or [])],
             allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *["https://"+h for h in (allowed_hosts or [])]]),
@@ -274,7 +278,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
 
     @server.custom_route("/healthz", methods=["GET"])
     async def health(_: Request):
-        return JSONResponse({"status": "ok", "version": "0.5.0", "upstream_checked": False})
+        return JSONResponse({"status": "ok", "version": "0.6.0", "upstream_checked": False})
 
     return server
 
@@ -285,6 +289,7 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--allowed-host", action="append", default=[], help="Public HTTPS hostname when reverse-proxied; repeat as needed")
+    parser.add_argument("--mcp-path", default="/mcp", help="/mcp or /u/<member-id>/mcp for an isolated member instance")
     args = parser.parse_args()
     try:
         access_config = AccessConfig.from_env(os.environ)
@@ -293,7 +298,7 @@ def main():
     except ValueError as error:
         parser.error(str(error))
     cache_path = os.environ.get("POE2_CACHE_PATH", str(Path.home()/".cache"/"poe2-companion"/"prices.sqlite3"))
-    user_agent = os.environ.get("POE2_USER_AGENT", "poe2-companion/0.5.0 (contact: https://github.com/Dev-Jahn)")
+    user_agent = os.environ.get("POE2_USER_AGENT", "poe2-companion/0.6.0 (contact: https://github.com/Dev-Jahn)")
     scout = Scout(user_agent=user_agent, cache_path=cache_path)
     projection_dir = os.environ.get("POE2_BUILD_PROJECTION_DIR")
     build_reader = BuildReader(projection_dir) if projection_dir else None
@@ -302,7 +307,7 @@ def main():
     trade = TradeClient(user_agent=user_agent) if os.environ.get("POE2_TRADE_ENABLED","1") == "1" else None
     engine_socket = os.environ.get("POE2_ENGINE_SOCKET")
     engine = EngineClient(engine_socket) if engine_socket else None
-    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine)
+    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path)
     async def serve():
         verifier = AccessVerifier(access_config) if access_config else None
         # Stateless HTTP opens an MCP session per request. Shared HTTP/cache resources

@@ -1,6 +1,6 @@
 {
   "name": "poe2-gpt",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Path of Exile 2 prices, trade search, private PoB calculations and budget-aware equipment upgrades.",
   "author": {
     "name": "Jahn",

@@ -4,7 +4,8 @@ Run the Linux containers inside a dedicated Colima VM. A native `cloudflared`
 process connects outward to Cloudflare and forwards requests to Mac loopback.
 Use Cloudflare Access **Managed OAuth** for ChatGPT login and the built-in
 Access JWT verifier at the origin. No inbound port, public IP, or OpenAI API key
-is required. This is a single-owner deployment.
+is required. The base deployment serves one owner; the [friends guide](friends.md)
+adds two friends with separate instances and private stores on the same Mac.
 
 ```mermaid
 flowchart TD
