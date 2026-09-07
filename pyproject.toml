@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poe2-gpt"
+version = "0.4.0"
+description = "PoE2 prices, trade search and private Path of Building analysis via MCP"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{name = "Jahn"}]
+keywords = ["poe2", "mcp", "chatgpt", "path-of-building"]
+requires-python = ">=3.11"
+dependencies = ["mcp==1.29.1", "httpx[socks]==0.28.1", "defusedxml==0.7.1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "pytest-asyncio>=1,<2"]
+
+[project.urls]
+Homepage = "https://github.com/Dev-Jahn/poe2-gpt"
+Repository = "https://github.com/Dev-Jahn/poe2-gpt"
+Issues = "https://github.com/Dev-Jahn/poe2-gpt/issues"
+
+[project.scripts]
+poe2-gpt = "poe2_companion.server:main"
+poe2-companion = "poe2_companion.server:main"
+poe2-companion-check = "poe2_companion.check:main"
+poe2-pob-files = "poe2_companion.pob_io:main"
+poe2-pob-worker = "poe2_companion.engine_worker:main"
+poe2-equipment-import = "poe2_companion.equipment_io:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+poe2_companion = ["lua/*.lua"]

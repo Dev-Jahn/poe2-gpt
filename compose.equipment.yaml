@@ -1,0 +1,13 @@
+# Optional single-user equipment snapshots. Only bounded typed projections.
+# Experimental trade2 search is enabled by the base server. No raw PoB or cookies.
+services:
+  poe2-companion:
+    environment:
+      POE2_EQUIPMENT_PROJECTION_DIR: /equipment-projections
+    volumes:
+      - type: bind
+        source: ${POE2_HOST_EQUIPMENT_DIR:?Set the absolute equipment projection directory}
+        target: /equipment-projections
+        read_only: true
+        bind:
+          create_host_path: false

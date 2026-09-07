@@ -1,0 +1,12 @@
+services:
+  poe2-companion:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - prices:/home/companion/.cache/poe2-companion
+    environment:
+      POE2_USER_AGENT: "poe2-companion/0.4.0 (contact: https://github.com/Dev-Jahn)"
+volumes:
+  prices:

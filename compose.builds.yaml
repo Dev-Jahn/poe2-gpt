@@ -1,0 +1,14 @@
+# Optional private homelab overlay. Do not expose this unauthenticated endpoint
+# publicly. Use an account-scoped Secure MCP Tunnel or authenticated ingress.
+# Only projections enter the MCP container; the PoB source/private store does not.
+services:
+  poe2-companion:
+    environment:
+      POE2_BUILD_PROJECTION_DIR: /build-projections
+    volumes:
+      - type: bind
+        source: ${POE2_HOST_PROJECTION_DIR:?Set the absolute projection directory}
+        target: /build-projections
+        read_only: true
+        bind:
+          create_host_path: false

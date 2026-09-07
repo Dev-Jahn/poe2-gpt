@@ -1,0 +1,23 @@
+[
+  {
+    "ApiId": "exalted",
+    "BaseItemTypeId": "Metadata/Items/Currency/CurrencyAddModToRare",
+    "Text": "Exalted Orb",
+    "IconUrl": "https://web.poecdn.com//gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lBZGRNb2RUb1JhcmUiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/ad7c366789/CurrencyAddModToRare.png",
+    "RelativePrice": 1
+  },
+  {
+    "ApiId": "chaos",
+    "BaseItemTypeId": "Metadata/Items/Currency/CurrencyRerollRare",
+    "Text": "Chaos Orb",
+    "IconUrl": "https://web.poecdn.com//gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lSZXJvbGxSYXJlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/c0ca392a78/CurrencyRerollRare.png",
+    "RelativePrice": 3.275878229684571
+  },
+  {
+    "ApiId": "divine",
+    "BaseItemTypeId": "Metadata/Items/Currency/CurrencyModValues",
+    "Text": "Divine Orb",
+    "IconUrl": "https://web.poecdn.com//gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lNb2RWYWx1ZXMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/2986e220b3/CurrencyModValues.png",
+    "RelativePrice": 82.49900007388419
+  }
+]

@@ -1,0 +1,157 @@
+{
+  "CurrentPage": 1,
+  "Pages": 1,
+  "Total": 3,
+  "Items": [
+    {
+      "CurrencyItemId": 14,
+      "ItemId": 291,
+      "CurrencyCategoryId": 21,
+      "ApiId": "divine",
+      "BaseItemTypeId": "Metadata/Items/Currency/CurrencyModValues",
+      "Text": "Divine Orb",
+      "CategoryApiId": "currency",
+      "IconUrl": "https://web.poecdn.com//gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lNb2RWYWx1ZXMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/2986e220b3/CurrencyModValues.png",
+      "PriceLogs": [
+        null,
+        {
+          "Price": 82.499,
+          "Time": "2026-09-06T12:00:00.0000000Z",
+          "Quantity": 70417
+        },
+        {
+          "Price": 80.67907,
+          "Time": "2026-09-06T11:00:00.0000000Z",
+          "Quantity": 63755
+        },
+        {
+          "Price": 87.146355,
+          "Time": "2026-09-06T10:00:00.0000000Z",
+          "Quantity": 57002
+        },
+        {
+          "Price": 83.71681,
+          "Time": "2026-09-06T09:00:00.0000000Z",
+          "Quantity": 52585
+        },
+        {
+          "Price": 75.9686,
+          "Time": "2026-09-06T08:00:00.0000000Z",
+          "Quantity": 50567
+        },
+        {
+          "Price": 71.663155,
+          "Time": "2026-09-06T07:00:00.0000000Z",
+          "Quantity": 48970
+        },
+        {
+          "Price": 69.46709,
+          "Time": "2026-09-06T06:00:00.0000000Z",
+          "Quantity": 46129
+        }
+      ],
+      "CurrentPrice": 82.499,
+      "CurrentQuantity": 70417
+    },
+    {
+      "CurrencyItemId": 10,
+      "ItemId": 287,
+      "CurrencyCategoryId": 21,
+      "ApiId": "chaos",
+      "BaseItemTypeId": "Metadata/Items/Currency/CurrencyRerollRare",
+      "Text": "Chaos Orb",
+      "CategoryApiId": "currency",
+      "IconUrl": "https://web.poecdn.com//gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lSZXJvbGxSYXJlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/c0ca392a78/CurrencyRerollRare.png",
+      "PriceLogs": [
+        null,
+        {
+          "Price": 3.2758782,
+          "Time": "2026-09-06T12:00:00.0000000Z",
+          "Quantity": 531506
+        },
+        {
+          "Price": 3.216698,
+          "Time": "2026-09-06T11:00:00.0000000Z",
+          "Quantity": 508540
+        },
+        {
+          "Price": 3.1121988,
+          "Time": "2026-09-06T10:00:00.0000000Z",
+          "Quantity": 472883
+        },
+        {
+          "Price": 3.003085,
+          "Time": "2026-09-06T09:00:00.0000000Z",
+          "Quantity": 418426
+        },
+        {
+          "Price": 2.9355545,
+          "Time": "2026-09-06T08:00:00.0000000Z",
+          "Quantity": 370390
+        },
+        {
+          "Price": 2.8887088,
+          "Time": "2026-09-06T07:00:00.0000000Z",
+          "Quantity": 338439
+        },
+        {
+          "Price": 2.9263825,
+          "Time": "2026-09-06T06:00:00.0000000Z",
+          "Quantity": 304322
+        }
+      ],
+      "CurrentPrice": 3.2758782,
+      "CurrentQuantity": 531506
+    },
+    {
+      "CurrencyItemId": 13,
+      "ItemId": 290,
+      "CurrencyCategoryId": 21,
+      "ApiId": "exalted",
+      "BaseItemTypeId": "Metadata/Items/Currency/CurrencyAddModToRare",
+      "Text": "Exalted Orb",
+      "CategoryApiId": "currency",
+      "IconUrl": "https://web.poecdn.com//gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lBZGRNb2RUb1JhcmUiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/ad7c366789/CurrencyAddModToRare.png",
+      "PriceLogs": [
+        null,
+        {
+          "Price": 1,
+          "Time": "2026-09-06T12:00:00.0000000Z",
+          "Quantity": 6414668
+        },
+        {
+          "Price": 1,
+          "Time": "2026-09-06T11:00:00.0000000Z",
+          "Quantity": 5779103
+        },
+        {
+          "Price": 1,
+          "Time": "2026-09-06T10:00:00.0000000Z",
+          "Quantity": 5426471
+        },
+        {
+          "Price": 1,
+          "Time": "2026-09-06T09:00:00.0000000Z",
+          "Quantity": 5114995
+        },
+        {
+          "Price": 1,
+          "Time": "2026-09-06T08:00:00.0000000Z",
+          "Quantity": 4743132
+        },
+        {
+          "Price": 1,
+          "Time": "2026-09-06T07:00:00.0000000Z",
+          "Quantity": 4452809
+        },
+        {
+          "Price": 1,
+          "Time": "2026-09-06T06:00:00.0000000Z",
+          "Quantity": 3986924
+        }
+      ],
+      "CurrentPrice": 1,
+      "CurrentQuantity": 6414668
+    }
+  ]
+}

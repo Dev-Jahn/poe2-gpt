@@ -1,0 +1,33 @@
+{
+  "name": "poe2-gpt",
+  "version": "0.4.0",
+  "description": "Path of Exile 2 prices, trade search, private PoB calculations and budget-aware equipment upgrades.",
+  "author": {
+    "name": "Jahn",
+    "url": "https://github.com/Dev-Jahn"
+  },
+  "repository": "https://github.com/Dev-Jahn/poe2-gpt",
+  "homepage": "https://github.com/Dev-Jahn/poe2-gpt",
+  "license": "MIT",
+  "keywords": [
+    "poe2",
+    "path-of-exile-2",
+    "mcp",
+    "chatgpt",
+    "path-of-building"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "POE2 GPT",
+    "shortDescription": "PoE2 prices, trade search and private PoB analysis",
+    "longDescription": "Compare PoE2 market prices and trade listings, calculate saved builds with a private PoB worker, and evaluate equipment upgrades within a budget. Raw PoB payloads stay outside model tools.",
+    "developerName": "Jahn",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "Check Divine Orb prices in Forbidden Rites, quoted in Exalted Orbs.",
+      "Find rare helmets with at least 100 life under 100 Exalted Orbs.",
+      "Recalculate my imported build and check its equipment requirements."
+    ]
+  }
+}

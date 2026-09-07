@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY pyproject.toml README.md LICENSE NOTICE ./
+COPY src ./src
+RUN pip install --no-cache-dir . && useradd --create-home --uid 10001 companion \
+    && mkdir -p /home/companion/.cache/poe2-companion /engine-socket \
+    && chown -R companion:companion /home/companion/.cache /engine-socket \
+    && chmod 700 /engine-socket
+USER companion
+EXPOSE 8000
+ENTRYPOINT ["poe2-companion"]
+CMD ["--transport", "streamable-http", "--host", "0.0.0.0"]

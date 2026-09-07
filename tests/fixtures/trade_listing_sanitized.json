@@ -1,0 +1,395 @@
+{
+  "result": [
+    {
+      "id": "669edbcc05da576204c041b99762c78a5ff0c2fb987e83f576d875339f9a7c38",
+      "item": {
+        "typeLine": "Cassis Helm",
+        "baseType": "Cassis Helm",
+        "identified": true,
+        "properties": [
+          {
+            "name": "Helmet",
+            "values": [],
+            "displayMode": 0,
+            "type": 109
+          },
+          {
+            "name": "[Armour]",
+            "values": [
+              [
+                "277",
+                1
+              ]
+            ],
+            "displayMode": 0,
+            "type": 16
+          },
+          {
+            "name": "[Evasion|Evasion Rating]",
+            "values": [
+              [
+                "253",
+                1
+              ]
+            ],
+            "displayMode": 0,
+            "type": 17
+          }
+        ],
+        "requirements": [
+          {
+            "name": "Level",
+            "values": [
+              [
+                "59",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 62
+          },
+          {
+            "name": "[Strength|Str]",
+            "values": [
+              [
+                "34",
+                1
+              ]
+            ],
+            "displayMode": 1,
+            "type": 63
+          },
+          {
+            "name": "[Dexterity|Dex]",
+            "values": [
+              [
+                "34",
+                1
+              ]
+            ],
+            "displayMode": 1,
+            "type": 64
+          }
+        ],
+        "runeMods": [
+          {
+            "description": "+6 to [Strength|Strength]",
+            "domain": "rune",
+            "hash": "stat.rune.stat_4080418644"
+          },
+          {
+            "description": "[ShamanOnlyMods|Bonded]: +20 to maximum Life",
+            "domain": "rune",
+            "hash": "stat.rune.stat_2280525771"
+          },
+          {
+            "description": "[ShamanOnlyMods|Bonded]: +20 to maximum Mana",
+            "domain": "rune",
+            "hash": "stat.rune.stat_2926029365"
+          }
+        ],
+        "explicitMods": [
+          {
+            "description": "70% increased [Armour|Armour] and [Evasion|Evasion]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_2451402625",
+            "mods": [
+              {
+                "name": "Duelist's",
+                "tier": "P3",
+                "level": 54,
+                "magnitudes": [
+                  {
+                    "min": "68",
+                    "max": "79"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+118 to maximum Life",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3299347043",
+            "mods": [
+              {
+                "name": "Virile",
+                "tier": "P3",
+                "level": 54,
+                "magnitudes": [
+                  {
+                    "min": "100",
+                    "max": "119"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "15% increased [ItemRarity|Rarity of Items] found",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3917489142",
+            "mods": [
+              {
+                "name": "Collector's",
+                "tier": "P2",
+                "level": 29,
+                "magnitudes": [
+                  {
+                    "min": "12",
+                    "max": "15"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "25% reduced [Attributes|Attribute] Requirements",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3639275092",
+            "mods": [
+              {
+                "name": "of the Talented",
+                "tier": "S3",
+                "level": 40,
+                "magnitudes": [
+                  {
+                    "min": "-25",
+                    "max": "-25"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+24% to [Resistances|Cold Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_4220027924",
+            "mods": [
+              {
+                "name": "of the Yeti",
+                "tier": "S5",
+                "level": 38,
+                "magnitudes": [
+                  {
+                    "min": "21",
+                    "max": "25"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+29% to [Resistances|Lightning Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_1671376347",
+            "mods": [
+              {
+                "name": "of the Tempest",
+                "tier": "S4",
+                "level": 49,
+                "magnitudes": [
+                  {
+                    "min": "26",
+                    "max": "30"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "frameType": 2,
+        "extended": {
+          "ev": 304,
+          "ar": 333
+        }
+      },
+      "listing": {
+        "price": {
+          "type": "~price",
+          "amount": 1,
+          "currency": "exalted"
+        },
+        "indexed": "2026-09-06T12:26:12Z"
+      }
+    },
+    {
+      "id": "c05a10029ad29c65ed4eb71285fa2ac8aff5810f189af0fca75a77e98ed9ddb0",
+      "item": {
+        "typeLine": "Soaring Mask",
+        "baseType": "Soaring Mask",
+        "identified": true,
+        "properties": [
+          {
+            "name": "Helmet",
+            "values": [],
+            "displayMode": 0,
+            "type": 109
+          },
+          {
+            "name": "[Evasion|Evasion Rating]",
+            "values": [
+              [
+                "224",
+                1
+              ]
+            ],
+            "displayMode": 0,
+            "type": 17
+          },
+          {
+            "name": "[EnergyShield|Energy Shield]",
+            "values": [
+              [
+                "69",
+                1
+              ]
+            ],
+            "displayMode": 0,
+            "type": 18
+          }
+        ],
+        "requirements": [
+          {
+            "name": "Level",
+            "values": [
+              [
+                "75",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 62
+          },
+          {
+            "name": "[Dexterity|Dex]",
+            "values": [
+              [
+                "59",
+                0
+              ]
+            ],
+            "displayMode": 1,
+            "type": 64
+          },
+          {
+            "name": "[Intelligence|Int]",
+            "values": [
+              [
+                "59",
+                0
+              ]
+            ],
+            "displayMode": 1,
+            "type": 65
+          }
+        ],
+        "explicitMods": [
+          {
+            "description": "25% increased [Evasion] and [EnergyShield|Energy Shield]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_1999113824",
+            "mods": [
+              {
+                "name": "Owl's",
+                "tier": "P4",
+                "level": 33,
+                "magnitudes": [
+                  {
+                    "min": "21",
+                    "max": "26"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+150 to maximum Life",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3299347043",
+            "mods": [
+              {
+                "name": "Fecund",
+                "tier": "P1",
+                "level": 65,
+                "magnitudes": [
+                  {
+                    "min": "150",
+                    "max": "174"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+17 to maximum Mana",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_1050105434",
+            "mods": [
+              {
+                "name": "Owl's",
+                "tier": "P4",
+                "level": 33,
+                "magnitudes": [
+                  {
+                    "min": "17",
+                    "max": "20"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "29% increased [Critical|Critical Hit] Chance",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_587431675",
+            "mods": [
+              {
+                "name": "of Calamity",
+                "tier": "S2",
+                "level": 44,
+                "magnitudes": [
+                  {
+                    "min": "25",
+                    "max": "29"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+27% to [Resistances|Cold Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_4220027924",
+            "mods": [
+              {
+                "name": "of the Walrus",
+                "tier": "S4",
+                "level": 50,
+                "magnitudes": [
+                  {
+                    "min": "26",
+                    "max": "30"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "frameType": 2,
+        "extended": {
+          "ev": 269,
+          "es": 83
+        }
+      },
+      "listing": {
+        "price": {
+          "type": "~price",
+          "amount": 1,
+          "currency": "exalted"
+        },
+        "indexed": "2026-09-06T00:54:07Z"
+      }
+    }
+  ]
+}

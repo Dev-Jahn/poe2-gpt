@@ -1,0 +1,189 @@
+{
+  "result": [
+    {
+      "id": "pseudo",
+      "entries": [
+        {
+          "id": "pseudo.pseudo_total_cold_resistance",
+          "text": "+#% total to Cold Resistance",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_fire_resistance",
+          "text": "+#% total to Fire Resistance",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_lightning_resistance",
+          "text": "+#% total to Lightning Resistance",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_elemental_resistance",
+          "text": "+#% total Elemental Resistance",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_chaos_resistance",
+          "text": "+#% total to Chaos Resistance",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_resistance",
+          "text": "+#% total Resistance",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_count_resistances",
+          "text": "# total Resistances",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_count_elemental_resistances",
+          "text": "# total Elemental Resistances",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_all_elemental_resistances",
+          "text": "+#% total to all Elemental Resistances",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_strength",
+          "text": "+# total to Strength",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_dexterity",
+          "text": "+# total to Dexterity",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_intelligence",
+          "text": "+# total to Intelligence",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_all_attributes",
+          "text": "+# total to all Attributes",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_attributes",
+          "text": "+# total to Attributes",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_life",
+          "text": "+# total maximum Life",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_mana",
+          "text": "+# total maximum Mana",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_total_energy_shield",
+          "text": "+# total maximum Energy Shield",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_increased_energy_shield",
+          "text": "#% total increased maximum Energy Shield",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_increased_movement_speed",
+          "text": "#% increased Movement Speed",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_enchant_mods",
+          "text": "# Enchant Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_implicit_mods",
+          "text": "# Implicit Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_prefix_mods",
+          "text": "# Prefix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_suffix_mods",
+          "text": "# Suffix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_affix_mods",
+          "text": "# Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_desecrated_prefix_mods",
+          "text": "# Desecrated Prefix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_desecrated_suffix_mods",
+          "text": "# Desecrated Suffix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_desecrated_mods",
+          "text": "# Desecrated Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_unrevealed_prefix_mods",
+          "text": "# Unrevealed Prefix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_unrevealed_suffix_mods",
+          "text": "# Unrevealed Suffix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_unrevealed_mods",
+          "text": "# Unrevealed Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_empty_prefix_mods",
+          "text": "# Empty Prefix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_empty_suffix_mods",
+          "text": "# Empty Suffix Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_empty_affix_mods",
+          "text": "# Empty Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_fractured_mods",
+          "text": "# Fractured Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_crafted_mods",
+          "text": "# Crafted Modifiers",
+          "type": "pseudo"
+        },
+        {
+          "id": "pseudo.pseudo_number_of_uses_remaining",
+          "text": "# uses remaining (Tablets)",
+          "type": "pseudo"
+        }
+      ]
+    }
+  ]
+}

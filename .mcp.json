@@ -1,0 +1,9 @@
+{
+  "poe2-gpt": {
+    "command": "poe2-gpt",
+    "args": [
+      "--transport",
+      "stdio"
+    ]
+  }
+}

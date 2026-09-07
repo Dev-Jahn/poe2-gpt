@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem using synthetic data.
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach PoB codes, private builds, credentials, or account information. For vulnerabilities, see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Version and platform
+      placeholder: v0.4.0, Linux, Docker
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction with synthetic data
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Relevant fixed error codes and test results
