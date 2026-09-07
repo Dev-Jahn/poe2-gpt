@@ -28,7 +28,7 @@ def main():
     temporary = tempfile.TemporaryDirectory(prefix="poe2-members-ci-")
     try:
         run(["build"])
-        base = json.loads(run(["config", "--format", "json"], capture_output=True, text=True).stdout)
+        base = json.loads(run(["--profile", "operator", "config", "--format", "json"], capture_output=True, text=True).stdout)
         members = [{"id": name, "email": name + "@example.com", "port": port, "enabled": True}
                    for name, port in (("alice", 18082), ("bob", 18083))]
         rendered = Path(temporary.name) / "compose.json"

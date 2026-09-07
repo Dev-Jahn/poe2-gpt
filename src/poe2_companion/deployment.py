@@ -43,6 +43,8 @@ def render_member_stack(base, members):
     validate_members(members, owner["environment"]["POE2_CF_OWNER_EMAIL"])
     stack = deepcopy(base)
     engine = "pob-engine" in base["services"]
+    if engine and "pob-import" not in base["services"]:
+        raise ValueError("Render Compose with --profile operator to include the private importer")
     names = ["poe2-companion"] + (["pob-engine", "pob-import"] if engine else [])
     for member in members:
         if not member["enabled"]:

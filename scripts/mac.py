@@ -61,7 +61,7 @@ def compose(settings, *, base=False):
     command = [binary("docker"), "--context", CONTEXT, "compose", "--project-name", PROFILE,
                "--env-file", str(STATE / "deployment.env")]
     if settings.get("members") and not base:
-        resolved = json.loads(run(compose(settings, base=True) + ["config", "--format", "json"],
+        resolved = json.loads(run(compose(settings, base=True) + ["--profile", "operator", "config", "--format", "json"],
                                   capture_output=True, text=True).stdout)
         stack = render_member_stack(resolved, settings["members"])
         path = STATE / "compose.members.json"
@@ -87,7 +87,7 @@ def add_member(settings, identity):
     used_ports = {member["port"] for member in members}
     available = next((port for port in range(18082, 18146) if port not in used_ports), None)
     candidate = {"id": identity, "email": email, "port": available, "enabled": True}
-    resolved = json.loads(run(compose(settings, base=True) + ["config", "--format", "json"],
+    resolved = json.loads(run(compose(settings, base=True) + ["--profile", "operator", "config", "--format", "json"],
                               capture_output=True, text=True).stdout)
     validate_members([*members, candidate], resolved["services"]["poe2-companion"]["environment"]["POE2_CF_OWNER_EMAIL"])
     settings["members"] = [*members, candidate]
