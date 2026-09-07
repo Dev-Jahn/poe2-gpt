@@ -1,0 +1,37 @@
+# Run through scripts/mac.py so personal settings stay outside the checkout.
+services:
+  poe2-companion:
+    image: poe2-gpt:local
+    build:
+      context: ..
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    ports:
+      - "127.0.0.1:18080:8000"
+    command: [--transport, streamable-http, --host, "0.0.0.0", --allowed-host, "${POE2_PUBLIC_HOST:?Set the public hostname}"]
+    environment:
+      POE2_AUTH_MODE: cloudflare-access
+      POE2_CF_TEAM_DOMAIN: ${POE2_CF_TEAM_DOMAIN:?Set the Cloudflare team hostname}
+      POE2_CF_AUDIENCE: ${POE2_CF_AUDIENCE:?Set the Access application AUD tag}
+      POE2_CF_OWNER_EMAIL: ${POE2_CF_OWNER_EMAIL:?Set the one allowed owner email}
+    volumes:
+      - prices:/home/companion/.cache/poe2-companion
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      # This checks the unauthenticated origin's denial, not upstream API health.
+      test: [CMD, python, -c, "import httpx; r=httpx.get('http://127.0.0.1:8000/mcp',trust_env=False); assert r.status_code==403 and r.json()=={'error':'access_denied'}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  prices:

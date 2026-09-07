@@ -3,6 +3,7 @@ import socket
 
 import httpx
 import uvicorn
+import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -13,9 +14,12 @@ from test_trade import TradeBackend
 from test_equipment import NOW, imported, optimizer
 from poe2_companion.trade import TradeClient
 from poe2_companion.equipment import EquipmentService
+from poe2_companion.access import CloudflareAccessMiddleware
+from test_access import verifier, token
 
 
-async def test_real_streamable_http_protocol(tmp_path):
+@pytest.mark.parametrize("authenticated", [False, True])
+async def test_real_streamable_http_protocol(tmp_path, authenticated):
     scout = Scout(user_agent="test", transport=httpx.MockTransport(Backend()), interval=0)
     dataset_id, directory = imported(tmp_path)
     trade = TradeClient("test",transport=httpx.MockTransport(TradeBackend()),interval=0,clock=lambda:NOW)
@@ -23,13 +27,18 @@ async def test_real_streamable_http_protocol(tmp_path):
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
-    http = uvicorn.Server(uvicorn.Config(server.streamable_http_app(), log_level="error"))
+    access = verifier() if authenticated else None
+    app = server.streamable_http_app()
+    if access:
+        app = CloudflareAccessMiddleware(app, access)
+    http = uvicorn.Server(uvicorn.Config(app, log_level="error"))
     task = asyncio.create_task(http.serve(sockets=[sock]))
     try:
         async with asyncio.timeout(10):
             while not http.started:
                 await asyncio.sleep(0.01)
-        async with httpx.AsyncClient(trust_env=False) as client:
+        headers = {"Cf-Access-Jwt-Assertion": token()} if authenticated else {}
+        async with httpx.AsyncClient(trust_env=False, headers=headers) as client:
             async with streamable_http_client(f"http://127.0.0.1:{port}/mcp", http_client=client) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
@@ -59,3 +68,5 @@ async def test_real_streamable_http_protocol(tmp_path):
         sock.close()
         await scout.close()
         await trade.close()
+        if access:
+            await access.close()

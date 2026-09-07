@@ -4,7 +4,7 @@
 
 **Path of Exile 2**의 화폐 시세, 공식 거래소 장비 검색, 비공개 Path of Building 계산과 예산에 맞는 장비 업그레이드를 제공하는 자체 호스팅 ChatGPT 플러그인·MCP 서버입니다.
 
-**상태: 0.4.0, 실험적 버전.** 최대 21개의 읽기 전용 MCP 도구를 구현했습니다. Homelab 배포·인증·본인 캐릭터 검증은 설치 후 진행해야 합니다. 이 저장소는 운영 중인 공용 서버나 ChatGPT 공개 디렉터리 등록을 제공하지 않습니다.
+**상태: 0.5.0, 실험적 버전.** 최대 21개의 읽기 전용 MCP 도구를 구현했습니다. Homelab 배포·인증·본인 캐릭터 검증은 설치 후 진행해야 합니다. 이 저장소는 운영 중인 공용 서버나 ChatGPT 공개 디렉터리 등록을 제공하지 않습니다.
 
 ## 기능
 
@@ -41,6 +41,8 @@ docker compose up -d --build
 ```
 
 로컬 주소는 `http://127.0.0.1:8000/mcp`입니다. 계정에 제한된 Secure MCP Tunnel 또는 호환되는 인증을 갖춘 HTTPS 주소로 ChatGPT 웹·데스크톱에 연결하세요. 서버 자체에는 OAuth·다중 사용자 격리가 없습니다. [설치](docs/installation.md) · [배포](docs/deployment.md).
+
+인바운드가 차단된 Mac mini에서는 [Mac mini + Cloudflare 설치 안내](docs/mac-mini-cloudflare.md)를 따르세요. ARM64/amd64 Linux 컨테이너, Managed OAuth와 서버 JWT 검증, 로그인 후 자동 실행을 지원합니다.
 
 로컬 플러그인 호스트용 `.codex-plugin/plugin.json`, `.mcp.json`, Git 기반 marketplace 목록을 포함합니다. 로컬 STDIO 설치만으로 웹에 연결되지는 않습니다. 공개 ChatGPT 디렉터리 등록은 별도 심사가 필요합니다. [공식 규격](https://developers.openai.com/plugins/build/plugins).
 

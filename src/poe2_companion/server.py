@@ -20,6 +20,7 @@ from .equipment import (EquipmentService, ProviderStatus, SearchPlanRequest, Sea
 from .trade import (TradeClient, TradeError, SAFE_ERRORS, TradeSearchRequest, TradeSearchResult,
     TradePageRequest, StatSearchRequest, StatSearchResult, TradeUpgradeRequest, TradeUpgradeResult)
 from .engine import EngineClient
+from .access import AccessConfig, AccessVerifier, CloudflareAccessMiddleware
 from .engine_models import (EngineRequest, CompareRequest, EngineTradeRequest, EngineCalculation,
     EngineTradeResult, EngineStatus, EngineError, SAFE_ENGINE_ERRORS)
 
@@ -273,7 +274,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
 
     @server.custom_route("/healthz", methods=["GET"])
     async def health(_: Request):
-        return JSONResponse({"status": "ok", "version": "0.4.0", "upstream_checked": False})
+        return JSONResponse({"status": "ok", "version": "0.5.0", "upstream_checked": False})
 
     return server
 
@@ -285,8 +286,14 @@ def main():
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--allowed-host", action="append", default=[], help="Public HTTPS hostname when reverse-proxied; repeat as needed")
     args = parser.parse_args()
+    try:
+        access_config = AccessConfig.from_env(os.environ)
+        if access_config and args.transport != "streamable-http":
+            raise ValueError("Cloudflare Access authentication requires streamable-http transport")
+    except ValueError as error:
+        parser.error(str(error))
     cache_path = os.environ.get("POE2_CACHE_PATH", str(Path.home()/".cache"/"poe2-companion"/"prices.sqlite3"))
-    user_agent = os.environ.get("POE2_USER_AGENT", "poe2-companion/0.4.0 (contact: https://github.com/Dev-Jahn)")
+    user_agent = os.environ.get("POE2_USER_AGENT", "poe2-companion/0.5.0 (contact: https://github.com/Dev-Jahn)")
     scout = Scout(user_agent=user_agent, cache_path=cache_path)
     projection_dir = os.environ.get("POE2_BUILD_PROJECTION_DIR")
     build_reader = BuildReader(projection_dir) if projection_dir else None
@@ -297,14 +304,22 @@ def main():
     engine = EngineClient(engine_socket) if engine_socket else None
     server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine)
     async def serve():
+        verifier = AccessVerifier(access_config) if access_config else None
         # Stateless HTTP opens an MCP session per request. Shared HTTP/cache resources
         # belong to process lifetime, not FastMCP's per-session lifespan.
         try:
             if args.transport == "stdio":
                 await server.run_stdio_async()
             else:
-                await server.run_streamable_http_async()
+                import uvicorn
+                app = server.streamable_http_app()
+                if verifier:
+                    app = CloudflareAccessMiddleware(app, verifier)
+                await uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port,
+                    log_level="info", access_log=False, proxy_headers=False)).serve()
         finally:
+            if verifier:
+                await verifier.close()
             await scout.close()
             if trade is not None:
                 await trade.close()

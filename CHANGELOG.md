@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Cloudflare Access Managed OAuth deployment with origin-side JWT signature, issuer, audience, expiry and single-owner checks.
+- Mac mini deployment through a dedicated Colima VM and Cloudflare Tunnel, with isolated login services and private token-file configuration.
+- Native ARM64 and amd64 real-engine CI, plus container tests for authentication and raw/projection volume isolation.
+- Linux-native private build volumes and a bounded operator-only import pipe; no raw PoB tool input/output was added.
+- Multi-architecture release images and localized links to the new deployment guide.
+
+Actual Mac login/reboot behavior and the Cloudflare-to-ChatGPT OAuth connection require deployment acceptance testing.
+
 ## 0.4.0
 
 Initial public source release, consolidating the earlier private prototype.

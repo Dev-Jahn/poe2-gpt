@@ -168,6 +168,17 @@ def import_file(source: Path, private_dir: Path, projection_dir: Path) -> str:
     return build_id
 
 
+def import_stream(stream, private_dir: Path, projection_dir: Path) -> str:
+    """Operator terminal pipe, never an MCP input. Bound and remove staging data."""
+    code = stream.read(MAX_CODE_BYTES + 1)
+    if len(code) > MAX_CODE_BYTES:
+        raise BuildError("input_too_large")
+    with tempfile.TemporaryDirectory(prefix="poe2-import-") as temporary:
+        source = Path(temporary) / "input.pob"
+        atomic_write(source, code)
+        return import_file(source, private_dir, projection_dir)
+
+
 def export_file(build_id: str, private_dir: Path, destination: Path):
     check_id(build_id)
     code = read_regular_file(private_dir / (build_id + ".pob"), MAX_CODE_BYTES)
@@ -188,7 +199,9 @@ def main():
     parser = PrivateArgumentParser(description="Local operator PoB file import/export. Never run via model tools.")
     commands = parser.add_subparsers(dest="command", required=True)
     load = commands.add_parser("import")
-    load.add_argument("--input", required=True, type=Path)
+    input_group = load.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("--input", type=Path)
+    input_group.add_argument("--stdin", action="store_true", help="Read a bounded operator-only pipe")
     load.add_argument("--private-dir", required=True, type=Path)
     load.add_argument("--projection-dir", required=True, type=Path)
     save = commands.add_parser("export")
@@ -198,7 +211,8 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "import":
-            build_id = import_file(args.input, args.private_dir, args.projection_dir)
+            build_id = (import_stream(sys.stdin.buffer, args.private_dir, args.projection_dir)
+                        if args.stdin else import_file(args.input, args.private_dir, args.projection_dir))
             print(json.dumps({"status": "imported", "build_id": build_id}))
         else:
             export_file(args.build_id, args.private_dir, args.output)

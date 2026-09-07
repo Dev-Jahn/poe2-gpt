@@ -40,7 +40,7 @@ jobs:
         run: gh release create "$RELEASE_TAG" dist/* --verify-tag --title "POE2 GPT $RELEASE_TAG" --notes-file CHANGELOG.md
   containers:
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
     permissions:
       contents: read
@@ -50,8 +50,20 @@ jobs:
         include:
           - image: poe2-gpt
             file: Dockerfile
+            arch: amd64
+            runner: ubuntu-latest
           - image: poe2-gpt-engine
             file: Dockerfile.engine
+            arch: amd64
+            runner: ubuntu-latest
+          - image: poe2-gpt
+            file: Dockerfile
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - image: poe2-gpt-engine
+            file: Dockerfile.engine
+            arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -73,10 +85,34 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           push: true
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           provenance: true
           sbom: true
-          tags: ghcr.io/${{ env.OWNER_LOWER }}/${{ matrix.image }}:${{ github.ref_name }}
+          tags: ghcr.io/${{ env.OWNER_LOWER }}/${{ matrix.image }}:${{ github.ref_name }}-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
+  manifests:
+    needs: containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [poe2-gpt, poe2-gpt-engine]
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish multi-architecture manifest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          IMAGE_NAME: ${{ matrix.image }}
+        run: |
+          image_ref="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}:${RELEASE_TAG}"
+          docker buildx imagetools create --tag "$image_ref" "$image_ref-amd64" "$image_ref-arm64"

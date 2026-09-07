@@ -4,7 +4,7 @@
 
 Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**: Währungspreise, Ausrüstungssuche auf der offiziellen Handelsseite, private Path-of-Building-Berechnungen und Ausrüstungsverbesserungen innerhalb eines Budgets.
 
-**Status: 0.4.0, experimentell.** Bis zu 21 lesende MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
+**Status: 0.5.0, experimentell.** Bis zu 21 lesende MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
 
 ## Funktionen
 
@@ -41,6 +41,8 @@ docker compose up -d --build
 ```
 
 Der lokale Endpunkt lautet `http://127.0.0.1:8000/mcp`. Für ChatGPT im Web und auf dem Desktop einen kontogebundenen Secure MCP Tunnel oder einen kompatibel authentifizierten HTTPS-Endpunkt verwenden. Der Server implementiert selbst weder OAuth noch Mandantentrennung. [Installation](docs/installation.md) · [Bereitstellung](docs/deployment.md).
+
+Für einen Mac mini hinter einer Firewall gibt es die [Mac-mini- und Cloudflare-Anleitung](docs/mac-mini-cloudflare.md): native ARM64/amd64-Linux-Container, Managed OAuth mit JWT-Prüfung am Server und überwachte Dienste nach der Anmeldung.
 
 Enthalten sind `.codex-plugin/plugin.json`, `.mcp.json` und ein Git-basierter Marketplace-Katalog für lokale Plugin-Hosts. Eine lokale STDIO-Installation verbindet den Server nicht mit ChatGPT im Web. Die Veröffentlichung im öffentlichen Verzeichnis erfordert eine separate Prüfung. [Offizielle Spezifikation](https://developers.openai.com/plugins/build/plugins).
 

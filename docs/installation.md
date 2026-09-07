@@ -10,7 +10,7 @@ Start `docker compose up -d --build`, or run:
 .venv/bin/python -m poe2_companion.server --transport streamable-http
 ```
 
-Use the `/mcp` endpoint on loopback port 8000. For personal ChatGPT use, connect through an account-scoped [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). Follow its current tunnel-client setup on the homelab. A private-data server needs that account boundary or a ChatGPT-compatible authenticated HTTPS ingress. The repository does not supply OAuth or a shared hosted service.
+Use the `/mcp` endpoint on loopback port 8000. For a Mac mini behind an inbound firewall, follow [Mac mini + Cloudflare](mac-mini-cloudflare.md): its separate Compose stack uses port 18080 and delegates OAuth to Cloudflare Access, while validating assertions at the origin. An account-scoped [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) is another deployment option. A private-data server needs an account boundary or a ChatGPT-compatible authenticated HTTPS ingress. The repository does not operate a shared hosted service or its own OAuth authorization server.
 
 In ChatGPT, enable Developer mode under Settings → Security and login. In Plugins, select **+**, enter the name and description, then choose the tunnel or your HTTPS `/mcp` URL. Review the discovered tools and start a new conversation. Refresh the connection and start a new conversation after tool changes. Availability depends on account/workspace policy. [Official connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 

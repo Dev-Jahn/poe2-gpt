@@ -38,7 +38,11 @@ jobs:
         if: matrix.python == '3.12'
         run: docker build --tag poe2-gpt:ci .
   engine:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -48,3 +52,5 @@ jobs:
         run: docker build --file Dockerfile.engine --target test --tag poe2-gpt-engine:test .
       - name: Test the real engine without external network access
         run: docker run --rm --network none --entrypoint python poe2-gpt-engine:test scripts/run_engine_tests.py
+      - name: Test Mac deployment containers and private import
+        run: python3 scripts/check_mac_containers.py

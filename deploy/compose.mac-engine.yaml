@@ -1,0 +1,62 @@
+services:
+  poe2-companion:
+    environment:
+      POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+      POE2_BUILD_PROJECTION_DIR: /build-projections
+    volumes:
+      - engine-socket:/engine-socket:ro
+      - build-projections:/build-projections:ro
+    depends_on:
+      pob-engine:
+        condition: service_healthy
+  pob-engine:
+    build:
+      context: ..
+      dockerfile: Dockerfile.engine
+    restart: unless-stopped
+    init: true
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 3g
+    cpus: 2
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    environment:
+      POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+    volumes:
+      - engine-socket:/engine-socket
+      - private-builds:/private-builds:ro
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: [CMD, python, -c, "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/engine-socket/pob.sock')); c.get('http://pob-worker/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  pob-import:
+    image: poe2-gpt:local
+    profiles: [operator]
+    entrypoint: [poe2-pob-files]
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 32
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+    volumes:
+      - private-builds:/private-builds
+      - build-projections:/build-projections
+    logging:
+      driver: none
+volumes:
+  engine-socket:
+  private-builds:
+  build-projections:

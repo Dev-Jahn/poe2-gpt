@@ -1,5 +1,9 @@
 # Homelab deployment
 
+For a Mac mini with inbound connections blocked, use the dedicated
+[Mac mini + Cloudflare guide](mac-mini-cloudflare.md). It includes Colima,
+Cloudflare Access Managed OAuth, origin JWT verification and login services.
+
 The default Compose service binds `127.0.0.1:8000` and persists Scout's SQLite cache. Use a tunnel for personal access. For HTTPS ingress, pass `--allowed-host your.actual.hostname` to the MCP command and preserve streaming HTTP and the `/mcp` path. Host validation is not authentication. Never use wildcard host allowances as an authentication substitute.
 
 ## Optional services

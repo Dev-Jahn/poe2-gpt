@@ -4,7 +4,7 @@
 
 Um plugin do ChatGPT e servidor MCP para hospedagem própria, dedicado ao **Path of Exile 2**: preços de moedas, busca de equipamentos no site oficial de trocas, cálculos privados do Path of Building e melhorias dentro do orçamento.
 
-**Status: 0.4.0, experimental.** Há até 21 ferramentas MCP somente de leitura. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
+**Status: 0.5.0, experimental.** Há até 21 ferramentas MCP somente de leitura. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
 
 ## Recursos
 
@@ -41,6 +41,8 @@ docker compose up -d --build
 ```
 
 O endereço local é `http://127.0.0.1:8000/mcp`. Conecte o ChatGPT web/desktop por um Secure MCP Tunnel restrito à conta ou por um endereço HTTPS com autenticação compatível. O servidor não implementa OAuth nem isolamento entre usuários. [Instalação](docs/installation.md) · [Implantação](docs/deployment.md).
+
+Para um Mac mini com conexões de entrada bloqueadas, siga a [configuração Mac mini + Cloudflare](docs/mac-mini-cloudflare.md): contêineres Linux nativos ARM64/amd64, Managed OAuth com validação de JWT no servidor e serviços supervisionados após o login.
 
 O repositório inclui `.codex-plugin/plugin.json`, `.mcp.json` e um catálogo de marketplace com origem Git para hosts locais de plugins. Instalar um servidor STDIO local não o disponibiliza no ChatGPT web. A publicação no diretório público exige uma análise separada. [Formato oficial](https://developers.openai.com/plugins/build/plugins).
 
