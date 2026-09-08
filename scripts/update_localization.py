@@ -123,7 +123,8 @@ def categories(key: str, english: str) -> list[str]:
     """Search facets are heuristics over verified names, not gameplay claims."""
     term = english.casefold()
     result = []
-    if any(x in term for x in (" orb", "shard", "whetstone", "scrap", "bauble", "etcher", "prism", "scroll", "hinekora's lock")):
+    if (term.startswith("orb of ") or term == "mirror of kalandra"
+            or any(x in term for x in (" orb", "shard", "whetstone", "scrap", "bauble", "etcher", "prism", "scroll", "hinekora's lock"))):
         result.append("currency")
     for needle, category in (("rune", "runes"), ("soul core", "soul_cores"), ("essence", "essences"),
                              ("omen", "omens"), ("idol", "idols"), ("talisman", "talismans"),
@@ -194,17 +195,25 @@ class Anchors(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.url, self.language = url, language
         self.active = None
+        self.in_title = False
+        self.title_parts: list[str] = []
         self.rows: list[dict] = []
 
     def handle_starttag(self, tag, attrs):
+        if tag == "title":
+            self.in_title = True
         if tag == "a":
             self.active = [dict(attrs).get("href", ""), []]
 
     def handle_data(self, value):
+        if self.in_title:
+            self.title_parts.append(value)
         if self.active is not None:
             self.active[1].append(value)
 
     def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
         if tag != "a" or self.active is None:
             return
         href, parts = self.active
@@ -230,6 +239,18 @@ class Anchors(HTMLParser):
 def anchors(body: bytes, url: str, language: str) -> list[dict]:
     parser = Anchors(url, language)
     parser.feed(body.decode("utf-8"))
+    title = " ".join("".join(parser.title_parts).split())
+    if " - PoE2DB" in title:
+        title = title.split(" - PoE2DB", 1)[0].strip()
+        path = urlsplit(url).path
+        key = unquote(path.removeprefix("/" + language + "/"))
+        try:
+            checked_query(key)
+            checked_query(title)
+            if key and not any(c in key for c in "/\\?#"):
+                parser.rows.append({"value": key, "label": title, "url": url})
+        except ValueError:
+            pass
     return parser.rows
 
 
@@ -325,23 +346,25 @@ def download_html(directory: Path, requested_pages: list[str], *, resume: bool =
                   if name_key(r["label"]) in requested or name_key(r["value"]) in requested}
     korean = {r["value"]: r for r in homes["kr"]}
     keys = sorted(candidates.keys() & korean.keys())
-    include_currency = name_key("Currency") in requested and "Currency" not in keys
-    if len(keys) + int(include_currency) > 24:
+    fixed_pages = []
+    if name_key("Currency") in requested and "Currency" not in keys:
+        fixed_pages.append("Currency")
+    if name_key("Classes") in requested:
+        fixed_pages.extend(p for p in ("Monk", "Huntress") if p not in keys)
+    if len(keys) + len(fixed_pages) > 24:
         raise ValueError("too_many_html_pages")
     if not keys:
         raise ValueError("html_category_links_not_found")
     for key in keys:
         save(candidates[key]["url"], "us")
         save(korean[key]["url"], "kr")
-    if include_currency:
-        # Both canonical endpoints were independently verified as normal HTTP
-        # 200 on 2026-09-08. The dynamically rendered homepage can omit this
-        # link; this fixed public pair must not disappear from price UX.
-        save("https://poe2db.tw/us/Currency", "us")
-        save("https://poe2db.tw/kr/Currency", "kr")
+    for page in fixed_pages:
+        # Independently verified public canonical pages on 2026-09-08. Dynamic
+        # homepage navigation can omit Currency or the two acceptance classes.
+        save(f"https://poe2db.tw/us/{page}", "us")
+        save(f"https://poe2db.tw/kr/{page}", "kr")
     seen = {name_key(v) for key in keys for v in (key, candidates[key]["label"])}
-    if include_currency:
-        seen.add(name_key("Currency"))
+    seen.update(name_key(page) for page in fixed_pages)
     metadata = {"snapshot_date": datetime.now(timezone.utc).date().isoformat(),
                 "source_kind": "html_anchors", "requested_pages_not_found": sorted(p for p in requested_pages if name_key(p) not in seen),
                 "sources": sources}
