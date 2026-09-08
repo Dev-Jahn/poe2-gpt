@@ -74,7 +74,7 @@ jobs:
         run: |
           python3 -c 'import os,tomllib; p=tomllib.load(open("pyproject.toml","rb")); assert os.environ["RELEASE_TAG"] == "v" + p["project"]["version"]'
           printf 'OWNER_LOWER=%s\n' "${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ghcr.io
@@ -103,7 +103,7 @@ jobs:
       matrix:
         image: [poe2-gpt, poe2-gpt-engine]
     steps:
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ghcr.io
