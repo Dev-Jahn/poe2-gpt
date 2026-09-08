@@ -24,7 +24,7 @@ from starlette.routing import Route
 
 from .builds import DTO, read_regular_file
 from .pob_io import MAX_CODE_BYTES, decode_pob, project_pob
-from .engine_models import ENGINE_COMMIT, EngineError, EngineSlot, BuildID, EngineSnapshot, SAFE_ENGINE_ERRORS
+from .engine_models import ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError, EngineSlot, BuildID, EngineSnapshot, SAFE_ENGINE_ERRORS
 
 MAX_REQUEST = 2 * 1024 * 1024
 MAX_RESULT = 512 * 1024
@@ -64,10 +64,12 @@ class PrivateEngine:
 
     def check_version(self):
         try:
-            marker=read_regular_file(self.engine_dir/'COMPANION_COMMIT',100).decode().strip()
+            expected={'COMPANION_COMMIT':ENGINE_COMMIT, 'COMPANION_DATA_COMMIT':ENGINE_DATA_COMMIT,
+                      'COMPANION_COMPATIBILITY':ENGINE_COMPATIBILITY}
+            valid=all(read_regular_file(self.engine_dir/name,100).decode().strip()==value for name,value in expected.items())
         except Exception:
             raise EngineError('engine_version_mismatch') from None
-        if marker!=ENGINE_COMMIT:
+        if not valid:
             raise EngineError('engine_version_mismatch')
 
     async def calculate(self, request: WorkerRequest) -> WorkerResult:
@@ -87,7 +89,14 @@ class PrivateEngine:
             # 0_5. These are distinct version fields in GameVersions.lua.
             if projection.summary.target_version != [0,1]:
                 raise EngineError('engine_version_mismatch')
-            job={'xml':xml.decode('utf-8-sig'),'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
+            from xml.etree import ElementTree as ET
+            root=ET.fromstring(xml)
+            tree=root.find('Tree')
+            active=int(tree.get('activeSpec','1')) if tree is not None else 1
+            trees=projection.trees
+            node_ids=next((t.node_ids for t in trees if t.index==active-1),[])
+            job={'xml':xml.decode('utf-8-sig'),'expected_node_ids':node_ids,
+                 'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
         except EngineError:
             raise
         except Exception:
@@ -132,7 +141,8 @@ def worker_app(engine: PrivateEngine):
     async def health(_):
         try:
             engine.check_version()
-            return JSONResponse({'engine_commit':ENGINE_COMMIT})
+            return JSONResponse({'engine_commit':ENGINE_COMMIT,'engine_data_commit':ENGINE_DATA_COMMIT,
+                                 'engine_compatibility':ENGINE_COMPATIBILITY})
         except Exception:
             return JSONResponse({'code':'engine_version_mismatch'},status_code=503)
 

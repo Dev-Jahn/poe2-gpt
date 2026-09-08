@@ -23,7 +23,8 @@ ClassName = Literal["Warrior", "Mercenary", "Ranger", "Huntress", "Monk", "Druid
                     "Sorceress", "Witch", "Marauder", "Duelist", "Shadow", "Templar", "Unknown"]
 StatName = Literal["Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergyShield", "Armour", "Evasion",
                    "FireResist", "ColdResist", "LightningResist", "ChaosResist", "BlockChance", "SpellBlockChance",
-                   "Str", "Dex", "Int", "TotalDPS", "CombinedDPS", "FullDPS", "Speed", "CritChance", "CritMultiplier"]
+                   "Str", "Dex", "Int", "TotalDPS", "CombinedDPS", "FullDPS", "Speed", "CritChance", "CritMultiplier",
+                   "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed", "DeflectionRating"]
 STAT_NAMES = set(StatName.__args__)
 
 
@@ -51,9 +52,11 @@ class BuildSummary(DTO):
     build_id: Annotated[str, Field(pattern=r"^bld_[0-9a-f]{32}$", max_length=36)]
     imported_at_epoch: Annotated[int, Field(ge=0, le=100000000000)]
     class_name: ClassName
+    class_name_ko: Annotated[str, Field(max_length=160)] | None = None
+    class_name_source_ko: Annotated[str, Field(max_length=1024)] | None = None
     level: Annotated[int, Field(ge=1, le=100)]
     target_version: Annotated[list[Annotated[int, Field(ge=0, le=999)]], Field(min_length=1, max_length=4)] | None
-    stats: Annotated[list[PlayerStat], Field(max_length=22)]
+    stats: Annotated[list[PlayerStat], Field(max_length=26)]
     counts: Counts
     stats_origin: Literal["saved_pob_export_not_recalculated"] = "saved_pob_export_not_recalculated"
     counts_scope: Literal["all_saved_loadouts_not_active_only"] = "all_saved_loadouts_not_active_only"
@@ -124,7 +127,9 @@ class BuildReader:
         return projection
 
     def summary(self, build_id: str) -> BuildSummary:
-        return bounded_dto(self.load(build_id).summary)
+        from .game_terms import name_fields
+        summary = self.load(build_id).summary
+        return bounded_dto(summary.model_copy(update=name_fields(summary.class_name, "class_name")))
 
     def nodes(self, build_id: str, spec_index=0, offset=0, limit=50) -> NodePage:
         if any(type(v) is not int for v in (spec_index, offset, limit)) or not (0 <= spec_index < 100 and 0 <= offset <= 2000 and 1 <= limit <= 100):

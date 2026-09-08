@@ -24,7 +24,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from .builds import BuildReader, PlayerStat, bounded_dto, read_regular_file
+from .builds import BuildReader, BuildError, PlayerStat, bounded_dto, read_regular_file
 from .characters import (AccountRequest, CharacterRequest, CharacterIdentity, CharacterPage,
     CharacterOverview, CharacterImport, CharacterRefresh, AttachmentRequest, AttachmentImport,
     CHARACTER_INPUTS, CHARACTER_ERRORS, CharacterError, account_slug)
@@ -54,7 +54,7 @@ class CharacterProvider:
         self.state = state_dir
         # Separate clients prevent Ninja cookies leaking to file download hosts.
         self.http = http or httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False,
-            headers={"User-Agent": "poe2-gpt/0.7.0 (https://github.com/Dev-Jahn/poe2-gpt)", "Accept": "application/json"})
+            headers={"User-Agent": "poe2-gpt/0.8.0 (https://github.com/Dev-Jahn/poe2-gpt)", "Accept": "application/json"})
         self.attachment_http = attachment_http or httpx.AsyncClient(timeout=30, trust_env=False, follow_redirects=False)
         self.attachment_hosts = set(attachment_hosts or ["files.oaiusercontent.com"])
         self.lock = asyncio.Lock()
@@ -136,8 +136,18 @@ class CharacterProvider:
                 items.append(CharacterIdentity(name=row["name"], league=league,
                     level=row.get("level"), class_name=row.get("className")))
         end = request.offset + request.limit
-        return CharacterPage(account_slug=account_slug(request.account_tag), characters=items[request.offset:end],
+        page = CharacterPage(account_slug=account_slug(request.account_tag), characters=items[request.offset:end],
             total=len(items), next_offset=end if end < len(items) else None, retrieved_at_epoch=int(time.time()))
+        while True:
+            try:
+                return bounded_dto(page)
+            except BuildError:
+                if len(page.characters) <= 1:
+                    raise
+                # Korean labels and multibyte character names can shorten a
+                # page. Advance only past entries actually returned.
+                page.characters.pop()
+                page.next_offset = request.offset + len(page.characters)
 
     async def resolve(self, request):
         if request.league is not None:

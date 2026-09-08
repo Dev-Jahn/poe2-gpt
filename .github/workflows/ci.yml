@@ -28,6 +28,17 @@ jobs:
       - run: python scripts/check_release.py
       - run: python -m pytest -q -rs
       - run: python -m build
+      - name: Verify the offline catalog is packaged
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheels = list(Path('dist').glob('*.whl'))
+          assert len(wheels) == 1
+          path = 'poe2_companion/data/localization-ko.json'
+          with ZipFile(wheels[0]) as wheel:
+              assert wheel.read(path) == (Path('src') / path).read_bytes()
+          PY
       - name: Check optional Compose configuration
         env:
           POE2_HOST_EQUIPMENT_DIR: /tmp/poe2-equipment

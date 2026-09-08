@@ -23,7 +23,7 @@ def main():
     assert entry['source']['source'] == 'url'
     for name in ('README.md','README.ko.md','README.de.md','README.ru.md','README.pt-BR.md'):
         text = (ROOT / name).read_text()
-        assert project['version'] in text and '25' in text and '17' in text, name
+        assert project['version'] in text and '26' in text and '17' in text, name
         assert 'indeterminate' in text and '20' in text and '75' in text, name
     for path in [*ROOT.glob('*.md'), *ROOT.glob('docs/*.md')]:
         for target in re.findall(r'\]\(([^)\s]+)\)', path.read_text()):

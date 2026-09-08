@@ -15,6 +15,7 @@ from urllib.parse import quote
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic.alias_generators import to_camel
+from .game_terms import english_query, name_fields
 
 API = "https://api.poe2scout.com"
 CATEGORIES = tuple("currency fragments runes essences ultimatum expedition ritual vaultkeys breach abyss uncutgems lineagesupportgems delirium incursion idol verisium vaal".split())
@@ -121,7 +122,7 @@ def name_key(value: str) -> str:
 
 
 def resolve(rows: list[Any], query: str, fields: tuple[str, ...]) -> Any:
-    query = ALIASES.get(query.casefold(), query)
+    query = english_query(ALIASES.get(query.casefold(), query))
     matches = [r for r in rows if any(name_key(str(getattr(r, f) or "")) == name_key(query) for f in fields)]
     if len(matches) != 1:
         raise ScoutError("ambiguous_or_missing", f"Expected one exact match for {query!r}; found {len(matches)}. List or search candidates first.")
@@ -327,6 +328,8 @@ class Scout:
                     "source_time_note": "API currentPrice has no observation timestamp. History times are hourly bucket labels, not currentPrice timestamps.",
                     "source_urls": urls, "items": [v.model_dump() for v in items]}
         result = await self._cached(key, loader, allow_stale=allow_stale)
+        unit = result["data"]["reference_currency"]
+        unit.update(name_fields(unit["name"]))
         result["metadata_snapshot"] = {k: catalog[k] for k in ("retrieved_at", "cache_age_seconds", "delivery", "stale")}
         result["stale"] = result["stale"] or catalog["stale"]
         return result
@@ -335,7 +338,7 @@ class Scout:
         price = item["current_price"]
         logs = [v for v in item["price_logs"] if v is not None]
         return {"item_id": item["item_id"], "api_id": item["api_id"], "base_item_type_id": item["base_item_type_id"],
-                "name": item["text"], "category": item["category_api_id"],
+                "name": item["text"], **name_fields(item["text"]), "category": item["category_api_id"],
                 "unit_price": price if price is not None and price > 0 else None,
                 "price_status": "available" if price is not None and price > 0 else "unavailable",
                 "source_quantity": item["current_quantity"],
@@ -349,9 +352,10 @@ class Scout:
         data = result["data"]
         items = data["items"]
         if query:
-            term = name_key(ALIASES.get(query.casefold(), query))
-            items = [r for r in items if any(term in name_key(str(r[k] or "")) for k in ("text", "api_id", "base_item_type_id"))]
-        exact = name_key(ALIASES.get(query.casefold(), query)) if query else None
+            term = name_key(english_query(ALIASES.get(query.casefold(), query)))
+            items = [r for r in items if any(term in name_key(str(v or "")) for v in
+                (r["text"], r["api_id"], r["base_item_type_id"], name_fields(r["text"])["name_ko"]))]
+        exact = name_key(english_query(ALIASES.get(query.casefold(), query))) if query else None
         items = sorted(items, key=lambda r: (exact is not None and all(name_key(str(r[k] or "")) != exact for k in ("text", "api_id", "base_item_type_id")), -(r["current_price"] or 0), r["text"]))
         return {**result, "data": {**{k:v for k,v in data.items() if k != "items"},
             "items": [self._row(r, data) for r in items[offset:offset+limit]], "matched_total": len(items),
@@ -382,7 +386,7 @@ class Scout:
                 snapshots.append({"category": cat, **{k:result[k] for k in ("retrieved_at", "cache_age_seconds", "delivery", "stale")}})
         if not snapshots and errors:
             raise ScoutError("search_unavailable", "All category requests failed: " + json.dumps(errors))
-        term = name_key(ALIASES.get(query.casefold(), query))
+        term = name_key(english_query(ALIASES.get(query.casefold(), query)))
         matches.sort(key=lambda r: (name_key(r["name"]) != term, -(r["unit_price"] or 0), r["name"]))
         return {"league": catalog["data"]["league"]["value"], "reference_currency": reference_currency,
             "query": query, "items": matches[:limit], "matched_total": total,

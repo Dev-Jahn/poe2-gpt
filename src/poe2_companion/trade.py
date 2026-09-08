@@ -12,6 +12,7 @@ import math
 import re
 import secrets
 import time
+import unicodedata
 from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -19,14 +20,18 @@ from typing import Annotated, Literal
 from urllib.parse import quote
 
 import httpx
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from .builds import DTO, BuildError, bounded_dto
+from .game_terms import name_fields
 from .equipment import (Currency, DatasetID, LeagueName, Number, OptimizeRequest, Price, Stat,
                         Candidate, Dataset, EquipmentService, UpgradeResult, unique)
 
 BASE = "https://www.pathofexile.com"
 TRADE_API = BASE+"/api/trade2"
+KOREAN_TRADE_API = "https://poe.kakaogames.com/api/trade2"
+STAT_SOURCE_EN = TRADE_API+"/data/stats"
+STAT_SOURCE_KO = KOREAN_TRADE_API+"/data/stats"
 MAX_BYTES = 8*1024*1024
 Category = Literal["armour.helmet", "armour.chest", "armour.gloves", "armour.boots", "armour.shield", "armour.focus",
     "armour.buckler", "armour.quiver", "accessory.ring", "accessory.amulet", "accessory.belt", "jewel",
@@ -97,21 +102,32 @@ class TradePageRequest(DTO):
 
 
 class StatSearchRequest(DTO):
-    query: Annotated[str, Field(min_length=1,max_length=80,pattern=r"^[A-Za-z0-9 +#%,'()\-]+$")]
+    query: Annotated[str, Field(min_length=1,max_length=80,pattern=r"^[A-Za-z0-9가-힣ㄱ-ㅎㅏ-ㅣ +#%,'()\-]+$")]
     group: Literal["any", "pseudo", "explicit", "implicit", "rune"] = "pseudo"
     limit: Annotated[int, Field(ge=1,le=10)] = 10
     offset: Annotated[int, Field(ge=0,le=20000)] = 0
+
+    @field_validator("query",mode="before")
+    @classmethod
+    def normalize_query(cls,value):
+        return unicodedata.normalize("NFC",value) if isinstance(value,str) else value
 
 
 class StatEntry(DTO):
     stat_id: StatID
     text: Annotated[str, Field(max_length=240)]
+    text_ko: Annotated[str, Field(max_length=240)] | None = None
 
 
 class StatSearchResult(DTO):
-    entries: list[StatEntry]
+    entries: Annotated[list[StatEntry], Field(max_length=10)]
     matched_total: int
     next_offset: int | None
+    text_source_en: Literal[STAT_SOURCE_EN] = STAT_SOURCE_EN
+    text_source_ko: Literal[STAT_SOURCE_KO] | None = None
+    translation_status: Literal["available", "partial", "unavailable"]
+    translation_error_code: Annotated[str, Field(pattern=r"^trade_[a-z_]{1,60}$")] | None = None
+    translation_retrieved_at_epoch: int | None = None
 
 
 class EquipmentValue(DTO):
@@ -123,6 +139,8 @@ class TradeListing(DTO):
     key: Annotated[str, Field(pattern=r"^i_[0-9a-f]{24}$")]
     listing_ref: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     base_type: Annotated[str, Field(max_length=100)]
+    base_type_ko: Annotated[str, Field(max_length=160)] | None = None
+    base_type_source_ko: Annotated[str, Field(max_length=1024)] | None = None
     rarity: Literal["normal", "magic", "rare", "unique"]
     corrupted: bool
     required_level: Annotated[int, Field(ge=0,le=100)] | None
@@ -242,39 +260,83 @@ def valid_number(value, lo=0, hi=1e9):
     return type(value) in (int,float) and math.isfinite(value) and lo<=value<=hi
 
 
+def stat_rows(groups):
+    """Keep unambiguous numeric filters; locale joins never use display text."""
+    result, excluded = {}, set()
+    for group in groups:
+        if not isinstance(group,dict) or not isinstance(group.get("entries"),list):
+            raise TradeError("trade_schema_changed")
+        for row in group["entries"]:
+            if not isinstance(row,dict):
+                continue
+            ident, text = row.get("id"), row.get("text")
+            if not isinstance(ident,str) or not re.fullmatch(STAT_ID,ident):
+                continue
+            # An option-bearing or conflicting duplicate excludes the entire ID.
+            # This surface supports numeric ranges, never option selections.
+            if (row.get("option") is not None or not isinstance(text,str) or not 1<=len(text)<=240
+                or any(ord(c)<32 and c not in "\n\t" for c in text)
+                or ident in result and result[ident]!=text):
+                excluded.add(ident)
+                result.pop(ident,None)
+            elif ident not in excluded:
+                result[ident]=text
+    return result
+
+
 class TradeClient:
     def __init__(self, user_agent: str, transport=None, interval=1.0, clock=time.time):
+        async def anonymous(request):
+            # Do not turn response cookies into an implicit login/challenge flow.
+            request.headers.pop("cookie",None)
+            request.headers.pop("authorization",None)
         self.client = httpx.AsyncClient(headers={"User-Agent":user_agent,"Accept":"application/json"},
-            timeout=httpx.Timeout(20), follow_redirects=False, transport=transport)
+            timeout=httpx.Timeout(20), follow_redirects=False, transport=transport,
+            event_hooks={"request":[anonymous]})
         self.clock, self.gate, self.lock = clock, Gate(interval), asyncio.Lock()
+        self.ko_gate, self.ko_lock = Gate(interval), asyncio.Lock()
+        self.ko_metadata_lock = asyncio.Lock()
         self.search_lock = asyncio.Lock()
         self.metadata, self.searches, self.query_cache = {}, OrderedDict(), OrderedDict()
         self.blocked = None
+        self.ko_blocked = None
+        self.ko_metadata = None
+        self.ko_failure = None
 
     async def close(self):
         await self.client.aclose()
 
     async def request(self, method: str, path: str, body=None):
+        return await self._request(method,path,body)
+
+    async def _request(self, method: str, path: str, body=None, *, korean=False):
         # All paths are constructed by this module; there is no URL-taking MCP tool.
-        async with self.lock:
-            if self.blocked:
-                raise TradeError(self.blocked)
+        # The Korean host is used only for its fixed public stat-name catalog.
+        if korean and (method!="GET" or path!="/data/stats" or body is not None):
+            raise TradeError("trade_invalid_query")
+        gate, lock = (self.ko_gate,self.ko_lock) if korean else (self.gate,self.lock)
+        blocked_field = "ko_blocked" if korean else "blocked"
+        endpoint = KOREAN_TRADE_API if korean else TRADE_API
+        async with lock:
+            if blocked:=getattr(self,blocked_field):
+                raise TradeError(blocked)
             for attempt in range(2):
-                delay = self.gate.delay()
+                delay = gate.delay()
                 if delay > 5:
                     raise TradeError("trade_rate_limited",math.ceil(delay))
                 if delay:
                     await asyncio.sleep(delay)
-                self.gate.consume()
+                gate.consume()
                 try:
-                    async with self.client.stream(method,TRADE_API+path,json=body) as response:
-                        self.gate.observe(response.headers)
+                    async with self.client.stream(method,endpoint+path,json=body) as response:
+                        gate.observe(response.headers)
                         if response.status_code in (401,403):
-                            self.blocked = "trade_authentication_required" if response.status_code==401 else "trade_interactive_verification_required"
-                            raise TradeError(self.blocked)
+                            blocked = "trade_authentication_required" if response.status_code==401 else "trade_interactive_verification_required"
+                            setattr(self,blocked_field,blocked)
+                            raise TradeError(blocked)
                         if response.status_code==429:
-                            self.gate.until = max(self.gate.until,self.gate.clock()+1)
-                            raise TradeError("trade_rate_limited",max(1,math.ceil(self.gate.delay())))
+                            gate.until = max(gate.until,gate.clock()+1)
+                            raise TradeError("trade_rate_limited",max(1,math.ceil(gate.delay())))
                         if response.status_code==400:
                             raise TradeError("trade_invalid_query")
                         if response.status_code in (500,502,503,504) and attempt==0:
@@ -282,8 +344,8 @@ class TradeClient:
                         if response.status_code!=200:
                             raise TradeError("trade_unavailable")
                         if "application/json" not in response.headers.get("content-type","").lower():
-                            self.blocked = "trade_interactive_verification_required"
-                            raise TradeError(self.blocked)
+                            setattr(self,blocked_field,"trade_interactive_verification_required")
+                            raise TradeError("trade_interactive_verification_required")
                         chunks, size = [],0
                         async for chunk in response.aiter_bytes():
                             size += len(chunk)
@@ -297,11 +359,12 @@ class TradeClient:
                         if isinstance(data,dict) and isinstance(data.get("error"),dict):
                             code=data["error"].get("code")
                             if code in (6,8):
-                                self.blocked="trade_authentication_required" if code==8 else "trade_interactive_verification_required"
-                                raise TradeError(self.blocked)
+                                blocked="trade_authentication_required" if code==8 else "trade_interactive_verification_required"
+                                setattr(self,blocked_field,blocked)
+                                raise TradeError(blocked)
                             if code==3:
-                                self.gate.until=max(self.gate.until,self.gate.clock()+60)
-                                raise TradeError("trade_rate_limited",math.ceil(self.gate.delay()))
+                                gate.until=max(gate.until,gate.clock()+60)
+                                raise TradeError("trade_rate_limited",math.ceil(gate.delay()))
                             raise TradeError("trade_invalid_query" if code==2 else "trade_unavailable")
                         if not isinstance(data,dict) or "error" in data:
                             raise TradeError("trade_schema_changed")
@@ -325,16 +388,60 @@ class TradeClient:
         return rows
 
     async def stats(self):
-        groups = await self.data("stats")
-        rows = [e for g in groups if isinstance(g,dict) for e in g.get("entries",[]) if isinstance(e,dict)]
-        return {r["id"]:r["text"] for r in rows if not r.get("option") and isinstance(r.get("id"),str) and re.fullmatch(STAT_ID,r["id"]) and isinstance(r.get("text"),str) and len(r["text"])<=240}
+        return stat_rows(await self.data("stats"))
+
+    async def korean_stats(self):
+        # Separate cache, gate and block state: Korean metadata failures cannot
+        # disable English discovery, filtering, search, or item fetches.
+        async with self.ko_metadata_lock:
+            if self.ko_metadata and self.clock()-self.ko_metadata[0]<21600:
+                return self.ko_metadata
+            if self.ko_failure and self.clock()<self.ko_failure[0]:
+                raise TradeError(self.ko_failure[1])
+            try:
+                raw=await self._request("GET","/data/stats",korean=True)
+                if not isinstance(raw.get("result"),list):
+                    raise TradeError("trade_schema_changed")
+                # Some untranslated provider entries fall back to English.
+                # Do not describe those labels as a Korean translation.
+                rows={i:t for i,t in stat_rows(raw["result"]).items() if re.search(r"[가-힣ㄱ-ㅎㅏ-ㅣ]",t)}
+            except TradeError as exc:
+                # Avoid repeated failing metadata requests during one session.
+                # 401/403 additionally set a permanent per-host stop above.
+                self.ko_failure=(self.clock()+60,exc.code)
+                raise
+            self.ko_metadata=(self.clock(),rows)
+            self.ko_failure=None
+            return self.ko_metadata
 
     async def search_stats(self, request: StatSearchRequest):
         rows = await self.stats()
+        translated, retrieved, translation_error = {}, None, None
+        try:
+            fetched, korean=await self.korean_stats()
+            translated={i:t for i,t in korean.items() if i in rows}
+            retrieved=int(fetched)
+        except TradeError as exc:
+            translation_error=exc.code
+        status="available" if rows and len(translated)==len(rows) else "partial" if translated else "unavailable"
         tokens = request.query.casefold().split()
-        matches = sorted((i,t) for i,t in rows.items() if all(s in t.casefold() for s in tokens) and (request.group=="any" or i.startswith(request.group+".")))
-        return bounded_dto(StatSearchResult(entries=[StatEntry(stat_id=i,text=t) for i,t in matches[request.offset:request.offset+request.limit]],
-            matched_total=len(matches), next_offset=request.offset+request.limit if request.offset+request.limit<len(matches) else None))
+        matches = sorted((i,t) for i,t in rows.items() if all(s in (t+" "+translated.get(i,"")).casefold() for s in tokens)
+                         and (request.group=="any" or i.startswith(request.group+".")))
+        entries=[StatEntry(stat_id=i,text=t,text_ko=translated.get(i)) for i,t in matches[request.offset:request.offset+request.limit]]
+        # Korean text has a larger UTF-8 representation. Shorten only the page,
+        # advancing by the number actually returned so no result is skipped.
+        while True:
+            result=StatSearchResult(entries=entries,matched_total=len(matches),
+                next_offset=request.offset+len(entries) if request.offset+len(entries)<len(matches) else None,
+                text_source_ko=STAT_SOURCE_KO if retrieved is not None else None,
+                translation_status=status,translation_error_code=translation_error,
+                translation_retrieved_at_epoch=retrieved)
+            try:
+                return bounded_dto(result)
+            except BuildError:
+                if len(entries)<=1:
+                    raise
+                entries.pop()
 
     async def query(self, request: TradeSearchRequest):
         leagues = await self.data("leagues")
@@ -524,7 +631,12 @@ def parse_listing(row: dict, observed: int) -> TradeListing | None:
         ref=row["id"]
         if not isinstance(ref,str) or not re.fullmatch(r"[0-9a-f]{64}",ref):
             return None
-        rarity={0:"normal",1:"magic",2:"rare",3:"unique"}.get(item.get("frameType"))
+        if "frameType" in item:
+            frame=item["frameType"]
+            rarity={0:"normal",1:"magic",2:"rare",3:"unique"}.get(frame) if type(frame) is int else None
+        else:
+            # Current official item schema uses rarity; retain legacy support.
+            rarity={"Normal":"normal","Magic":"magic","Rare":"rare","Unique":"unique"}.get(item.get("rarity"))
         if rarity is None:
             return None
         base=item.get("baseType",item.get("typeLine",""))
@@ -602,7 +714,7 @@ def parse_listing(row: dict, observed: int) -> TradeListing | None:
         # Non-identified items and alternate effect-bearing components require a
         # broader semantic evaluator even if the few visible lines look simple.
         complete=item.get("identified") is True and not unknown and rarity!="unique" and not any(item.get(k) for k in ("grantedSkills","socketedItems","veiledMods","sanctified","mirrored"))
-        return TradeListing(key="i_"+hashlib.sha256(ref.encode()).hexdigest()[:24],listing_ref=ref,base_type=base,rarity=rarity,corrupted=item.get("corrupted",False),required_level=level,
+        return TradeListing(key="i_"+hashlib.sha256(ref.encode()).hexdigest()[:24],listing_ref=ref,base_type=base,**name_fields(base, "base_type"),rarity=rarity,corrupted=item.get("corrupted",False),required_level=level,
             price=price,price_status="available" if price else "missing_or_unsupported_currency",observed_at_epoch=observed,listing_indexed_at=indexed,
             item_stats=[Stat(metric=k,value=v) for k,v in values.items()] if complete else [],equipment_values=props,unknown_modifier_count=unknown,unscored_modifier_count=unscored,
             optimization_eligible=complete and price is not None and level is not None)

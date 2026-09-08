@@ -6,7 +6,7 @@ import unicodedata
 from typing import Annotated, Literal
 
 import httpx
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .builds import DTO, BuildSummary, PlayerStat, bounded_dto
 
@@ -65,6 +65,16 @@ class CharacterIdentity(DTO):
     league: Annotated[str, Field(max_length=48)]
     level: Annotated[int, Field(ge=1, le=100)] | None = None
     class_name: Annotated[str, Field(max_length=48)] | None = None
+    class_name_ko: Annotated[str, Field(max_length=160)] | None = None
+    class_name_source_ko: Annotated[str, Field(max_length=1024)] | None = None
+
+    @model_validator(mode="after")
+    def localize_class(self):
+        from .game_terms import name_fields
+        labels = name_fields(self.class_name, "class_name") if self.class_name else {}
+        self.class_name_ko = labels.get("class_name_ko")
+        self.class_name_source_ko = labels.get("class_name_source_ko")
+        return self
 
     @field_validator("name", "league", "class_name")
     @classmethod
@@ -84,7 +94,7 @@ class CharacterPage(DTO):
 class CharacterOverview(DTO):
     account_slug: Annotated[str, Field(max_length=64)]
     character: CharacterIdentity
-    stats: Annotated[list[PlayerStat], Field(max_length=22)] = []
+    stats: Annotated[list[PlayerStat], Field(max_length=26)] = []
     pob_available: bool
     retrieved_at_epoch: int
     source_updated_at: Annotated[str, Field(max_length=40)] | None = None

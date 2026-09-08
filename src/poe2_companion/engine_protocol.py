@@ -1,13 +1,14 @@
 """Internal socket protocol. Never registered as MCP arguments."""
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import Field, model_validator
 from .builds import DTO
-from .engine_models import EngineError, EngineSlot, BuildID, EngineSnapshot
+from .engine_models import (EngineError, EngineSlot, BuildID, EngineSnapshot,
+    ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY)
 
 # Only official item data consumed by PoB's importer. No sellers, whisper,
 # encoded item payload, note, image, URL or arbitrary extra fields are retained.
-ITEM_FIELDS = {'id','name','typeLine','baseType','frameType','ilvl','identified','properties','requirements',
+ITEM_FIELDS = {'id','name','typeLine','baseType','frameType','rarity','ilvl','identified','properties','requirements',
     'implicitMods','explicitMods','enchantMods','runeMods','craftedMods','fracturedMods','desecratedMods','mutatedMods',
     'grantedSkills','socketedItems','sockets','corrupted','doubleCorrupted','mirrored','duplicated','sanctified','fractured','desecrated','mutated'}
 
@@ -31,6 +32,13 @@ def private_trade_item(item: dict) -> dict:
             return v
         raise EngineError('engine_invalid_request')
     result=walk({k:v for k,v in item.items() if k in ITEM_FIELDS})
+    if 'frameType' not in result:
+        # Current GGG APIs expose rarity; frameType is deprecated. The pinned
+        # upstream importer still needs its legacy numeric rarity value.
+        rarity={'Normal':0,'Magic':1,'Rare':2,'Unique':3}.get(result.get('rarity'))
+        if rarity is not None:
+            result['frameType']=rarity
+    result.pop('rarity',None)
     if not isinstance(result.get('name'),str) or not isinstance(result.get('typeLine'),str) or result.get('frameType') not in (0,1,2,3) or type(result.get('ilvl')) is not int:
         raise EngineError('engine_invalid_request')
     if result.get('identified') is not True or item.get('veiledMods'):
@@ -55,9 +63,25 @@ def private_trade_item(item: dict) -> dict:
                 lines.append(text)
         result[key]=lines
     if result.get('socketedItems'):
-        # Socketed rune / jewel conversion needs its full PoB character API shape.
-        # Refuse ambiguity instead of silently evaluating an incomplete item.
-        raise EngineError('engine_invalid_request')
+        # Rune/Soul Core effects are resolved by exact base name against the
+        # pinned worker data. Socketed jewels remain unsupported replacements.
+        runes=[]
+        seen=set()
+        sockets=result.get('sockets')
+        if not isinstance(sockets,list) or not 1<=len(sockets)<=10:
+            raise EngineError('engine_invalid_request')
+        for child in result['socketedItems']:
+            if not isinstance(child,dict):
+                raise EngineError('engine_invalid_request')
+            base,slot=child.get('baseType'),child.get('socket')
+            if (not isinstance(base,str) or not 1<=len(base)<=160 or '\n' in base or '\r' in base
+                or base in {'Diamond','Emerald','Ruby','Sapphire'} or type(slot) is not int
+                or not 0<=slot<len(sockets) or slot in seen or child.get('socketedItems')
+                or not isinstance(sockets[slot],dict) or sockets[slot].get('type')!='rune'):
+                raise EngineError('engine_invalid_request')
+            seen.add(slot)
+            runes.append({'baseType':base,'socket':slot})
+        result['socketedItems']=sorted(runes,key=lambda x:x['socket'])
     return result
 
 
@@ -92,5 +116,10 @@ class WorkerRequest(DTO):
 
 
 class WorkerResult(DTO):
+    # Added by the checked worker after reading its private Lua projection.
+    # These internal pins must match exactly; they are not public MCP schemas.
+    engine_commit: Literal[ENGINE_COMMIT] = ENGINE_COMMIT
+    engine_data_commit: Literal[ENGINE_DATA_COMMIT] = ENGINE_DATA_COMMIT
+    engine_compatibility: Literal[ENGINE_COMPATIBILITY] = ENGINE_COMPATIBILITY
     baseline: EngineSnapshot
     results: Annotated[list[EngineSnapshot],Field(max_length=64)]

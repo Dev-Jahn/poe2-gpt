@@ -4,7 +4,7 @@
 
 Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**: Währungspreise, Ausrüstungssuche auf der offiziellen Handelsseite, private Path-of-Building-Berechnungen und Ausrüstungsverbesserungen innerhalb eines Budgets.
 
-**Status: 0.7.0, experimentell.** Bis zu 25 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
+**Status: 0.8.0, experimentell.** Bis zu 26 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
 
 ## Funktionen
 
@@ -16,7 +16,9 @@ Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**
 | PoB-Berechnung | Festgelegte PoE2-PoB-Version in einem privaten Worker; Ausrüstungsvergleich und Anforderungsprüfung |
 | Verbesserungen | Explizite Charakterwerte maximieren oder Kosten unter Budget- und Mindestwertvorgaben minimieren |
 
-Standardliga: **Forbidden Rites**. Standardpreise: **Exalted Orbs pro Gegenstand**. Andere Saisons zuerst mit `list_leagues` prüfen. Englische Gegenstandsnamen und koreanische Aliasse für häufige Orbs werden unterstützt. Der Server benötigt keinen OpenAI-API-Schlüssel.
+Standardliga: **Forbidden Rites**. Standardpreise: **Exalted Orbs pro Gegenstand**. Andere Saisons zuerst mit `list_leagues` prüfen. Ein integrierter PoE2DB-Katalog unterstützt englische und verifizierte koreanische Namen für Währungen, Gegenstandsbasis, Klassen und ausgewählte Fertigkeiten. `search_game_terms` liefert Namen und Quellen; fehlende Übersetzungen werden nicht geraten. Der Server benötigt keinen OpenAI-API-Schlüssel.
+
+Die Engine kombiniert eine feste PoB2-Entwicklungsversion mit hashgeprüften Daten für 0.5.5. Spieler-DPS, DPS des ausgewählten Begleiters und ausdrücklich konfigurierter FullDPS werden getrennt ausgewiesen. Unbekannte passive Knoten und nicht berechnete Effekte verhindern bestätigte Upgrade-Empfehlungen. [Engine-Kompatibilität](docs/pob-engine.md).
 
 **PoB-Codes und XML-Rohdaten bleiben außerhalb von MCP und Modellkontext.** Der private Importdienst verarbeitet Ninja-Daten oder ChatGPT-Dateireferenzen. Kein Dateiimport auf dem Serverhost erforderlich. Nur der Worker liest private Dateien; ChatGPT erhält IDs, geprüfte Zahlen und Statuswerte. Niemals einen PoB-Code in den Chat einfügen. [Datengrenze](docs/pob-boundary.md).
 

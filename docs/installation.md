@@ -16,6 +16,20 @@ In ChatGPT, enable Developer mode under Settings → Security and login. In Plug
 
 Run the [acceptance prompts](evaluation.md) after connection. First test prices and trade metadata, then enable imported-build tools. Never test with raw PoB content pasted into ChatGPT.
 
+## Updating an existing ChatGPT connection
+
+Keep the existing connection and its member-specific URL. Redeploying the server and refreshing ChatGPT's stored tool metadata are separate steps.
+
+| Change | Required action |
+|---|---|
+| Prices, bundled game data, or calculation fixes with unchanged tool metadata | Redeploy the server; existing tools use the updated implementation |
+| Tool additions/removals, descriptions, input/output schemas, annotations, auth, or UI resources | Redeploy, open **Plugins → POE2 → Refresh**, review the discovered tools, then start a new conversation |
+| Reviewed public-directory plugin metadata | Scan the server and submit/publish the updated metadata version |
+
+Do not delete and recreate a developer-mode connection as the normal update procedure. Opening a new conversation before refreshing may still expose the previous tool inventory. The server cannot make a tool callable if it is absent from the host's discovered metadata. This follows the [official metadata refresh workflow](https://developers.openai.com/plugins/deploy/connect-chatgpt).
+
+For a deployment with character ingestion enabled, verify that `get_character`, `list_account_characters`, `refresh_character`, and `import_pob_attachment` appear and are enabled in ChatGPT. Release 0.8 also adds `search_game_terms`. If the server's `tools/list` includes them but ChatGPT does not, refresh that connection. If the live server omits them, check its deployment configuration first. Check each separately created guest connection after a metadata update.
+
 ## Local plugin hosts
 
 Install the Python package in the host environment. The bundled `.mcp.json` invokes `poe2-gpt` from PATH over STDIO. If needed, run the following with your virtual-environment Python to bind this checkout to that interpreter:

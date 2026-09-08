@@ -11,6 +11,7 @@ GitHub Actions are pinned to commit SHAs. Dependabot proposes action, Python, an
 3. Create and push a version tag matching the package, for example `v0.4.0`.
 4. The release workflow reruns CI, publishes a wheel, source distribution, complete plugin ZIP and SHA-256 checksums as GitHub release assets, and builds Linux amd64/arm64 images natively on separate runners. A final job publishes the versioned multi-architecture GHCR manifests only after both architectures succeed.
 5. Inspect the workflow and release assets. Confirm each GHCR package is public before advertising anonymous pulls; package visibility can require a one-time repository-owner setting.
+6. After deployment, inspect the live `tools/list` for each enabled member configuration. If tool metadata changed, tell users to **Refresh the existing ChatGPT connection and start a new conversation**. Verify character tools and `search_game_terms` are visible; do not make connection deletion/recreation part of routine updates. See [connection updates](installation.md#updating-an-existing-chatgpt-connection).
 
 Images are named `ghcr.io/dev-jahn/poe2-gpt:<tag>` and `ghcr.io/dev-jahn/poe2-gpt-engine:<tag>`. Architecture-specific build tags end in `-amd64` or `-arm64`. No moving `latest` tag is published. Use a verified version or image digest. Compose builds from source by default, so a first installation does not depend on GHCR publication. Homelab automatic deployment is not included. Check all release jobs, including manifest publication, before announcing container availability.
 

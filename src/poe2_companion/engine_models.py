@@ -7,7 +7,13 @@ from pydantic import Field, model_validator
 from .builds import DTO, StatName, PlayerStat
 from .equipment import Price, LeagueName, unique
 
-ENGINE_COMMIT = "3887ae68a6a6b8bb7b41d1b61998f1aa184201e4"
+ENGINE_COMMIT = "fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15"
+ENGINE_DATA_COMMIT = "b3282b7a9111ed6c4ec6be643edf0806d7beb675"
+ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v1"
+# Public output metadata has a stable schema across engine/data updates.
+# Exact pin equality remains enforced by worker health and EngineClient.status.
+EngineCommit = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$", min_length=40, max_length=40)]
+EngineCompatibility = Annotated[str, Field(pattern=r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$", min_length=1, max_length=64)]
 BuildID = Annotated[str, Field(pattern=r"^bld_[0-9a-f]{32}$", max_length=36)]
 SearchID = Annotated[str, Field(pattern=r"^ts_[0-9a-f]{32}$", max_length=35)]
 EngineSlot = Literal["helmet", "body_armour", "gloves", "boots", "belt", "amulet", "ring_left", "ring_right", "weapon_main", "weapon_off"]
@@ -15,7 +21,7 @@ Number = Annotated[float, Field(ge=-1e15, le=1e15, allow_inf_nan=False)]
 IssueCode = Literal["level_requirement", "attribute_requirement", "class_requirement", "slot_incompatible", "item_not_equipped",
     "gem_level_requirement", "unparsed_modifier", "unknown_item_base", "unknown_gem", "engine_item_warning", "reservation_invalid",
     "equip_sequence_unverified", "custom_modifiers_present", "ignored_limits", "unsupported_tree_version", "unsupported_slot", "configuration_override",
-    "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item"]
+    "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unknown_rune", "unsupported_skill_stat"]
 
 
 class EngineRequest(DTO):
@@ -46,6 +52,7 @@ class RequirementIssue(DTO):
     stat: Literal["Level", "Str", "Dex", "Int"] | None = None
     required: Number | None = None
     available: Number | None = None
+    passive_node_id: Annotated[int, Field(ge=0, le=2147483647)] | None = None
 
 
 class EquippedItem(DTO):
@@ -55,35 +62,52 @@ class EquippedItem(DTO):
     level_required: Annotated[int, Field(ge=0, le=100)]
 
 
+class SelectedSkill(DTO):
+    # Names come exclusively from the pinned engine data, never saved labels.
+    skill_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$", max_length=120)]
+    name: Annotated[str, Field(min_length=1, max_length=120)]
+    gem_name: Annotated[str, Field(min_length=1, max_length=120)] | None = None
+    name_ko: Annotated[str, Field(max_length=160)] | None = None
+    name_source_ko: Annotated[str, Field(max_length=1024)] | None = None
+    actor: Literal["player", "minion"]
+
+
 class EngineSnapshot(DTO):
-    stats: Annotated[list[PlayerStat], Field(max_length=24)]
+    stats: Annotated[list[PlayerStat], Field(max_length=26)]
     equipped: Annotated[list[EquippedItem], Field(max_length=10)]
-    issues: Annotated[list[RequirementIssue], Field(max_length=32)]
+    issues: Annotated[list[RequirementIssue], Field(max_length=16)]
     issue_count: Annotated[int, Field(ge=0, le=1000000)]
+    issues_truncated: bool = False
     validation: Literal["pass", "fail", "indeterminate"]
     equip_order: Annotated[list[EngineSlot], Field(max_length=3)] = Field(default_factory=list)
     active_weapon_set: Literal[1, 2]
     main_skill_group: Annotated[int, Field(ge=0, le=10000)]
+    selected_skill: SelectedSkill | None = None
+    full_dps_enabled: bool = False
 
 
 class EngineCalculation(DTO):
     build_id: BuildID
-    engine_commit: Literal[ENGINE_COMMIT] = ENGINE_COMMIT
+    engine_commit: EngineCommit = Field(default_factory=lambda: ENGINE_COMMIT, validate_default=True)
+    engine_data_commit: EngineCommit = Field(default_factory=lambda: ENGINE_DATA_COMMIT, validate_default=True)
+    engine_compatibility: EngineCompatibility = Field(default_factory=lambda: ENGINE_COMPATIBILITY, validate_default=True)
     calculated_at_epoch: int
     baseline: EngineSnapshot
     result: EngineSnapshot | None = None
-    deltas: Annotated[list[PlayerStat], Field(max_length=24)] = Field(default_factory=list)
+    deltas: Annotated[list[PlayerStat], Field(max_length=26)] = Field(default_factory=list)
     character_recalculated: Literal[True] = True
     scope: Literal["saved_configuration_active_weapon_set"] = "saved_configuration_active_weapon_set"
     live_character: Literal[False] = False
-    baseline_source: Literal["operator_imported_pob"] = "operator_imported_pob"
+    baseline_source: Literal["privately_imported_pob"] = "privately_imported_pob"
     character_league_verified: Literal[False] = False
 
 
 class EngineStatus(DTO):
     enabled: bool
     reachable: bool
-    engine_commit: Literal[ENGINE_COMMIT] = ENGINE_COMMIT
+    engine_commit: EngineCommit = Field(default_factory=lambda: ENGINE_COMMIT, validate_default=True)
+    engine_data_commit: EngineCommit = Field(default_factory=lambda: ENGINE_DATA_COMMIT, validate_default=True)
+    engine_compatibility: EngineCompatibility = Field(default_factory=lambda: ENGINE_COMPATIBILITY, validate_default=True)
     transport: Literal["private_unix_socket"] = "private_unix_socket"
     raw_payload_tools: Literal[False] = False
 

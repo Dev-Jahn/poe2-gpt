@@ -9,9 +9,10 @@ Tools declare typed input schemas and operation-specific annotations. Inspect th
 | `get_currency_prices` | Category prices, substring filter, pagination | Default |
 | `search_currency_prices` | Names, IDs, and common orb aliases | Default |
 | `quote_currency_items` | Value up to 30 exact item IDs and quantities | Default |
+| `search_game_terms` | Verified English/Korean names, PoE2DB keys and source links | Default, offline |
 | `get_trade_integration_status` | Adapter availability and support scope | Default |
 | `prepare_equipment_search` | Conditions for a manual trade-site search | Default |
-| `search_trade_stats` | Find valid numeric trade stat IDs | Trade enabled |
+| `search_trade_stats` | Find canonical numeric trade stat IDs using English or Korean | Trade enabled |
 | `search_trade_equipment` | Filter equipment and retain a bounded search | Trade enabled |
 | `get_trade_search_results` | Page through retained listings | Trade enabled |
 | `get_equipment_dataset` | Imported equipment dataset summary | Equipment directory |
@@ -30,7 +31,7 @@ Tools declare typed input schemas and operation-specific annotations. Inspect th
 | `import_pob_attachment` | ChatGPT `.txt` file reference → private import | Character socket + host fileParams support |
 | `refresh_character` | Explicit Ninja refresh with cooldown | Character socket + per-user Ninja session |
 
-The standard configuration exposes 10 tools; all optional services together expose 25. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
+The standard configuration exposes 11 tools; all optional services together expose 26. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
 
 
 
@@ -45,6 +46,12 @@ The SQLite snapshot cache lasts five minutes. Transient failures use bounded ret
 Supported category families include `currency`, `fragments`, `runes`, `essences`, `ultimatum`, `expedition`, `ritual`, `vaultkeys`, `breach`, `abyss`, `uncutgems`, `lineagesupportgems`, `delirium`, `incursion`, `idol`, `verisium`, and `vaal`. Discover availability per league instead of assuming every category is priced.
 
 ## Identifier flow
+
+Currency rows and reference units retain their English `name` and IDs and add `name_ko` plus a Korean source URL when verified. Korean exact names and substrings can be searched directly. Trade listings add `base_type_ko`; character summaries and selected engine skills add verified Korean labels where available. Use `search_game_terms` for other item, skill or mechanic names. Missing or ambiguous mappings remain untranslated. A localized name is not evidence that its effect is calculated. See [localization](localization.md).
+
+Trade-stat search joins official English and Korean metadata by exact `stat_id`, returning canonical `text` and verified `text_ko` alongside sources, translation status and retrieval time. Korean metadata failures leave English requests usable; if translations are unavailable, a Korean query with no matches does not establish that the stat does not exist. Metadata is cached for six hours. Follow `next_offset`, since long Korean text may reduce the number of entries that fit in one response.
+
+Engine outputs distinguish the selected skill and actor, explicit minion metrics, and whether FullDPS was configured. Do not use player DPS to assess a minion skill or treat absent FullDPS as zero. Inspect engine source/data pins, validation status and issue counts before making equipment recommendations. Truncated diagnostic details preserve the full issue count.
 
 Search for currency before quoting exact item IDs. Discover trade stat IDs before submitting filters. Reuse short server-side trade search IDs instead of the upstream query token. For private calculations, supply only the opaque ID returned by `get_character` or `import_pob_attachment`.
 

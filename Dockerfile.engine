@@ -22,7 +22,7 @@ FROM runtime AS test
 USER root
 RUN pip install --no-cache-dir '.[test]'
 COPY tests ./tests
-COPY scripts/run_engine_tests.py scripts/mac.py ./scripts/
+COPY scripts/run_engine_tests.py scripts/mac.py scripts/update_localization.py ./scripts/
 ENV POE2_TEST_ENGINE_DIR=/opt/pob POE2_TEST_LUAJIT=/opt/lua/bin/luajit
 USER companion
 CMD ["python", "-m", "pytest", "-q"]

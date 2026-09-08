@@ -43,7 +43,7 @@ async def test_real_streamable_http_protocol(tmp_path, authenticated):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tool_list = await session.list_tools()
-                    assert len(tool_list.tools) == 14
+                    assert len(tool_list.tools) == 15
                     assert all(t.annotations.readOnlyHint for t in tool_list.tools)
                     found = await session.call_tool("search_currency_prices", {"query":"디바인", "category":"currency"})
                     assert not found.isError
