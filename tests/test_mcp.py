@@ -9,6 +9,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from poe2_companion.scout import Scout
 from poe2_companion.server import build_server
+from poe2_companion import __version__
 from test_scout import Backend
 from test_trade import TradeBackend
 from test_equipment import NOW, imported, optimizer
@@ -41,7 +42,10 @@ async def test_real_streamable_http_protocol(tmp_path, authenticated):
         async with httpx.AsyncClient(trust_env=False, headers=headers) as client:
             async with streamable_http_client(f"http://127.0.0.1:{port}/mcp", http_client=client) as (read, write, _):
                 async with ClientSession(read, write) as session:
-                    await session.initialize()
+                    initialized = await session.initialize()
+                    assert initialized.serverInfo.name == "POE2 GPT"
+                    assert initialized.serverInfo.version == __version__
+                    assert initialized.serverInfo.websiteUrl == "https://github.com/Dev-Jahn/poe2-gpt"
                     tool_list = await session.list_tools()
                     assert len(tool_list.tools) == 15
                     assert all(t.annotations.readOnlyHint for t in tool_list.tools)

@@ -4,7 +4,7 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.8.0, experimental.** The code includes up to 26 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.9.0, experimental.** The code includes up to 26 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
 ## Features
 
@@ -19,6 +19,8 @@ A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency pr
 The default league is **Forbidden Rites**; check `list_leagues` before using another season. Prices default to **Exalted Orbs per item**. English and verified Korean item names are supported through a bundled PoE2DB name catalog. Currency, base types, classes and selected skills include Korean labels when verified; `search_game_terms` provides both names and their sources. The server does not need an OpenAI API key.
 
 The engine combines a pinned PoB2 development revision with a checksummed 0.5.5 data overlay. It reports the selected skill and distinguishes player DPS, selected-minion DPS and explicitly configured FullDPS. Unknown passive nodes, unparsed effects and unsupported configurations remain visible and block verified upgrade recommendations. See [engine compatibility](docs/pob-engine.md) and [localization coverage](docs/localization.md).
+
+Version 0.9 adds scoped charge, Offering, companion and weapon-context calculations. See the [current-league coverage matrix](docs/league-coverage.md) for supported mechanics and remaining limits.
 
 **MCP never returns raw PoB codes or XML.** A private ingestion service downloads Ninja exports or attached-file references; the calculation worker reads private files. Tool results contain only IDs, validated numbers, and statuses. Never paste a PoB code into chat. ChatGPT's own attachment processing is outside the plugin's control. See the [data boundary](docs/pob-boundary.md).
 

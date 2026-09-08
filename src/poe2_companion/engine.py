@@ -30,7 +30,13 @@ def bounded_engine_dto(value):
     while len(value.model_dump_json().encode('utf-8'))>MAX_TOOL_JSON_BYTES:
         candidates=[s for s in snapshots if s.issues]
         if not candidates:
-            return bounded_dto(value)
+            candidates=[s for s in snapshots if s.mechanics]
+            if not candidates:
+                return bounded_dto(value)
+            snapshot=max(candidates,key=lambda s:len(s.mechanics))
+            snapshot.mechanics.pop()
+            snapshot.mechanics_truncated=True
+            continue
         snapshot=max(candidates,key=lambda s:len(s.issues))
         snapshot.issues.pop()
         snapshot.issues_truncated=True

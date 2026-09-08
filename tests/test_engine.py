@@ -52,6 +52,29 @@ def test_public_engine_metadata_schema_is_stable_across_pin_updates(monkeypatch)
             assert 'const' not in schema and 'default' not in schema
 
 
+def test_mechanics_are_closed_and_truncation_preserves_uncertainty():
+    from poe2_companion.engine import bounded_engine_dto
+    from poe2_companion.engine_models import EngineSnapshot, EngineCalculation, MechanicResult
+    row = MechanicResult(mechanic='charge_consumption',status='partial',
+        metrics=[{'name':name,'value':1.23456789012345} for name in (
+            'charge_retention_chance','expected_removed_fraction',
+            'power_charges_configured','frenzy_charges_configured','endurance_charges_configured',
+            'power_charges_counted_for_consumption','frenzy_charges_counted_for_consumption','endurance_charges_counted_for_consumption')],
+        required_inputs=['charge_gain_events','charge_consumption_events'])
+    snapshot=EngineSnapshot(stats=[],equipped=[],issues=[{'code':'charge_sustain_unverified'}],
+        issue_count=1,validation='indeterminate',active_weapon_set=1,main_skill_group=1,
+        mechanics=[row.model_copy(deep=True) for _ in range(16)],mechanic_count=16)
+    value=EngineCalculation(build_id=BID,calculated_at_epoch=1,baseline=snapshot,result=snapshot)
+    result=bounded_engine_dto(value)
+    assert len(result.model_dump_json().encode())<=8192
+    for s in (result.baseline,result.result):
+        assert s.validation=='indeterminate' and s.issue_count==1 and s.mechanic_count==16
+        assert s.mechanics_truncated
+    assert len(value.baseline.mechanics)==16
+    with pytest.raises(ValidationError):
+        MechanicResult(mechanic='charge_gain',status='calculated',metrics=[{'name':MARKER,'value':1}])
+
+
 @pytest.mark.parametrize('field,value',[
     ('engine_commit','a'*39), ('engine_commit','A'*40),
     ('engine_data_commit','g'*40), ('engine_data_commit','a'*40+'\n'),
