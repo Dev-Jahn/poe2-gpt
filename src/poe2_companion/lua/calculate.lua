@@ -203,7 +203,7 @@ local function inspect(expected, order, sequenceOk)
  for _,entry in ipairs(skillCoverage.inspect(build)) do issues[#issues+1]=entry end
  for _,entry in ipairs(weaponContext.inspect(build)) do issues[#issues+1]=entry end
  local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unknown_rune=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true,
-  unsupported_item_transformation=true,stonefist_passive_missing=true,charge_sustain_unverified=true,ally_charge_state_unverified=true,conditional_recoup_unverified=true,companion_identity_unverified=true,unsupported_companion_mechanic=true,missing_companion_data=true,missing_combat_assumption=true,unsupported_weapon_context=true}
+  unsupported_item_transformation=true,stonefist_passive_missing=true,charge_sustain_unverified=true,ally_charge_state_unverified=true,conditional_recoup_unverified=true,companion_identity_unverified=true,unsupported_companion_mechanic=true,missing_companion_data=true,missing_combat_assumption=true,unsupported_weapon_context=true,granted_skill_source_unresolved=true}
  local status='pass'
  for _,v in ipairs(issues) do
   if not uncertain[v.code] then status='fail';break end

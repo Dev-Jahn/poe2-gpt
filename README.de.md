@@ -20,6 +20,8 @@ Standardliga: **Forbidden Rites**. Standardpreise: **Exalted Orbs pro Gegenstand
 
 Die Engine kombiniert eine feste PoB2-Entwicklungsversion mit hashgeprüften Daten für 0.5.5. Spieler-DPS, DPS des ausgewählten Begleiters und ausdrücklich konfigurierter FullDPS werden getrennt ausgewiesen. Unbekannte passive Knoten und nicht berechnete Effekte verhindern bestätigte Upgrade-Empfehlungen. [Engine-Kompatibilität](docs/pob-engine.md).
 
+Version 0.9 erweitert die Berechnung von Ladungen, Opferungen, Begleitern und Waffensätzen. Unterstützte Mechaniken und verbleibende Grenzen stehen in der [Übersicht zur aktuellen Liga](docs/league-coverage.md) (Englisch).
+
 **PoB-Codes und XML-Rohdaten bleiben außerhalb von MCP und Modellkontext.** Der private Importdienst verarbeitet Ninja-Daten oder ChatGPT-Dateireferenzen. Kein Dateiimport auf dem Serverhost erforderlich. Nur der Worker liest private Dateien; ChatGPT erhält IDs, geprüfte Zahlen und Statuswerte. Niemals einen PoB-Code in den Chat einfügen. [Datengrenze](docs/pob-boundary.md).
 
 ## Schnellstart

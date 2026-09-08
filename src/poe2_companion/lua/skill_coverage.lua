@@ -54,6 +54,12 @@ function coverage.inspect(build)
  local function inspectInstance(instance, selectedSet, extraStats)
   local effect = instance and instance.grantedEffect
   if not effect or build.data.skills[effect.id] ~= effect then return end
+  local source=instance.srcInstance
+  local sourceKey='GrantedSource/'..effect.id
+  if source and source.companionGrantLevelUnresolved and (effect.fromItem or effect.fromTree) and not seen[sourceKey] then
+   seen[sourceKey]=true
+   issues[#issues+1]={code='granted_skill_source_unresolved',skill_id=effect.id}
+  end
   if effect.id=='SupportVerglasPlayer' and env.configInput.conditionDestroyedIceCrystalPast6Seconds
     and (env.player.destroyedIceCrystalLife or 0)<=0 and not seen['VerglasAssumption'] then
    seen['VerglasAssumption']=true
@@ -89,7 +95,8 @@ function coverage.inspect(build)
  inspectActor(env.minion)
  table.sort(issues, function(a,b)
   if a.skill_id~=b.skill_id then return a.skill_id<b.skill_id end
-  return a.skill_stat_id<b.skill_stat_id
+  if a.code~=b.code then return a.code<b.code end
+  return (a.skill_stat_id or '')<(b.skill_stat_id or '')
  end)
  return issues
 end

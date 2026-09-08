@@ -23,6 +23,7 @@ have current data while still lacking enough information for a verified upgrade.
 | Bonded gold quantity | Non-combat quantity modifier under its actual Bonded condition | It is neither a combat damage modifier nor a currency price |
 | Verglas | Supported-skill extra Cold damage in complete 2,000 crystal-Life increments | Recent destruction defaults off; differing crystal sources need an explicit saved Life override |
 | Selected skill weapon set | Preserve saved `set1`/`set2` selectors and activate a provable common context through PoB's weapon swap action | Mixed simultaneous weapon contexts remain unsupported; the reported `active_weapon_set` is the evaluated context |
+| Item and passive granted skills | Recalculate source-capped item skill levels from current attributes and character level; scale passive grants with character level | Missing or ambiguous grant sources remain indeterminate. Ordinary socketed gems retain their requirements |
 
 Relevant source facts: [Stonefist](https://poe2db.tw/us/Way_of_the_Stonefist),
 [Mending Deflection](https://poe2db.tw/us/Mending_Deflection),
@@ -32,7 +33,7 @@ Relevant source facts: [Stonefist](https://poe2db.tw/us/Way_of_the_Stonefist),
 [Verglas](https://poe2db.tw/us/Verglas), and reviewed
 [PoB2 Verglas PR #2390](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2390).
 Spirit Vessel actor data is verified against [its public monster record](https://poe2db.tw/us/DNT_Spirit_Vessel).
-Weapon selector preservation follows a narrow review of
+Weapon selector preservation and granted-skill levels follow a narrow review of
 [PR #2498](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2498);
 the broader cross-skill environment changes are not applied.
 
@@ -50,6 +51,8 @@ supports produce `unsupported_skill_stat` with canonical skill/stat IDs.
 Disabled groups, incompatible supports and display-only category metadata are
 not treated as active combat effects. This closes silent omissions for missing
 stat mappings, but a mapped stat may still have incomplete upstream behavior.
+`granted_skill_source_unresolved` means an imported item/passive skill cannot be
+matched to one current active source; its saved level cannot verify an upgrade.
 
 Details are limited to 16 issues and 16 mechanics and may be shortened further
 to preserve the 8 KiB public response limit. `issue_count`, `mechanic_count`,

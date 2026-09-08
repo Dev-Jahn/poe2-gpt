@@ -20,6 +20,8 @@ The default league is **Forbidden Rites**; check `list_leagues` before using ano
 
 The engine combines a pinned PoB2 development revision with a checksummed 0.5.5 data overlay. It reports the selected skill and distinguishes player DPS, selected-minion DPS and explicitly configured FullDPS. Unknown passive nodes, unparsed effects and unsupported configurations remain visible and block verified upgrade recommendations. See [engine compatibility](docs/pob-engine.md) and [localization coverage](docs/localization.md).
 
+Version 0.9 adds scoped charge, Offering, companion and weapon-context calculations. See the [current-league coverage matrix](docs/league-coverage.md) for supported mechanics and remaining limits.
+
 **MCP never returns raw PoB codes or XML.** A private ingestion service downloads Ninja exports or attached-file references; the calculation worker reads private files. Tool results contain only IDs, validated numbers, and statuses. Never paste a PoB code into chat. ChatGPT's own attachment processing is outside the plugin's control. See the [data boundary](docs/pob-boundary.md).
 
 ## Quick start

@@ -29,13 +29,28 @@ assert(not __mainObject__.promptMsg, __mainObject__.promptMsg)
 local module = dofile(input.module)
 module.register()
 loadBuildFromXML(input.xml, '')
+for _, id in ipairs(input.tree_nodes or {}) do
+ local node = assert(build.spec.nodes[id])
+ node.alloc = true; node.isGrantedPassive = nil; node.isFreeAllocate = nil
+ build.spec.allocNodes[id] = node
+end
+if #(input.tree_nodes or {}) > 0 then
+ build.buildFlag = true; runCallback('OnFrame')
+end
 assert(not __mainObject__.promptMsg)
 local env, output = build.calcsTab.mainEnv, build.calcsTab.mainOutput
 local mechanics, issues = module.inspect(build, env, output)
 local mirrors = 0
+local companionSkills = {}
 local calcs = require('Modules.CalcBase')
 for _, skill in ipairs(env.player.activeSkillList) do
- if skill.skillTypes[SkillType.CreatesCompanion] and calcs.companionIsGrantMirror(env, skill) then mirrors = mirrors + 1 end
+ if skill.skillTypes[SkillType.CreatesCompanion] then
+  local mirrored = calcs.companionIsGrantMirror(env, skill)
+  if mirrored then mirrors = mirrors + 1 end
+  companionSkills[#companionSkills + 1] = {id=skill.activeEffect.grantedEffect.id,
+   base_level=skill.activeEffect.srcInstance.level, level=skill.activeEffect.level,
+   generated=skill.socketGroup.source ~= nil, mirrored=mirrored}
+ end
 end
 local parsed = {}
 for _, text in ipairs(input.parse or {}) do
@@ -47,15 +62,16 @@ life=output.Life, dps=output.CombinedDPS, spirit=output.SpiritUnreserved,
 offering_life=env.player.companionOfferingLifeList,
 minion_life=output.Minion and output.Minion.Life,
 minion_speed=output.Minion and output.Minion.MovementSpeedMod,
-companion_life=env.modDB:Sum('BASE', nil, 'TotalCompanionLife'), wolf_limit=output.WolfLimit, grant_mirrors=mirrors}))
+companion_life=env.modDB:Sum('BASE', nil, 'TotalCompanionLife'), wolf_limit=output.WolfLimit,
+grant_mirrors=mirrors, companion_skills=companionSkills}))
 ''')
 
-    def calculate(root, parse=()):
+    def calculate(root, parse=(), *, tree_nodes=()):
         env = dict(os.environ)
         env['LUA_PATH'] = str(engine / 'runtime/lua/?.lua') + ';' + str(engine / 'runtime/lua/?/init.lua') + ';;'
         result = subprocess.run([os.environ.get('POE2_TEST_LUAJIT', 'luajit'), str(script)],
                                 cwd=engine / 'src', env=env, capture_output=True,
-                                input=json.dumps({'xml': ET.tostring(root, encoding='unicode'), 'module': str(MODULE), 'parse': list(parse)}),
+                                input=json.dumps({'xml': ET.tostring(root, encoding='unicode'), 'module': str(MODULE), 'parse': list(parse), 'tree_nodes': list(tree_nodes)}),
                                 text=True, timeout=30)
         assert result.returncode == 0, result.stderr[-2000:]
         return json.loads(result.stdout)
@@ -238,6 +254,79 @@ def test_real_item_grant_mirror_is_not_a_second_companion(calculate_companions):
     values = {m['name']: m['value'] for m in rows(result)['companion_composition']['metrics']}
     assert values['active_companion_types'] == 1
     assert result['grant_mirrors'] == 1
+
+
+def test_real_tree_grant_mirror_scales_and_contributes_life_once(calculate_companions):
+    root = synthetic()
+    skill(root, 'Wild Protector', 'WildProtectorPlayer', level=20)
+    group = root.findall('./Skills/SkillSet/Skill')[-1]
+    ET.SubElement(group, 'Gem', {'nameSpec': 'Minion Mastery', 'skillId': 'SupportMinionMasteryPlayer', 'level': '1', 'quality': '0', 'enabled': 'true'})
+    modifiers(root, ['+7 to Level of all Minion Skills',
+                     "5% of Damage from Hits is taken from your Damageable Companion's Life before you"])
+    result = calculate_companions(root, tree_nodes=[62743])
+    bears = [row for row in result['companion_skills'] if row['id'] == 'WildProtectorPlayer']
+    assert len(bears) == 2
+    assert {row['base_level'] for row in bears} == {20}
+    explicit = next(row for row in bears if not row['generated'])
+    generated = next(row for row in bears if row['generated'])
+    assert explicit['level'] == 28  # seven global levels plus linked Minion Mastery
+    assert generated['level'] == 27
+    assert generated['mirrored'] is True
+    assert result['issues'] == []
+    values = {m['name']: m['value'] for m in rows(result)['companion_composition']['metrics']}
+    assert values['exempt_companion_types'] == 1
+    assert result['companion_life'] == result['minion_life']
+
+
+def test_real_distinct_explicit_groups_still_fail_duplicate_companion_type(calculate_companions):
+    root = synthetic()
+    skill(root, 'Wolf Pack', 'WolfPackPlayer')
+    skill(root, 'Wolf Pack', 'WolfPackPlayer')
+    modifiers(root, ['You can have any number of Companions of different types'])
+    result = calculate_companions(root)
+    assert {'code': 'duplicate_companion_type'} in result['issues']
+    assert result['grant_mirrors'] == 0
+
+
+def test_real_three_grant_mirrors_preserve_six_distinct_companion_types(calculate_companions):
+    # Synthetic acceptance case for simultaneous tree, sceptre and body grants.
+    # Counts default to one on generated groups, as in a recalculated import.
+    root = synthetic()
+    for name, skill_id, level in [('Wild Protector', 'WildProtectorPlayer', 20),
+                                  ('Azmerian Wolf', 'SummonAzmerianWolfPlayer', 19),
+                                  ('Spirit Vessel', 'SpiritVesselPlayer', 19),
+                                  ('Tame Beast', 'TameBeastPlayer', 20),
+                                  ('Wolf Pack', 'WolfPackPlayer', 20)]:
+        skill(root, name, skill_id, level=level)
+        root.findall('./Skills/SkillSet/Skill')[-1].set('count', '1')
+    bear_group = root.findall('./Skills/SkillSet/Skill')[0]
+    ET.SubElement(bear_group, 'Gem', {'nameSpec': 'Loyalty', 'skillId': 'SupportLoyaltyPlayer', 'level': '1', 'quality': '0', 'enabled': 'true'})
+    for beast_id in ['Metadata/Monsters/Quadrilla/Quadrilla',
+                     'Metadata/Monsters/GoreCharger/GoreCharger',
+                     'Metadata/Monsters/Quadrilla/QuadrillaBossMinion2']:
+        ET.SubElement(root.find('Build'), 'BeastCompanion', {'id': beast_id})
+        gem = skill(root, 'Companion: {0}', 'SummonBeastPlayer', level=20)
+        gem.set('skillMinion', beast_id)
+    weapon = ET.SubElement(root.find('Items'), 'Item', {'id': '2'})
+    weapon.text = "Rarity: Unique\nSylvan's Effigy\nStoic Sceptre\nItem Level: 80\nImplicits: 2\nGrants Skill: Level 19 Discipline\nGrants Skill: Level 19 Azmerian Wolf\nYou can have any number of Companions of different types"
+    equip(root, 'Weapon 2', 2)
+    body = ET.SubElement(root.find('Items'), 'Item', {'id': '3'})
+    body.text = 'Rarity: Rare\nSynthetic Vessel Body\nRusted Cuirass\nItem Level: 80\nGrants Skill: Level 19 Spirit Vessel'
+    equip(root, 'Body Armour', 3)
+    modifiers(root, ['+500 to all Attributes', '+7 to Level of all Minion Skills',
+                     'Tame Beast can capture Unique Beasts', 'Can have up to one Unique Tamed Beast summoned'])
+    result = calculate_companions(root, tree_nodes=[62743])
+    composition = rows(result)['companion_composition']
+    values = {m['name']: m['value'] for m in composition['metrics']}
+    assert composition['status'] == 'calculated'
+    assert values == {'active_companion_types': 6, 'exempt_companion_types': 1,
+                      'unique_tamed_beasts': 1, 'unlimited_companion_types': 1}
+    assert result['grant_mirrors'] == 3
+    bears = [row for row in result['companion_skills'] if row['id'] == 'WildProtectorPlayer']
+    assert len(bears) == 2
+    assert {row['base_level'] for row in bears} == {20}
+    assert {row['level'] for row in bears} == {27}
+    assert {'code': 'duplicate_companion_type'} not in result['issues']
 
 
 def test_real_bone_offering_matches_public_level_68_life(calculate_companions):

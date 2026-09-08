@@ -25,7 +25,7 @@ IssueCode = Literal["level_requirement", "attribute_requirement", "class_require
     "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unknown_rune", "unsupported_skill_stat",
     "unsupported_item_transformation", "stonefist_passive_missing", "charge_sustain_unverified", "ally_charge_state_unverified", "conditional_recoup_unverified",
     "companion_limit_exceeded", "duplicate_companion_type", "unique_companion_limit_exceeded", "unique_companion_not_allowed",
-    "companion_identity_unverified", "unsupported_companion_mechanic", "missing_companion_data", "missing_combat_assumption", "unsupported_weapon_context"]
+    "companion_identity_unverified", "unsupported_companion_mechanic", "missing_companion_data", "missing_combat_assumption", "unsupported_weapon_context", "granted_skill_source_unresolved"]
 CanonicalSkillID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$", min_length=1, max_length=120)]
 
 

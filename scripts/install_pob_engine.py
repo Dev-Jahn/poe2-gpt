@@ -143,11 +143,13 @@ def main():
         from patch_skill_coverage import patch_skill_coverage
         from patch_weapon_context import patch_weapon_context
         from patch_spirit_vessel import patch_spirit_vessel
+        from patch_granted_skills import patch_granted_skills
         patch_weapon_context(args.destination)
         patch_stonefist(args.destination)
         patch_companions(args.destination)
         patch_spirit_vessel(args.destination)
         patch_skill_coverage(args.destination)
+        patch_granted_skills(args.destination)
         (args.destination/'COMPANION_COMMIT').write_text(COMMIT+'\n')
         (args.destination/'COMPANION_DATA_COMMIT').write_text(DATA_COMMIT+'\n')
         (args.destination/'COMPANION_COMPATIBILITY').write_text(COMPATIBILITY+'\n')

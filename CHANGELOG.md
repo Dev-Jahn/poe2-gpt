@@ -4,6 +4,8 @@
 
 - Add source-anchored Stonefist requirement, charge-event, Offering Life,
   Companion composition, Wolf Pack and Verglas calculations and diagnostics.
+- Calculate Spirit Vessel Life and scoped skill bonuses; preserve weapon-set
+  selectors and resolve granted-skill levels against current sources and attributes.
 - Detect unmapped game-visible stats on effective skills and compatible supports;
   preserve missing-data and combat-assumption uncertainty in recommendations.
 - Return bounded numeric mechanics separately from character DPS, with explicit

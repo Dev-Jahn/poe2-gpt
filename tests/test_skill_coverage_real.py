@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -183,3 +184,75 @@ io.write(require('dkjson').encode({breakpoints=values, default_off=true, support
     assert result['breakpoints'] == [0, 1, 1, 2, 135]
     assert result['default_off'] and result['supported_skill_only'] and result['cache_invalidated']
     assert result['ambiguous_sources_excluded']
+
+
+async def test_granted_source_issue_is_public_indeterminate_and_excludes_disabled_groups(tmp_path):
+    source = os.environ.get('POE2_TEST_ENGINE_DIR')
+    if not source:
+        pytest.skip('Set POE2_TEST_ENGINE_DIR for real Lua integration')
+    import base64
+    import hashlib
+    import zlib
+    from poe2_companion.engine_worker import PrivateEngine
+    from poe2_companion.engine_protocol import WorkerRequest
+
+    root = ET.fromstring((Path(__file__).parent / 'fixtures/engine_synthetic.xml').read_bytes())
+    groups = root.find('./Skills/SkillSet')
+    for name, skill_id, level in [('Fireball', 'FireballPlayer', '1'), ('Discipline', 'DisciplinePlayer', '19')]:
+        group = ET.SubElement(groups, 'Skill', {'enabled': 'true', 'mainActiveSkill': '1'})
+        ET.SubElement(group, 'Gem', {'nameSpec': name, 'skillId': skill_id, 'level': level, 'quality': '0', 'enabled': 'true'})
+    item = ET.SubElement(root.find('Items'), 'Item', {'id': '1'})
+    item.text = 'Rarity: Rare\nSynthetic Attribute Ring\nIron Ring\n+500 to all Attributes'
+    next(s for s in root.findall('./Items/ItemSet/Slot') if s.get('name') == 'Ring 1').set('itemId', '1')
+    build_id = 'bld_' + '9' * 32
+    path = tmp_path / (build_id + '.pob')
+    engine = PrivateEngine(tmp_path, Path(source), os.environ.get('POE2_TEST_LUAJIT', 'luajit'))
+
+    def save():
+        path.write_bytes(base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))))
+
+    save()
+    original = hashlib.sha256(path.read_bytes()).digest()
+    active = (await engine.calculate(WorkerRequest(build_id=build_id))).baseline
+    assert active.validation == 'indeterminate'
+    assert any(issue.code == 'granted_skill_source_unresolved' and issue.skill_id == 'DisciplinePlayer' for issue in active.issues)
+    assert not any(issue.code in {'attribute_requirement', 'gem_level_requirement'} for issue in active.issues)
+    assert hashlib.sha256(path.read_bytes()).digest() == original
+    groups.findall('Skill')[1].set('enabled', 'false')
+    save()
+    disabled = (await engine.calculate(WorkerRequest(build_id=build_id))).baseline
+    assert disabled.validation == 'pass'
+    assert not any(issue.code == 'granted_skill_source_unresolved' for issue in disabled.issues)
+
+
+def test_granted_source_diagnostic_sorts_with_stat_diagnostics_for_same_skill(tmp_path):
+    result = run_lua(tmp_path, r'''
+build.skillsTab:PasteSocketGroup("Discipline 19/0  1")
+refresh()
+local instance=build.calcsTab.mainEnv.player.mainSkill.activeEffect
+local effect=instance.grantedEffect
+assert(effect.id=='DisciplinePlayer' and effect.fromItem)
+assert(instance.srcInstance.companionGrantLevelUnresolved)
+local set=instance.statSet.statSet
+local stats=calcLib.buildSkillInstanceStats(instance,effect,set,false)
+local removed,localMap,globalMap
+for stat,value in pairs(stats) do
+ if value~=0 and #build.data.describeStats({[stat]=value},set.statDescriptionScope)>0 then
+  removed=stat;localMap=set.statMap[stat];globalMap=build.data.skillStatMap[stat]
+  set.statMap[stat]=nil;build.data.skillStatMap[stat]=nil
+  break
+ end
+end
+assert(removed)
+local unresolved,unsupported=false,false
+for _,issue in ipairs(coverage.inspect(build)) do
+ if issue.skill_id==effect.id then
+  if issue.code=='granted_skill_source_unresolved' then unresolved=true;assert(issue.skill_stat_id==nil) end
+  if issue.code=='unsupported_skill_stat' and issue.skill_stat_id==removed then unsupported=true end
+ end
+end
+set.statMap[removed]=localMap;build.data.skillStatMap[removed]=globalMap
+assert(unresolved and unsupported)
+io.write(require('dkjson').encode({unresolved=unresolved,unsupported=unsupported}))
+''')
+    assert result == {'unresolved': True, 'unsupported': True}

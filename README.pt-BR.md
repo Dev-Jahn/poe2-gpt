@@ -20,6 +20,8 @@ A liga padrão é **Forbidden Rites**; confirme outras temporadas com `list_leag
 
 O motor combina uma revisão fixa de desenvolvimento do PoB2 com dados 0.5.5 verificados por hash. Ele distingue DPS do jogador, do lacaio selecionado e FullDPS configurado explicitamente. Passivas desconhecidas e efeitos não calculados impedem recomendações de melhorias validadas. [Compatibilidade do motor](docs/pob-engine.md).
 
+A versão 0.9 amplia os cálculos de cargas, oferendas, companheiros e conjuntos de armas. Consulte a [cobertura da liga atual](docs/league-coverage.md) (em inglês) para ver as mecânicas suportadas e os limites restantes.
+
 **Códigos PoB e XML bruto ficam fora do MCP e do contexto do modelo.** O serviço privado recebe dados do Ninja ou referências a anexos do ChatGPT. Não é necessário enviar arquivos ao servidor físico. Somente o processo privado lê os arquivos; o ChatGPT recebe IDs, números validados e status. Nunca cole um código PoB no chat. [Limite de dados](docs/pob-boundary.md).
 
 ## Início rápido
