@@ -1,6 +1,6 @@
 # Security policy
 
-Security fixes target the latest release on `main`. This experimental server is designed for one operator; it has no built-in OAuth provider or tenant isolation.
+Security fixes target the latest release on `main`. Each experimental MCP instance serves one authenticated owner and has no built-in OAuth authorization provider. The optional [friends deployment](docs/friends.md) separates users by process, private volume and worker socket while verifying each instance's one allowed email. An email allowlist on a shared private-data instance is not a substitute for this isolation. The server operator retains administrative access to all stores.
 
 Do not expose tools backed by private build data without an account-scoped tunnel or a compatible authenticated ingress. Keep the worker socket private and mount raw files only in the worker. See [deployment](docs/deployment.md) and [privacy](docs/privacy.md).
 

@@ -12,10 +12,13 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from poe2_companion.deployment import MEMBER_ID, member_services, render_member_stack, validate_members
 STATE = Path.home() / ".config" / "poe2-gpt"
 PROFILE = "poe2-gpt"
 CONTEXT = "colima-poe2-gpt"
@@ -55,12 +58,56 @@ def config():
     return json.loads((STATE / "deployment.json").read_text())
 
 
-def compose(settings):
+def compose(settings, *, base=False):
     command = [binary("docker"), "--context", CONTEXT, "compose", "--project-name", PROFILE,
-               "--env-file", str(STATE / "deployment.env"), "-f", str(ROOT / "deploy/compose.mac.yaml")]
+               "--env-file", str(STATE / "deployment.env")]
+    if settings.get("members") and not base:
+        resolved = json.loads(run(compose(settings, base=True) + ["--profile", "operator", "config", "--format", "json"],
+                                  capture_output=True, text=True).stdout)
+        stack = render_member_stack(resolved, settings["members"])
+        path = STATE / "compose.members.json"
+        write_private(path, json.dumps(stack).encode())
+        return command + ["-f", str(path)]
+    command += ["-f", str(ROOT / "deploy/compose.mac.yaml")]
     if settings["engine"]:
         command += ["-f", str(ROOT / "deploy/compose.mac-engine.yaml")]
     return command
+
+
+def save_config(settings):
+    write_private(STATE / "deployment.json", json.dumps(settings, indent=2).encode())
+
+
+def add_member(settings, identity):
+    if not MEMBER_ID.fullmatch(identity) or identity == "owner":
+        raise ValueError("Use a new lowercase member ID, up to 24 characters")
+    members = settings.get("members", [])
+    if any(member["id"] == identity for member in members):
+        raise ValueError("Member ID already exists or is retired; never reuse another person's data namespace")
+    email = input("Friend's Cloudflare login email: ").strip()
+    used_ports = {member["port"] for member in members}
+    available = next((port for port in range(18082, 18146) if port not in used_ports), None)
+    candidate = {"id": identity, "email": email, "port": available, "enabled": True}
+    resolved = json.loads(run(compose(settings, base=True) + ["--profile", "operator", "config", "--format", "json"],
+                              capture_output=True, text=True).stdout)
+    validate_members([*members, candidate], resolved["services"]["poe2-companion"]["environment"]["POE2_CF_OWNER_EMAIL"])
+    settings["members"] = [*members, candidate]
+    save_config(settings)
+    print(f"Member added. Route ^/u/{identity}/mcp$ to localhost:{available}, then run start.")
+
+
+def remove_member(settings, identity):
+    member = next((m for m in settings.get("members", []) if m["id"] == identity and m["enabled"]), None)
+    if member is None:
+        raise ValueError("No active friend with that ID")
+    command = compose(settings)
+    # Stop access immediately, even while a previously issued JWT remains valid.
+    names = member_services(identity, settings["engine"])
+    run(command + ["stop", *names])
+    run(command + ["rm", "--force", *names])
+    member["enabled"] = False
+    save_config(settings)
+    print("Member containers removed; private volumes retained and ID reserved. Remove the Cloudflare email rule and tunnel route too.")
 
 
 def colima_command(foreground=False):
@@ -85,8 +132,16 @@ def agent_spec(kind):
 
 
 def unload_agent(kind):
-    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LABELS[kind]}"],
+    target = f"gui/{os.getuid()}/{LABELS[kind]}"
+    subprocess.run(["launchctl", "bootout", target],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    # bootout can return while launchd is still waiting for the process to exit.
+    deadline = time.monotonic() + 30
+    while subprocess.run(["launchctl", "print", target], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, check=False).returncode == 0:
+        if time.monotonic() >= deadline:
+            raise ValueError("Login service did not finish unloading")
+        time.sleep(0.1)
 
 
 def install_agent(kind):
@@ -154,10 +209,13 @@ def main():
     setup = sub.add_parser("configure")
     setup.add_argument("--hostname")
     setup.add_argument("--engine", action="store_true", help="Enable private PoB calculations and saved build summaries")
-    for name in ("start", "status", "install-login", "stop", "set-token"):
+    for name in ("start", "status", "install-login", "stop", "set-token", "members"):
         sub.add_parser(name)
+    for name in ("add-user", "remove-user"):
+        sub.add_parser(name).add_argument("--id", required=True)
     load = sub.add_parser("import-build", help="Operator terminal only; never run through model tools")
     load.add_argument("--input", required=True, type=Path)
+    load.add_argument("--user", default="owner", help="Owner or an active friend ID; chosen by the operator")
     args = parser.parse_args()
     if platform.system() != "Darwin":
         parser.error("This deployment helper runs on macOS")
@@ -166,12 +224,23 @@ def main():
             configure(args)
             return
         settings = config()
-        if args.command == "start":
+        if args.command == "add-user":
+            add_member(settings, args.id)
+        elif args.command == "remove-user":
+            remove_member(settings, args.id)
+        elif args.command == "members":
+            print("owner: /mcp -> localhost:18080")
+            for member in settings.get("members", []):
+                state = "active" if member["enabled"] else "retired"
+                print(f"{member['id']}: /u/{member['id']}/mcp -> localhost:{member['port']} ({state})")
+        elif args.command == "start":
             binary("cloudflared")
             if not (STATE / "tunnel-token").is_file():
                 raise ValueError("Run set-token first")
             run(colima_command())
-            run(compose(settings) + ["up", "-d", "--build", "--wait", "--wait-timeout", "120"])
+            # Build once before creating friends that reference those local images.
+            run(compose(settings, base=True) + ["build"])
+            run(compose(settings) + ["up", "-d", "--wait", "--wait-timeout", "120"])
             install_agent("tunnel")
             print("Started. Run install-login once to restore the VM after macOS login.")
         elif args.command == "install-login":
@@ -195,10 +264,15 @@ def main():
         elif args.command == "import-build":
             if not settings["engine"]:
                 raise ValueError("Enable engine in deployment.json and run start first")
+            importer = "pob-import"
+            if args.user != "owner":
+                if not any(m["id"] == args.user and m["enabled"] for m in settings.get("members", [])):
+                    raise ValueError("Import requires owner or an active friend ID")
+                importer += "-" + args.user
             if args.input.is_symlink() or not args.input.is_file() or args.input.stat().st_size > 2 * 1024 * 1024:
                 raise ValueError("Input must be a regular PoB file of at most 2 MiB")
             with args.input.open("rb") as source:
-                run(compose(settings) + ["run", "--rm", "-T", "--no-deps", "pob-import", "import", "--stdin",
+                run(compose(settings) + ["run", "--rm", "-T", "--no-deps", importer, "import", "--stdin",
                     "--private-dir", "/private-builds", "--projection-dir", "/build-projections"], stdin=source)
     except (ValueError, OSError, subprocess.CalledProcessError, urllib.error.URLError) as error:
         # Never print subprocess arguments, token contents or PoB input on failure.

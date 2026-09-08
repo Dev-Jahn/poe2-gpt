@@ -1,16 +1,18 @@
-FROM python:3.12-slim AS engine-build
+FROM python:3.14-slim AS engine-build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY scripts/install_lua_runtime.py scripts/install_pob_engine.py /install/
 RUN python /install/install_lua_runtime.py && python /install/install_pob_engine.py /opt/pob
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 COPY --from=engine-build /opt/pob /opt/pob
 COPY --from=engine-build /opt/lua /opt/lua
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
 RUN pip install --no-cache-dir . && useradd --create-home --uid 10001 companion \
-    && mkdir /engine-socket /private-builds && chown companion:companion /engine-socket /private-builds && chmod 700 /engine-socket /private-builds
+    && mkdir /engine-socket /private-builds /engine-coordination \
+    && chown companion:companion /engine-socket /private-builds /engine-coordination \
+    && chmod 700 /engine-socket /private-builds /engine-coordination
 ENV POE2_LUAJIT=/opt/lua/bin/luajit LUA_CPATH="/opt/lua/lib/lua/5.1/?.so;;" POE2_ENGINE_DIR=/opt/pob POE2_PRIVATE_DIR=/private-builds
 USER companion
 ENTRYPOINT ["poe2-pob-worker"]
@@ -20,7 +22,7 @@ FROM runtime AS test
 USER root
 RUN pip install --no-cache-dir '.[test]'
 COPY tests ./tests
-COPY scripts/run_engine_tests.py ./scripts/run_engine_tests.py
+COPY scripts/run_engine_tests.py scripts/mac.py ./scripts/
 ENV POE2_TEST_ENGINE_DIR=/opt/pob POE2_TEST_LUAJIT=/opt/lua/bin/luajit
 USER companion
 CMD ["python", "-m", "pytest", "-q"]
