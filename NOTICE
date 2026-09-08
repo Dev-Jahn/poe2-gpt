@@ -17,7 +17,7 @@ adapter is independently implemented; it does not bundle their source code.
 See docs/trade-and-upgrades.md and docs/pob-engine.md for source references.
 
 The English/Korean localization catalog contains minimal public game names and
-PoE2DB page identifiers. Names are paired from the PoE2DB us/kr search indexes;
+PoE2DB page identifiers. Names are paired from public PoE2DB us/kr page links;
 the catalog records original asset URLs, retrieval date and source SHA-256.
 PoE2DB: https://poe2db.tw/ ; disclaimer:
 https://poe2db.tw/us/General_disclaimer . Game content belongs to Grinding Gear

@@ -24,7 +24,7 @@ ClassName = Literal["Warrior", "Mercenary", "Ranger", "Huntress", "Monk", "Druid
 StatName = Literal["Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergyShield", "Armour", "Evasion",
                    "FireResist", "ColdResist", "LightningResist", "ChaosResist", "BlockChance", "SpellBlockChance",
                    "Str", "Dex", "Int", "TotalDPS", "CombinedDPS", "FullDPS", "Speed", "CritChance", "CritMultiplier",
-                   "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed"]
+                   "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed", "DeflectionRating"]
 STAT_NAMES = set(StatName.__args__)
 
 
@@ -56,7 +56,7 @@ class BuildSummary(DTO):
     class_name_source_ko: Annotated[str, Field(max_length=1024)] | None = None
     level: Annotated[int, Field(ge=1, le=100)]
     target_version: Annotated[list[Annotated[int, Field(ge=0, le=999)]], Field(min_length=1, max_length=4)] | None
-    stats: Annotated[list[PlayerStat], Field(max_length=22)]
+    stats: Annotated[list[PlayerStat], Field(max_length=26)]
     counts: Counts
     stats_origin: Literal["saved_pob_export_not_recalculated"] = "saved_pob_export_not_recalculated"
     counts_scope: Literal["all_saved_loadouts_not_active_only"] = "all_saved_loadouts_not_active_only"

@@ -16,7 +16,9 @@ Um plugin do ChatGPT e servidor MCP para hospedagem própria, dedicado ao **Path
 | Cálculo PoB | Versão fixada do PoE2 PoB em um processo privado; comparação de equipamentos e validação de requisitos |
 | Melhorias | Maximizar atributos explícitos do personagem ou minimizar o custo respeitando orçamento e valores mínimos |
 
-A liga padrão é **Forbidden Rites**; confirme outras temporadas com `list_leagues`. Os preços padrão são em **Exalted Orbs por item**. Há suporte a nomes de itens em inglês e apelidos coreanos de orbes comuns. O servidor não precisa de uma chave da API OpenAI.
+A liga padrão é **Forbidden Rites**; confirme outras temporadas com `list_leagues`. Os preços padrão são em **Exalted Orbs por item**. Um catálogo integrado do PoE2DB associa nomes em inglês e coreano verificado para moedas, bases, classes e habilidades selecionadas. `search_game_terms` retorna nomes e fontes; traduções ausentes não são inventadas. O servidor não precisa de uma chave da API OpenAI.
+
+O motor combina uma revisão fixa de desenvolvimento do PoB2 com dados 0.5.5 verificados por hash. Ele distingue DPS do jogador, do lacaio selecionado e FullDPS configurado explicitamente. Passivas desconhecidas e efeitos não calculados impedem recomendações de melhorias validadas. [Compatibilidade do motor](docs/pob-engine.md).
 
 **Códigos PoB e XML bruto ficam fora do MCP e do contexto do modelo.** O serviço privado recebe dados do Ninja ou referências a anexos do ChatGPT. Não é necessário enviar arquivos ao servidor físico. Somente o processo privado lê os arquivos; o ChatGPT recebe IDs, números validados e status. Nunca cole um código PoB no chat. [Limite de dados](docs/pob-boundary.md).
 

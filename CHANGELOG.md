@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0
+
+- Pin the current PoB2 development source and a checksummed, data-only 0.5.5 overlay for Forbidden Rites, with separate source/data/compatibility health markers.
+- Expose canonical selected-skill identity and selected-minion DPS; omit unconfigured FullDPS instead of presenting it as zero damage.
+- Diagnose unknown and unparsed passive nodes, modern custom modifier blocks, ignored item limits and character rune-slot effects; preserve validation and issue counts within bounded responses.
+- Import compatible socketed runes and Soul Cores from trade items, checking socket type, index, item compatibility and unique limits.
+- Add an offline, provenance-backed English/Korean PoE2DB name catalog and `search_game_terms`; localize currency, base types, classes and selected skills without changing provider IDs or guessing missing names.
+- Support Korean trade-stat lookup through the official Korean publisher's metadata, joined only by canonical stat ID; localized metadata failures do not block English trade requests.
+- Preserve private build ingestion, per-user isolation and existing saved builds. No raw PoB tool input/output or physical-host import workflow is added.
+
+This release improves current-league compatibility; unimplemented upstream mechanics remain explicit and prevent verified upgrade recommendations. See [engine coverage](docs/pob-engine.md) and [localization provenance](docs/localization.md).
+
 ## 0.7.0
 
 - Add account-tag character discovery and automatic private poe.ninja PoB ingestion, using current snapshot versions from the upstream event stream.

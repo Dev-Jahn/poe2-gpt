@@ -94,7 +94,7 @@ class CharacterPage(DTO):
 class CharacterOverview(DTO):
     account_slug: Annotated[str, Field(max_length=64)]
     character: CharacterIdentity
-    stats: Annotated[list[PlayerStat], Field(max_length=22)] = []
+    stats: Annotated[list[PlayerStat], Field(max_length=26)] = []
     pob_available: bool
     retrieved_at_epoch: int
     source_updated_at: Annotated[str, Field(max_length=40)] | None = None

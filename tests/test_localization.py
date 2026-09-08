@@ -112,3 +112,120 @@ def test_packaged_snapshot_has_verified_currency_and_current_league_names():
     assert db.lookup("Martial Artist") is not None
     assert db.metadata()["game_version"] == "0.5.5"
     assert db.metadata()["complete"] is False
+
+
+def test_html_catalog_joins_actual_links_not_navigation_or_row_order(tmp_path):
+    import hashlib
+    mod = updater()
+    pages = {
+        "us": '<a href="Orb_of_Annulment">Orb of Annulment</a>'
+              '<a href="Devotion_to_the_King">Item</a>'
+              '<a href="https://evil.test/us/Bad">Bad</a>'
+              '<a href="Divine_Orb"><span>Divine Orb</span></a>',
+        "kr": '<a href="Divine_Orb">신성한 오브</a><a href="Orb_of_Annulment">소멸의 오브</a>'
+              '<a href="Orb_of_Annulment">Orb of Annulment</a>'
+              '<a href="Devotion_to_the_King">아이템</a>',
+    }
+    sources = []
+    for i, (language, html) in enumerate(pages.items()):
+        raw = html.encode()
+        filename = f"page-{i:02}-{language}.html"
+        (tmp_path / filename).write_bytes(raw)
+        sources.append({"language": "en" if language == "us" else "ko", "url": f"https://poe2db.tw/{language}/Currency",
+                        "sha256": hashlib.sha256(raw).hexdigest(), "file": filename})
+    (tmp_path / "html-provenance.json").write_text(json.dumps({"snapshot_date": "2026-09-08", "sources": sources,
+                                                            "requested_pages_not_found": []}))
+    output = tmp_path / "html-result.json"
+    assert mod.build_html(tmp_path, output, "0.5.5")["record_count"] == 2
+    db = Catalog(output)
+    assert db.lookup("Orb of Annulment").ko == "소멸의 오브"
+    assert db.lookup("Divine Orb").ko == "신성한 오브"
+    assert db.lookup("Item") is None
+    assert "Devotion_to_the_King" not in output.read_text()
+    (tmp_path / "page-00-us.html").write_text("changed")
+    with pytest.raises(ValueError, match="source_hash_mismatch"):
+        mod.build_html(tmp_path, output, "0.5.5")
+
+
+def test_html_redirects_stay_on_same_language_origin_and_record_chain():
+    import io
+    import urllib.error
+    from email.message import Message
+    mod = updater()
+    calls = []
+
+    def open_request(request, timeout):
+        calls.append(request.full_url)
+        if request.full_url.endswith("/Omens"):
+            headers = Message()
+            headers["Location"] = "/us/Omen"
+            raise urllib.error.HTTPError(request.full_url, 301, "Moved", headers, None)
+        return io.BytesIO(b'<a href="Divine_Orb">Divine Orb</a>')
+
+    body, final_url, chain = mod.fetch_html("https://poe2db.tw/us/Omens", open_request=open_request)
+    assert final_url == "https://poe2db.tw/us/Omen"
+    assert len(calls) == 2 and b"Divine Orb" in body
+    assert chain == [{"from": "https://poe2db.tw/us/Omens", "to": final_url, "status": 301}]
+    for target in ("https://evil.test/us/Omen", "http://poe2db.tw/us/Omen", "/kr/Omen", "/us/Omen?token=x",
+                   "/us/Omen#data", "https://x:y@poe2db.tw/us/Omen", "https://poe2db.tw:444/us/Omen", "/us/%2e%2e/login"):
+        with pytest.raises(ValueError, match="html_redirect_refused"):
+            mod.html_destination("https://poe2db.tw/us/Omens", target)
+
+
+def test_html_redirect_loop_and_denial_do_not_retry():
+    import urllib.error
+    from email.message import Message
+    mod = updater()
+    calls = []
+
+    def denied(request, timeout):
+        calls.append(request.full_url)
+        raise urllib.error.HTTPError(request.full_url, 403, "Denied", Message(), None)
+
+    with pytest.raises(urllib.error.HTTPError):
+        mod.fetch_html("https://poe2db.tw/us/Omens", open_request=denied)
+    assert len(calls) == 1
+
+    def loop(request, timeout):
+        headers = Message()
+        headers["Location"] = request.full_url
+        raise urllib.error.HTTPError(request.full_url, 302, "Moved", headers, None)
+
+    with pytest.raises(ValueError, match="html_redirect_loop"):
+        mod.fetch_html("https://poe2db.tw/us/Omens", open_request=loop)
+
+
+def test_html_currency_pair_survives_missing_homepage_link_and_resumes(tmp_path, monkeypatch):
+    mod = updater()
+    calls = []
+    pages = {
+        "https://poe2db.tw/us/": '<a href="Rune">Runes</a>',
+        "https://poe2db.tw/kr/": '<a href="Rune">룬</a>',
+        "https://poe2db.tw/us/Rune": '<a href="Example_Rune">Example Rune</a>',
+        "https://poe2db.tw/kr/Rune": '<a href="Example_Rune">예제 룬</a>',
+        "https://poe2db.tw/us/Currency": '<a href="Divine_Orb">Divine Orb</a>',
+        "https://poe2db.tw/kr/Currency": '<a href="Divine_Orb">신성한 오브</a>',
+    }
+
+    def fetch_html(url):
+        calls.append(url)
+        return pages[url].encode(), url, []
+
+    monkeypatch.setattr(mod, "fetch_html", fetch_html)
+    monkeypatch.setattr(mod.time, "sleep", lambda _: None)
+    mod.download_html(tmp_path, ["Currency", "Runes"])
+    assert len(calls) == 6
+    assert calls[-2:] == ["https://poe2db.tw/us/Currency", "https://poe2db.tw/kr/Currency"]
+    output = tmp_path / "result.json"
+    assert mod.build_html(tmp_path, output, "0.5.5")["record_count"] == 2
+    assert Catalog(output).lookup("Divine Orb").ko == "신성한 오브"
+    mod.download_html(tmp_path, ["Currency", "Runes"], resume=True)
+    assert len(calls) == 6  # The verified checkpoint avoids repeating completed requests.
+
+
+def test_canonical_page_title_adds_verified_class_name_without_anchor():
+    mod = updater()
+    en = mod.anchors(b'<title>Monk - PoE2DB, Path of Exile Wiki us</title>', 'https://poe2db.tw/us/Monk', 'us')
+    ko = mod.anchors('<title>몽크 - PoE2DB, Path of Exile Wiki kr</title>'.encode(), 'https://poe2db.tw/kr/Monk', 'kr')
+    assert en == [{"value": "Monk", "label": "Monk", "url": "https://poe2db.tw/us/Monk"}]
+    assert ko == [{"value": "Monk", "label": "몽크", "url": "https://poe2db.tw/kr/Monk"}]

@@ -89,6 +89,34 @@ def patch_importer(destination):
     target.write_text(source.replace(old, new))
 
 
+def patch_deflection(destination):
+    # Forgotten Warden's 0.5 modifier uses the same floored PerStat mechanism
+    # as other "per N" modifiers. Keep these small source changes anchored to
+    # the immutable source; never silently apply against a different version.
+    target = destination / 'src/Modules/ModParser.lua'
+    source = target.read_text()
+    anchor = '\t["per (%d+) devotion"] ='
+    extra = '\t["per (%d+) missing energy shield"] = function(num) return { tag = { type = "PerStat", stat = "MissingEnergyShield", div = num } } end,\n'
+    if source.count(anchor) != 1 or extra in source:
+        raise SystemExit('upstream_deflection_parser_patch_mismatch')
+    target.write_text(source.replace(anchor, extra + anchor))
+    target = destination / 'src/Modules/CalcDefence.lua'
+    source = target.read_text()
+    anchor = '\t\toutput.Armour = m_max(round(output.Armour), 0)'
+    extra = '''\t\t-- Current ES is a player configuration, never inherited by a minion.
+\t\t-- Read the actual input so an explicit zero is not replaced by a default.
+\t\tlocal currentEnergyShieldPercent = actor == env.player and tonumber(env.configInput.multiplierCurrentEnergyShield) or 100
+\t\tcurrentEnergyShieldPercent = m_min(m_max(currentEnergyShieldPercent or 100, 0), 100)
+\t\toutput.MissingEnergyShield = m_max(0, output.EnergyShield * (1 - currentEnergyShieldPercent / 100))
+
+'''
+    old = '\t\toutput.DeflectionRating = modDB:Sum("BASE", nil, "DeflectionRating") + (output.Evasion * modDB:Sum("BASE", nil, "EvasionGainAsDeflection") / 100 + output.Armour * modDB:Sum("BASE", nil, "ArmourGainAsDeflection") / 100) * calcLib.mod(modDB, nil, "DeflectionRating")'
+    new = old.replace('= modDB:Sum', '= (modDB:Sum').replace(' + (output.Evasion', ' + output.Evasion')
+    if source.count(anchor) != 1 or source.count(old) != 1 or extra in source:
+        raise SystemExit('upstream_deflection_calculation_patch_mismatch')
+    target.write_text(source.replace(anchor, extra + anchor).replace(old, new))
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('destination',type=Path);args=p.parse_args()
     if args.destination.exists():
@@ -109,6 +137,7 @@ def main():
             shutil.copy2(file,args.destination/file.name)
         install_data(args.destination)
         patch_importer(args.destination)
+        patch_deflection(args.destination)
         (args.destination/'COMPANION_COMMIT').write_text(COMMIT+'\n')
         (args.destination/'COMPANION_DATA_COMMIT').write_text(DATA_COMMIT+'\n')
         (args.destination/'COMPANION_COMPATIBILITY').write_text(COMPATIBILITY+'\n')

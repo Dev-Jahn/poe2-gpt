@@ -14,9 +14,14 @@ for _,line in ipairs({'Can roll Ring Modifiers','Can roll Chronomancy modifiers'
  'Corrupting will always result in change'}) do
  modLib.parseModCache[line]={{},nil}
 end
+-- The Vertex's equipment variant also covers weapons. The upstream weapon
+-- multiplier includes GlobalItemAttributeRequirements; gem requirements use
+-- a separate multiplier and must remain intact.
+modLib.parseModCache['Equipment has no Attribute Requirements']={{
+ modLib.createMod('GlobalItemAttributeRequirements','MORE',-100,'PoE2Companion')},nil}
 local slots = {helmet='Helmet',body_armour='Body Armour',gloves='Gloves',boots='Boots',belt='Belt',amulet='Amulet',ring_left='Ring 1',ring_right='Ring 2',weapon_main='Weapon 1',weapon_off='Weapon 2'}
 local slotKeys = {'helmet','body_armour','gloves','boots','belt','amulet','ring_left','ring_right','weapon_main','weapon_off'}
-local statKeys = {'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
+local statKeys = {'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
 local function array(t) return setmetatable(t or {}, {__jsontype='array'}) end
 local function refresh()
  build.buildFlag = true
@@ -78,8 +83,9 @@ local function inspect(expected, order, sequenceOk)
  local effect=mainSkill and mainSkill.activeEffect and mainSkill.activeEffect.grantedEffect
  local selectedSkill=nil
  -- Resolve identity from immutable engine data; saved labels are private.
- if effect and effect.id and build.data.skills[effect.id]==effect then
-  selectedSkill={skill_id=effect.id,name=effect.name,actor=mainSkill.minion and 'minion' or 'player'}
+ local canonicalEffect=effect and effect.id and build.data.skills[effect.id]
+ if canonicalEffect then
+  selectedSkill={skill_id=effect.id,name=canonicalEffect.name,actor=mainSkill.minion and 'minion' or 'player'}
   local gem=mainSkill.activeEffect.srcInstance and mainSkill.activeEffect.srcInstance.gemData
   if gem and type(gem.name)=='string' then selectedSkill.gem_name=gem.name end
  end
@@ -139,6 +145,25 @@ local function inspect(expected, order, sequenceOk)
    end
   end
  end
+ -- Chakra rune modifiers bypass item mod-line parsing in upstream CalcSetup.
+ -- Validate their selected names and all actually applied (non-Bonded) lines.
+ if env.modDB:Flag(nil,'SocketRunesOnCharacter') then
+  for name,slot in pairs(build.itemsTab.runeSlots or {}) do
+   local rune=slot:GetSelValue()
+   local saved=build.itemsTab.activeItemSet[name]
+   if saved and saved.runeName~='None' and (not rune or rune.name~=saved.runeName) then
+    issue(issues,'unknown_rune')
+   elseif rune and rune.name~='None' then
+    if rune.req and rune.req>build.characterLevel then issue(issues,'level_requirement',nil,'Level',rune.req,build.characterLevel) end
+    for _,line in ipairs(rune.lines or {}) do
+     if not line:match('^Bonded:') then
+      local mods,extra=modLib.parseMod(line)
+      if not mods or extra then issue(issues,'unparsed_modifier') end
+     end
+    end
+   end
+  end
+ end
  -- Same tree version does not prove every allocated node was loaded/parsed.
  for _,id in ipairs(job.expected_node_ids or {}) do
   if not build.spec.nodes[id] then issue(issues,'unknown_passive');issues[#issues].passive_node_id=id end
@@ -162,7 +187,7 @@ local function inspect(expected, order, sequenceOk)
  end
  if config.ignoreJewelLimits or config.ignoreItemDisablers then issue(issues,'ignored_limits') end
  if sequenceOk==false then issue(issues,'equip_sequence_unverified') end
- local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true}
+ local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unknown_rune=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true}
  local status='pass'
  for _,v in ipairs(issues) do
   if not uncertain[v.code] then status='fail';break end
@@ -193,6 +218,11 @@ local function scenario(changes)
    local id=selected(name)
    local item=build.itemsTab.items[id]
    assert(id~=0 and item and item.uniqueID==c.item.id)
+   if c.item.socketedItems and #c.item.socketedItems>0 then
+    local validRunes={}
+    for _,rune in ipairs(build.itemsTab:GetValidRunesForItem(item)) do validRunes[rune.name]=true end
+    for _,rune in ipairs(c.item.socketedItems) do assert(validRunes[rune.baseType]) end
+   end
    item._companionTrade=true
    imported[c.slot]=id
   else

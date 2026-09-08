@@ -37,6 +37,24 @@ def test_private_trade_projection_no_seller_encoded_or_url():
     with pytest.raises(EngineError):private_trade_item(v)
 
 
+@pytest.mark.parametrize('sockets,index', [([],0),([{'type':'rune'}],9),([{'type':'jewel'}],0)])
+def test_socketed_rune_must_reference_a_real_rune_socket(sockets,index):
+    v=item('Rusted Cuirass')
+    v.update(sockets=sockets,socketedItems=[{'baseType':'Soul Core of Jiquani','socket':index}])
+    with pytest.raises(EngineError):
+        private_trade_item(v)
+
+
+def test_current_rarity_maps_to_pinned_importer_without_legacy_frame_type():
+    v=item()
+    v.pop('frameType')
+    v['rarity']='Rare'
+    assert private_trade_item(v)['frameType']==2
+    v['rarity']='Unknown'
+    with pytest.raises(EngineError):
+        private_trade_item(v)
+
+
 async def test_mcp_arguments_and_errors_never_echo_private_text(tmp_path,caplog):
     scout=Scout(user_agent='test',transport=httpx.MockTransport(Backend()),cache_path=str(tmp_path/'cache.db'),interval=0)
     class Unavailable:

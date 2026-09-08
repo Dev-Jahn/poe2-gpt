@@ -236,8 +236,10 @@ async def test_real_055_socketed_soul_core_and_unknown_rune(real_engine):
     body['socketedItems']=[{'baseType':'Soul Core of Jiquani','socket':0}]
     unknown={**body,'socketedItems':[{'baseType':'Unknown Rune','socket':0}]}
     vitality={**body,'corrupted':True,'socketedItems':[{'baseType':"Atziri's Soul Core of Vitality",'socket':0}]}
+    incompatible={**body,'socketedItems':[{'baseType':"Atziri's Soul Core of Alacrity",'socket':0}]}
     request=WorkerRequest(build_id=BID,scenarios=[[{'slot':'body_armour','item':body}],
-        [{'slot':'body_armour','item':unknown}],[{'slot':'body_armour','item':vitality}]])
+        [{'slot':'body_armour','item':unknown}],[{'slot':'body_armour','item':vitality}],
+        [{'slot':'body_armour','item':incompatible}]])
     result=await real_engine.calculate(request)
     assert result.results[0].validation=='pass'
     # 0.5.5 is 5% maximum Life; the previous core granted only 3%.
@@ -247,3 +249,75 @@ async def test_real_055_socketed_soul_core_and_unknown_rune(real_engine):
     assert result.results[2].validation=='pass'
     # One corrupted equipped item contributes 1% increased Life from this new core.
     assert val(result.results[2],'Life')==1215
+    assert result.results[3].validation=='indeterminate'
+    assert any(i.code=='scenario_calculation_failed' for i in result.results[3].issues)
+
+
+async def test_real_vertex_equipment_requirements_do_not_erase_gem_requirements(real_engine):
+    ring=change('ring_left',mods=['Equipment has no Attribute Requirements'])
+    query=WorkerRequest(build_id=BID,scenarios=[[ring,change('helmet','Soldier Greathelm',ref='b')],
+        [ring,change('weapon_main','Long Quarterstaff',ref='b')],
+        [ring,change('helmet','Soldier Greathelm',ref='b',level=99)]])
+    r=await real_engine.calculate(query)
+    assert r.results[0].validation=='pass'
+    assert not any(i.code=='attribute_requirement' for i in r.results[0].issues)
+    assert r.results[1].validation=='pass'
+    assert not any(i.code=='attribute_requirement' for i in r.results[1].issues)
+    assert any(i.code=='level_requirement' for i in r.results[2].issues)
+    root=ET.fromstring(FIXTURE.read_bytes())
+    skill=ET.SubElement(root.find('./Skills/SkillSet'),'Skill',{'enabled':'true','mainActiveSkill':'1'})
+    ET.SubElement(skill,'Gem',{'nameSpec':'Fireball','gemId':'Metadata/Items/Gems/SkillGemFireball',
+        'skillId':'FireballPlayer','level':'20','quality':'0','enabled':'true'})
+    save_synthetic(real_engine,root)
+    gems=await real_engine.calculate(WorkerRequest(build_id=BID,scenarios=[[ring]]))
+    assert any(i.code=='attribute_requirement' and i.stat=='Int' for i in gems.results[0].issues)
+
+
+@pytest.mark.parametrize('current_es', [None, 100, 0, 50, 150])
+async def test_real_forgotten_warden_deflection_uses_missing_es(real_engine, current_es):
+    root=ET.fromstring(FIXTURE.read_bytes())
+    if current_es is not None:
+        ET.SubElement(root.find('./Config/ConfigSet'),'Input',
+            {'name':'multiplierCurrentEnergyShield','number':str(current_es)})
+    save_synthetic(real_engine,root)
+    mods=['+200 to maximum Energy Shield', '+95 to Deflection Rating per 50 missing Energy Shield']
+    scenarios=[
+        [change('ring_left',mods=mods)],
+        [change('ring_left',mods=mods+['100% increased Deflection Rating'])]]
+    if current_es==0:
+        scenarios.extend([[change('ring_left',mods=[f'+{es} to maximum Energy Shield',mods[1]])]
+            for es in (49,50,99,100)])
+        scenarios.append([change('ring_left',mods=mods+['Cannot have Energy Shield'])])
+    result=await real_engine.calculate(WorkerRequest(build_id=BID,scenarios=scenarios))
+    plain,increased=result.results[:2]
+    assert plain.validation=='pass' and increased.validation=='pass'
+    if current_es in (None,100,150):
+        assert val(plain,'DeflectionRating')==0
+    elif current_es==0:
+        assert val(plain,'EnergyShield')==200
+        assert val(plain,'DeflectionRating')==380
+        assert [val(s,'DeflectionRating') for s in result.results[2:6]]==[0,95,95,190]
+        assert result.results[6].validation=='pass'
+        assert val(result.results[6],'EnergyShield')==0
+        assert val(result.results[6],'DeflectionRating')==0
+    else:
+        assert val(plain,'DeflectionRating')==190
+    assert val(increased,'DeflectionRating')==2*val(plain,'DeflectionRating')
+
+
+async def test_real_chakra_unknown_rune_never_silently_disappears(real_engine):
+    root=ET.fromstring(FIXTURE.read_bytes())
+    # Isolate the rune-slot path without constructing an entire ascendancy.
+    # This intentional override independently remains diagnosed below.
+    root.find('./Config/ConfigSet/CustomModifierBlock').text='Can tattoo Runes onto your body, gaining'
+    slot=ET.SubElement(root.find('./Items/ItemSet'),'RuneSlot',
+        {'slotName':'Helmet Rune #1','runeName':'Unknown Synthetic Rune'})
+    save_synthetic(real_engine,root)
+    unknown=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
+    assert unknown.validation=='indeterminate'
+    assert any(i.code=='unknown_rune' for i in unknown.issues)
+    assert any(i.code=='custom_modifiers_present' for i in unknown.issues)
+    slot.set('runeName','None')
+    save_synthetic(real_engine,root)
+    empty=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
+    assert not any(i.code=='unknown_rune' for i in empty.issues)

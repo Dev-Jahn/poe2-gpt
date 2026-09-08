@@ -5,10 +5,12 @@ Korean names where its offline catalog has an unambiguous match. Korean queries
 can resolve to the same English item before Scout or trade search. Currency
 prices, item tiers and gem levels remain separate from name translation.
 
-The catalog uses public PoE2DB English (`us`) and Korean (`kr`) search-index
-records. Records are joined by their language-independent `value` page key,
-not their position in the indexes, a machine translation, or similarity of
-names. A key is a **PoE2DB page identifier**, not a GGG item or modifier ID.
+The catalog uses public PoE2DB English (`us`) and Korean (`kr`) page anchors.
+Records are joined by the actual language-independent page key in their links,
+not their position on a page, a machine translation, or similarity of names.
+English anchor text must agree with the linked key; navigation labels such as
+"Item" are excluded. The Korean label must contain Korean text. Conflicting
+labels are dropped, including ambiguity introduced by an upstream layout change. A key is a **PoE2DB page identifier**, not a GGG item or modifier ID.
 The canonical English name, Korean name, page key and both source URLs remain
 available together. Query matching normalizes Unicode, case, spacing and
 punctuation; conflicting exact matches remain ambiguous and require selection
@@ -16,9 +18,10 @@ from search results. The project does not generate translations for missing
 entries or translate modifier prose automatically.
 
 `src/poe2_companion/data/localization-ko.json` records the snapshot date, verified
-game patch, hashed upstream URLs and SHA-256 of each source index. Its diagnostic
+game patch, original source-page URLs and SHA-256 of each source HTML response. Its diagnostic
 counts report conflicting keys, missing pairs and untranslated entries excluded
-from the snapshot. `metadata()` reports catalog size and coverage facets. A
+from the snapshot. The updater also supports an explicit search-index mode,
+which joins each index record by its `value` key. `metadata()` reports catalog size and coverage facets. A
 catalog update does not establish complete support for a league or a mechanic in
 the PoB engine. In particular, a translated gem name is not evidence that the
 engine understands that gem's calculations.
@@ -37,25 +40,58 @@ identifier.
 ```bash
 python scripts/update_localization.py \
   --source-dir /tmp/poe2db-localization \
-  --fetch --game-version 0.5.5
+  --fetch --game-version 0.5.5 --html-pages
 python -m pytest tests/test_localization.py
 ```
 
-The updater discovers the current hashed `poedb_header` JavaScript asset from
-[PoE2DB's English homepage](https://poe2db.tw/us/), then resolves its English and
-Korean `autocompletecb` JSON URLs. It makes ordinary, bounded HTTPS requests to
-`poe2db.tw` and `cdn.poe2db.tw`; redirects, denied requests and rate limits abort
-the update. It does not use browser sessions or retry around access restrictions.
-The MCP itself makes **no PoE2DB network calls** during gameplay, so a site outage
-cannot break price lookups or build calculations.
+The HTML mode discovers category links from both [English](https://poe2db.tw/us/)
+and [Korean](https://poe2db.tw/kr/) homepages, then fetches at most 24 category
+pairs plus those homepages. Requests are sequential with a half-second interval;
+responses are size-limited. It extracts only linked short names and shared page
+keys, discarding prose and images. Discovery requires the category link to exist
+in both languages. An optional list after `--html-pages` selects specific English
+category labels already present on the homepages; it cannot specify arbitrary
+URLs. The snapshot is intentionally bounded and does not include every page.
 
-To rebuild from an already downloaded public snapshot, omit `--fetch`. The
-source directory must contain `us.json`, `kr.json`, and `provenance.json` with the
-snapshot date and the original source URLs/SHA-256 values. This is developer
-maintenance of public name data; it is unrelated to character or PoB file import.
-Inspect diagnostic and coverage changes before committing the output. In
-particular, do not replace a broad catalog with an unexpectedly empty or much
-smaller index after an upstream layout change.
+A separate search-index mode (omit `--html-pages`) discovers the hashed
+`poedb_header` script and its `autocompletecb` JSON assets. On 2026-09-08 the Mac
+host could retrieve public HTML normally, while the CDN denied normal JSON
+requests. The release therefore uses explicitly selected HTML sources. The
+updater does not automatically switch routes after access is denied, impersonate
+a browser or reuse browser sessions. HTML mode accepts at most two HTTPS
+canonical redirects within the same origin and language, recording the requested
+URL, final URL and redirect chain. Other redirects, denied requests and rate
+limits abort the selected update. The MCP makes **no PoE2DB network calls** during
+gameplay, so a site outage cannot break price lookups or build calculations.
+
+To rebuild from an already downloaded public snapshot, omit `--fetch` and keep
+the same source mode. HTML mode reads cached public pages and
+`html-provenance.json`; index mode reads `us.json`, `kr.json` and
+`provenance.json`. Both verify the source hashes before generating an atomic
+replacement. Interrupted HTML collection can resume with `--resume-html` only
+when its incremental source-provenance checkpoint exists, every cached hash
+matches and the requested page selection is unchanged. This is developer maintenance of public name data, unrelated to
+character or PoB file import. Commit only the minimal generated catalog, not the
+HTML/index cache. Inspect diagnostic and coverage changes before committing the
+output; do not replace a broad catalog with an unexpectedly empty or much smaller
+snapshot after an upstream layout change.
+
+## Official trade modifier labels
+
+Trade modifier localization uses the official
+[Korean trade metadata](https://poe.kakaogames.com/api/trade2/data/stats), separately
+from the PoE2DB name catalog. Entries are joined to canonical English trade
+metadata by their **exact stat ID**, including explicit, implicit and other stat
+types. A translated label never replaces the ID sent in a trade query.
+
+Results expose `text_ko`, `text_source_en` and `text_source_ko` alongside the
+English label, plus translation status, error and retrieval information. The
+Korean metadata cache lasts six hours. If the Korean provider fails or has no
+matching stat, English search remains available and the missing translation is
+reported. English fallback text is never presented as a verified Korean label.
+These provider responses are fetched and cached at runtime; modifier descriptions
+are not bundled in the repository's game-name catalog.
+
 
 ## Data provenance and rights
 

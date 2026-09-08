@@ -17,7 +17,7 @@ Number = Annotated[float, Field(ge=-1e15, le=1e15, allow_inf_nan=False)]
 IssueCode = Literal["level_requirement", "attribute_requirement", "class_requirement", "slot_incompatible", "item_not_equipped",
     "gem_level_requirement", "unparsed_modifier", "unknown_item_base", "unknown_gem", "engine_item_warning", "reservation_invalid",
     "equip_sequence_unverified", "custom_modifiers_present", "ignored_limits", "unsupported_tree_version", "unsupported_slot", "configuration_override",
-    "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unsupported_skill_stat"]
+    "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unknown_rune", "unsupported_skill_stat"]
 
 
 class EngineRequest(DTO):
@@ -69,7 +69,7 @@ class SelectedSkill(DTO):
 
 
 class EngineSnapshot(DTO):
-    stats: Annotated[list[PlayerStat], Field(max_length=25)]
+    stats: Annotated[list[PlayerStat], Field(max_length=26)]
     equipped: Annotated[list[EquippedItem], Field(max_length=10)]
     issues: Annotated[list[RequirementIssue], Field(max_length=16)]
     issue_count: Annotated[int, Field(ge=0, le=1000000)]
@@ -90,7 +90,7 @@ class EngineCalculation(DTO):
     calculated_at_epoch: int
     baseline: EngineSnapshot
     result: EngineSnapshot | None = None
-    deltas: Annotated[list[PlayerStat], Field(max_length=25)] = Field(default_factory=list)
+    deltas: Annotated[list[PlayerStat], Field(max_length=26)] = Field(default_factory=list)
     character_recalculated: Literal[True] = True
     scope: Literal["saved_configuration_active_weapon_set"] = "saved_configuration_active_weapon_set"
     live_character: Literal[False] = False
