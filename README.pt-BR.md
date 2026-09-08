@@ -4,7 +4,7 @@
 
 Um plugin do ChatGPT e servidor MCP para hospedagem própria, dedicado ao **Path of Exile 2**: preços de moedas, busca de equipamentos no site oficial de trocas, cálculos privados do Path of Building e melhorias dentro do orçamento.
 
-**Status: 0.9.0, experimental.** Há até 26 ferramentas MCP. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
+**Status: 0.10.0, experimental.** Há até 26 ferramentas MCP. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
 
 ## Recursos
 
@@ -20,9 +20,9 @@ A liga padrão é **Forbidden Rites**; confirme outras temporadas com `list_leag
 
 O motor combina uma revisão fixa de desenvolvimento do PoB2 com dados 0.5.5 verificados por hash. Ele distingue DPS do jogador, do lacaio selecionado e FullDPS configurado explicitamente. Passivas desconhecidas e efeitos não calculados impedem recomendações de melhorias validadas. [Compatibilidade do motor](docs/pob-engine.md).
 
-A versão 0.9 amplia os cálculos de cargas, oferendas, companheiros e conjuntos de armas. Consulte a [cobertura da liga atual](docs/league-coverage.md) (em inglês) para ver as mecânicas suportadas e os limites restantes.
+A versão 0.10 acrescenta ataques copiados pelo Spirit Vessel, modificadores de feras domadas, mecânicas do Martial Artist, regras de Leech e Impale do PoE2 e cenários de combate limitados para cargas e Mountain’s Teachings. As [premissas explícitas de cálculo](docs/calculation-assumptions.md) valem igualmente para a build original e os equipamentos candidatos. Consulte a [cobertura da liga](docs/league-coverage.md) para o escopo verificado e as limitações restantes (em inglês).
 
-**Códigos PoB e XML bruto ficam fora do MCP e do contexto do modelo.** O serviço privado recebe dados do Ninja ou referências a anexos do ChatGPT. Não é necessário enviar arquivos ao servidor físico. Somente o processo privado lê os arquivos; o ChatGPT recebe IDs, números validados e status. Nunca cole um código PoB no chat. [Limite de dados](docs/pob-boundary.md).
+**O MCP nunca retorna códigos PoB ou XML bruto.** O serviço privado de importação e o processo PoB tratam os dados originais; o ChatGPT recebe resumos limitados, IDs, números validados e status. Não é necessário enviar arquivos ao servidor físico. Nunca cole um código PoB no chat. O processamento de anexos pelo próprio ChatGPT está fora do controle do plugin. [Limite de dados](docs/pob-boundary.md).
 
 ## Início rápido
 

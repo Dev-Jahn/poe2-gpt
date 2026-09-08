@@ -8,6 +8,34 @@ local function row(key, status, metrics, inputs)
  return { mechanic = key, status = status, metrics = array(metrics), required_inputs = array(inputs) }
 end
 function M.register() end -- All parser/calculator patches are installed at image build.
+function M.apply_configuration(build, configuration)
+ if not configuration then return false end
+ local changed = false
+ if configuration.natural_order_spirit then
+  build.configTab.input.companionNaturalOrderSpirit = configuration.natural_order_spirit
+  changed = true
+ end
+ for _, state in ipairs(configuration.captured_beast_mods or { }) do
+  local group = build.skillsTab.socketGroupList[state.skill_group]
+  assert(group, 'companion_configuration_group_invalid')
+  local matches = { }
+  for _, gem in ipairs(group.gemList) do
+   local effect = gem.gemData and gem.gemData.grantedEffect
+   if gem.skillId == 'SummonBeastPlayer' or effect and effect.id == 'SummonBeastPlayer' then matches[#matches + 1] = gem end
+  end
+  assert(#matches == 1, 'companion_configuration_skill_invalid')
+  local gem, entries = matches[1], { }
+  for _, id in ipairs(state.mod_ids) do
+   assert(build.data.tamedBeastMods[id], 'companion_configuration_modifier_invalid')
+   entries[#entries + 1] = { modId = id, enabled = true }
+  end
+  assert(#entries <= 4, 'companion_configuration_modifier_limit')
+  gem.tamedBeastModList = entries
+  gem.companionCapturedModsComplete = state.complete == true
+  changed = true
+ end
+ return changed
+end
 function M.inspect(build, env, out)
  local mechanics, issues = array(), array()
  local function issue(code) issues[#issues + 1] = { code = code } end
@@ -61,6 +89,7 @@ function M.inspect(build, env, out)
  local limit = env.modDB:Flag(nil, 'CompanionLimitTwo') and 2 or 1
  local active, exempt, unique, seenInstances, types = 0, 0, 0, { }, { }
  local unknown, violation, sawBeast, unverifiedBeasts = false, false, false, 0
+ local configuredBeasts, appliedBeastMods, unsupportedBeastMods = 0, 0, 0
  for _, skill in ipairs(env.player.activeSkillList or { }) do
   local effect = skill.activeEffect
   local flags = env.mode == 'CALCS' and effect.statSetCalcs.skillFlags or effect.statSet.skillFlags
@@ -74,8 +103,25 @@ function M.inspect(build, env, out)
     sawBeast = true
     identity = skill.minion and skill.minion.type
     if not identity or not build.data.minions[identity] then unknown = true
-    elseif skill.minion.minionData.companionUnique then unique = unique + 1
-    else unverifiedBeasts = unverifiedBeasts + 1 end
+    else
+     local isUnique = skill.minion.minionData.companionUnique
+     if isUnique then unique = unique + 1 end
+     if not isUnique or effect.srcInstance.tamedBeastModList then
+     local applied, missing, present = calcs.companionBeastModState(env, skill)
+     appliedBeastMods = appliedBeastMods + #applied
+     unsupportedBeastMods = unsupportedBeastMods + missing
+     local enabledEntries = 0
+     for _,entry in ipairs(effect.srcInstance.tamedBeastModList or {}) do
+      if entry.enabled ~= false then enabledEntries = enabledEntries + 1 end
+     end
+     -- Complete imported modifiers can still have unimplemented calculations.
+     -- Do not ask the user to provide the same already verified data again.
+     local completeInput = present and effect.srcInstance.companionCapturedModsComplete ~= false
+      and enabledEntries <= 4 and enabledEntries == #applied
+     if completeInput then configuredBeasts = configuredBeasts + 1
+     else unverifiedBeasts = unverifiedBeasts + 1 end
+     end
+    end
    end
    if id == 'WildProtectorPlayer' then
     exempt = exempt + 1
@@ -86,9 +132,11 @@ function M.inspect(build, env, out)
    end
   end
  end
- if unverifiedBeasts > 0 then
-  mechanics[#mechanics + 1] = row('tamed_beast_modifiers', 'requires_configuration', { metric('unverified_tamed_beasts', unverifiedBeasts) }, { 'captured_beast_modifiers' })
-  issue('missing_companion_data')
+ if unverifiedBeasts + configuredBeasts > 0 then
+  local status = unverifiedBeasts == 0 and (unsupportedBeastMods == 0 and 'calculated' or 'partial') or appliedBeastMods > 0 and 'partial' or 'requires_configuration'
+  mechanics[#mechanics + 1] = row('tamed_beast_modifiers', status, { metric('unverified_tamed_beasts', unverifiedBeasts), metric('configured_tamed_beasts', configuredBeasts), metric('captured_beast_modifiers_applied', appliedBeastMods), metric('captured_beast_modifiers_unimplemented', unsupportedBeastMods) }, unverifiedBeasts > 0 and { 'captured_beast_modifiers' } or { })
+  if unverifiedBeasts > 0 then issue('missing_companion_data') end
+  if unsupportedBeastMods > 0 then issue('unsupported_companion_mechanic') end
  end
  if not unlimited and active > limit then issue('companion_limit_exceeded'); violation = true end
  if unique > 1 then issue('unique_companion_limit_exceeded'); violation = true end
@@ -105,13 +153,22 @@ function M.inspect(build, env, out)
   local inputs = { }
   if unique > 0 then
    metrics[#metrics + 1] = metric('unique_tamed_beast_movement_speed_increase', 30)
-   inputs[1] = 'azmeri_spirit'
-   issue('unsupported_companion_mechanic')
+   local spirit = build.configTab.input.companionNaturalOrderSpirit
+   if spirit == 'none' then status = 'calculated' -- explicit no-possession scenario retains the passive's movement bonus
+   else
+    local known = { owl = true, serpent = true, primate = true, bear = true, boar = true, ox = true, wolf = true, stag = true, cat = true }
+    if known[spirit] then status = 'partial'; metrics[#metrics + 1] = metric('natural_order_spirit_configured', 1)
+    else inputs[1] = 'azmeri_spirit' end
+    issue('unsupported_companion_mechanic') -- periodic spirit animals are not the beast's own attack
+   end
   elseif unknown and sawBeast then issue('companion_identity_unverified') end
   mechanics[#mechanics + 1] = row('natural_order', status, metrics, inputs)
  end
  local gold = env.modDB:Sum('INC', nil, 'GoldQuantity')
  if gold ~= 0 then mechanics[#mechanics + 1] = row('economy_effects', 'calculated', { metric('gold_quantity_increase', gold) }) end
+ if env.minion and out.Minion and (out.Minion.ArmourBreakPerHit or 0) > 0 then
+  mechanics[#mechanics + 1] = row('companion_hit_effects', 'calculated', { metric('companion_armour_break_per_hit', out.Minion.ArmourBreakPerHit) })
+ end
  return mechanics, issues
 end
 return M

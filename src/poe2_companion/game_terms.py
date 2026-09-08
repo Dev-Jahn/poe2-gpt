@@ -76,21 +76,22 @@ def localize_engine_result(value):
     calculation = getattr(value, "calculation", value)
     skills = []
     for snapshot in (calculation.baseline, calculation.result):
-        if snapshot is not None and snapshot.selected_skill is not None:
+        if snapshot is not None and snapshot.selected_skill is not None and not snapshot.selected_skill_labels_truncated:
             skill = snapshot.selected_skill
-            labels = name_fields(getattr(skill, "gem_name", None) or skill.name)
+            labels = name_fields(getattr(skill, "gem_name", None) or skill.name or skill.skill_id)
             skill.name_ko = labels["name_ko"]
             skill.name_source_ko = labels["name_source_ko"]
-            skills.append(skill)
+            skills.append((snapshot,skill))
     try:
         return bounded_dto(value)
     except BuildError:
         # Numeric results and issue counts take precedence over optional labels.
-        for skill in skills:
+        for snapshot,skill in skills:
             skill.name_source_ko = None
+            snapshot.selected_skill_labels_truncated = True
         try:
             return bounded_dto(value)
         except BuildError:
-            for skill in skills:
+            for snapshot,skill in skills:
                 skill.name_ko = None
             return bounded_dto(value)

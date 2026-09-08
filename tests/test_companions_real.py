@@ -29,6 +29,17 @@ assert(not __mainObject__.promptMsg, __mainObject__.promptMsg)
 local module = dofile(input.module)
 module.register()
 loadBuildFromXML(input.xml, '')
+if input.configuration and input.configuration ~= json.null then
+ module.apply_configuration(build, input.configuration)
+ build.buildFlag = true; runCallback('OnFrame')
+end
+local imported_ids = {}
+if input.beast_properties and input.beast_properties ~= json.null then
+ local entries = build.importTab:ParseTamedBeastProperties(input.beast_properties)
+ for _, entry in ipairs(entries or {}) do imported_ids[#imported_ids+1] = entry.modId or 'unknown' end
+ build.skillsTab.socketGroupList[1].gemList[1].tamedBeastModList = entries
+ build.buildFlag = true; runCallback('OnFrame')
+end
 for _, id in ipairs(input.tree_nodes or {}) do
  local node = assert(build.spec.nodes[id])
  node.alloc = true; node.isGrantedPassive = nil; node.isFreeAllocate = nil
@@ -37,7 +48,7 @@ end
 if #(input.tree_nodes or {}) > 0 then
  build.buildFlag = true; runCallback('OnFrame')
 end
-assert(not __mainObject__.promptMsg)
+assert(not __mainObject__.promptMsg, __mainObject__.promptMsg)
 local env, output = build.calcsTab.mainEnv, build.calcsTab.mainOutput
 local mechanics, issues = module.inspect(build, env, output)
 local mirrors = 0
@@ -62,16 +73,33 @@ life=output.Life, dps=output.CombinedDPS, spirit=output.SpiritUnreserved,
 offering_life=env.player.companionOfferingLifeList,
 minion_life=output.Minion and output.Minion.Life,
 minion_speed=output.Minion and output.Minion.MovementSpeedMod,
+minion_dps=output.Minion and output.Minion.CombinedDPS,
+minion_armour=output.Minion and output.Minion.Armour,
+minion_evasion=output.Minion and output.Minion.Evasion,
+minion_fire_resist=output.Minion and output.Minion.FireResist,
+minion_fire_max=env.minion and env.minion.modDB:Sum('BASE', nil, 'FireResistMax'),
+minion_poison_chance=output.Minion and output.Minion.PoisonChance,
+minion_speed_stat=env.minion and env.minion.modDB:Sum('INC', nil, 'Speed'),
+minion_damage_stat=env.minion and env.minion.modDB:Sum('INC', nil, 'Damage'),
+minion_damage_taken_stat=env.minion and env.minion.modDB:Sum('INC', nil, 'DamageTaken'),
+minion_extra_fire=env.minion and env.minion.modDB:Sum('BASE', nil, 'DamageGainAsFire'),
+minion_energy_shield=output.Minion and output.Minion.EnergyShield,
+minion_average_hit=output.Minion and output.Minion.AverageDamage,
+minion_armour_break=output.Minion and output.Minion.ArmourBreakPerHit,
+minion_stun_increase=env.minion and env.minion.modDB:Sum('INC', nil, 'EnemyHeavyStunBuildup'),
+companion_recoup_percent=env.player.mainSkill.skillData.companionRedirectedDamageRecoupForOwner or 0,
+player_recoup_percent=env.modDB:Sum('BASE', nil, 'LifeRecoup'),
+imported_ids=imported_ids,
 companion_life=env.modDB:Sum('BASE', nil, 'TotalCompanionLife'), wolf_limit=output.WolfLimit,
 grant_mirrors=mirrors, companion_skills=companionSkills}))
 ''')
 
-    def calculate(root, parse=(), *, tree_nodes=()):
+    def calculate(root, parse=(), *, tree_nodes=(), configuration=None, beast_properties=None):
         env = dict(os.environ)
         env['LUA_PATH'] = str(engine / 'runtime/lua/?.lua') + ';' + str(engine / 'runtime/lua/?/init.lua') + ';;'
         result = subprocess.run([os.environ.get('POE2_TEST_LUAJIT', 'luajit'), str(script)],
                                 cwd=engine / 'src', env=env, capture_output=True,
-                                input=json.dumps({'xml': ET.tostring(root, encoding='unicode'), 'module': str(MODULE), 'parse': list(parse), 'tree_nodes': list(tree_nodes)}),
+                                input=json.dumps({'xml': ET.tostring(root, encoding='unicode'), 'module': str(MODULE), 'parse': list(parse), 'tree_nodes': list(tree_nodes), 'configuration': configuration, 'beast_properties': beast_properties}),
                                 text=True, timeout=30)
         assert result.returncode == 0, result.stderr[-2000:]
         return json.loads(result.stdout)
@@ -239,6 +267,171 @@ def test_real_bonded_gold_requires_bonded_activation(calculate_companions):
     assert 'economy_effects' in rows(active)
     assert rows(active)['economy_effects']['metrics'] == [{'name': 'gold_quantity_increase', 'value': 10}]
     assert active['life'] == inactive['life']
+
+
+def captured_beast(root, *, unique=False):
+    monster = 'Metadata/Monsters/Quadrilla/QuadrillaBossMinion2' if unique else 'Metadata/Monsters/Quadrilla/Quadrilla'
+    ET.SubElement(root.find('Build'), 'BeastCompanion', {'id': monster})
+    gem = skill(root, 'Companion: {0}', 'SummonBeastPlayer', level=20)
+    gem.set('skillMinion', monster)
+    return gem
+
+
+def beast_modifier(gem, mod_id, *, enabled=True):
+    return ET.SubElement(gem, 'TamedBeastMod', {'modId': mod_id, 'enabled': str(enabled).lower()})
+
+
+def natural_order(root, spirit):
+    modifiers(root, ['Tame Beast can capture Unique Beasts', 'Can have up to one Unique Tamed Beast summoned',
+                     'Unique Tamed Beasts have 30% increased movement speed',
+                     'Unique Tamed Beasts are Possessed by random Azmeri Spirits, changing every 20 seconds'])
+    config = root.find('Config')
+    if config is None:
+        config = ET.SubElement(root, 'Config')
+    ET.SubElement(config, 'Input', {'name': 'companionNaturalOrderSpirit', 'string': spirit})
+
+
+def test_real_captured_modifiers_change_only_selected_beast(calculate_companions):
+    root = synthetic()
+    gem = captured_beast(root)
+    baseline = calculate_companions(root)
+    beast_modifier(gem, 'PlayerMonsterDamageGainedAsFire1')
+    beast_modifier(gem, 'PlayerMonsterFireResistance1')
+    applied = calculate_companions(root)
+    assert applied['minion_extra_fire'] == 40
+    assert applied['minion_dps'] > baseline['minion_dps']
+    assert applied['minion_fire_resist'] > baseline['minion_fire_resist']
+    assert applied['minion_fire_max'] == baseline['minion_fire_max'] + 10
+    assert applied['life'] == baseline['life']
+    assert rows(applied)['tamed_beast_modifiers']['status'] == 'calculated'
+    gem.find('TamedBeastMod').set('enabled', 'false')
+    disabled = calculate_companions(root)
+    assert disabled['minion_extra_fire'] == 0
+    assert disabled['minion_dps'] == baseline['minion_dps']
+
+
+def test_real_captured_unknown_duplicate_and_excess_remain_unverified(calculate_companions):
+    root = synthetic()
+    gem = captured_beast(root)
+    baseline = calculate_companions(root)
+    beast_modifier(gem, 'UnknownPrivateMarker')
+    unknown = calculate_companions(root)
+    assert unknown['minion_dps'] == baseline['minion_dps']
+    assert rows(unknown)['tamed_beast_modifiers']['status'] == 'requires_configuration'
+    assert 'UnknownPrivateMarker' not in json.dumps(unknown)
+    gem.remove(gem.find('TamedBeastMod'))
+    for _ in range(2): beast_modifier(gem, 'PlayerMonsterDamageGainedAsFire1')
+    duplicate = calculate_companions(root)
+    assert duplicate['minion_extra_fire'] == 40
+    assert rows(duplicate)['tamed_beast_modifiers']['status'] == 'partial'
+    for _ in range(3): beast_modifier(gem, 'PlayerMonsterCriticalStrikeChance1')
+    excess = calculate_companions(root)
+    assert excess['minion_dps'] == baseline['minion_dps']
+    assert rows(excess)['tamed_beast_modifiers']['status'] == 'requires_configuration'
+
+
+@pytest.mark.parametrize('spirit', ['bear', 'stag', 'cat', 'serpent', 'owl', 'boar', 'ox', 'wolf', 'primate'])
+def test_real_natural_order_applies_verified_possession_to_unique_only(calculate_companions, spirit):
+    root = synthetic()
+    captured_beast(root, unique=True)
+    natural_order(root, 'unknown')
+    baseline = calculate_companions(root)
+    root.find("./Config/Input[@name='companionNaturalOrderSpirit']").set('string', spirit)
+    changed = calculate_companions(root)
+    assert changed['life'] == baseline['life']
+    assert rows(changed)['natural_order']['status'] == 'partial'  # periodic spirit animals remain separate
+    assert rows(changed)['natural_order']['required_inputs'] == []
+    if spirit == 'bear':
+        assert changed['minion_life'] == pytest.approx(round(baseline['minion_life'] * 1.2), abs=1)
+        assert changed['minion_damage_taken_stat'] == baseline['minion_damage_taken_stat'] - 20
+    elif spirit in ('stag', 'cat', 'wolf'):
+        assert changed['minion_speed_stat'] == baseline['minion_speed_stat'] + 30
+        assert changed['minion_dps'] > baseline['minion_dps']
+    elif spirit in ('owl', 'serpent', 'primate'):
+        assert changed['minion_damage_stat'] == baseline['minion_damage_stat'] + 80
+    elif spirit == 'boar':
+        assert changed['minion_extra_fire'] == 20
+    elif spirit == 'ox':
+        assert changed['minion_armour'] == pytest.approx(baseline['minion_armour'] * 1.6, abs=1)
+
+
+def test_real_natural_order_cannot_buff_normal_beast(calculate_companions):
+    root = synthetic()
+    captured_beast(root)
+    natural_order(root, 'unknown')
+    baseline = calculate_companions(root)
+    root.find("./Config/Input[@name='companionNaturalOrderSpirit']").set('string', 'bear')
+    changed = calculate_companions(root)
+    assert changed['minion_life'] == baseline['minion_life']
+    assert rows(changed)['natural_order']['status'] == 'inactive'
+
+
+def test_real_captured_poedb_extensions_and_declared_completeness(calculate_companions):
+    root = synthetic()
+    captured_beast(root)
+    baseline = calculate_companions(root)
+    state = {'captured_beast_mods': [{'skill_group': 1, 'mod_ids': ['PlayerMonsterExtraEnergyShield1', 'PlayerMonsterStunDamageIncrease1'], 'complete': True}]}
+    changed = calculate_companions(root, configuration=state)
+    assert changed['minion_energy_shield'] == pytest.approx(changed['minion_life'] * .25, abs=1)
+    assert changed['minion_stun_increase'] == baseline['minion_stun_increase'] + 100
+    assert changed['life'] == baseline['life']
+    assert rows(changed)['tamed_beast_modifiers']['status'] == 'calculated'
+    state['captured_beast_mods'][0]['complete'] = False
+    partial = calculate_companions(root, configuration=state)
+    assert partial['minion_energy_shield'] == changed['minion_energy_shield']
+    assert rows(partial)['tamed_beast_modifiers']['status'] == 'partial'
+
+
+def test_real_character_api_modifier_ingestion_is_bounded(calculate_companions):
+    root = synthetic()
+    captured_beast(root)
+    result = calculate_companions(root, beast_properties=[{'values': [['[PlayerMonsterDamageGainedAsFire1|Extra Fire Damage]\nExtra Crits\nPRIVATE_UNSUPPORTED_TEXT', 0]]}])
+    assert result['imported_ids'] == ['PlayerMonsterDamageGainedAsFire1', 'PlayerMonsterCriticalStrikeChance1', 'unknown']
+    assert result['minion_extra_fire'] == 40
+    assert rows(result)['tamed_beast_modifiers']['status'] == 'partial'
+    assert 'PRIVATE_UNSUPPORTED_TEXT' not in json.dumps(result)
+
+
+def test_real_romira_recoup_is_companion_scoped(calculate_companions):
+    root = synthetic()
+    gem = skill(root, 'Wild Protector', 'WildProtectorPlayer')
+    baseline = calculate_companions(root)
+    group = root.find('./Skills/SkillSet/Skill')
+    support = ET.SubElement(group, 'Gem', {'skillId': 'SupportRomirasRequitalPlayer', 'nameSpec': "Romira's Requital", 'level': '1', 'quality': '0', 'enabled': 'true'})
+    supported = calculate_companions(root)
+    assert supported['companion_recoup_percent'] == 200
+    assert supported['minion_life'] == pytest.approx(round(baseline['minion_life'] * .7), abs=1)
+    assert supported['player_recoup_percent'] == baseline['player_recoup_percent']
+    support.set('enabled', 'false')
+    assert calculate_companions(root)['companion_recoup_percent'] == 0
+
+
+def test_real_maul_armour_break_is_based_on_actual_hit(calculate_companions):
+    root = synthetic()
+    skill(root, 'Wild Protector', 'WildProtectorPlayer', level=20)
+    baseline = calculate_companions(root)
+    assert baseline['minion_armour_break'] == pytest.approx(baseline['minion_average_hit'] * .05)
+    assert rows(baseline)['companion_hit_effects']['status'] == 'calculated'
+    modifiers(root, ['Minions deal 100% increased Damage'])
+    changed = calculate_companions(root)
+    assert changed['minion_armour_break'] == pytest.approx(changed['minion_average_hit'] * .05)
+    assert changed['minion_armour_break'] > baseline['minion_armour_break']
+
+
+def test_real_captured_armour_break_does_not_count_extra_elemental_damage(calculate_companions):
+    root = synthetic()
+    gem = captured_beast(root)
+    beast_modifier(gem, 'PlayerMonsterArmourPenetration1')
+    physical = calculate_companions(root)
+    assert physical['minion_armour_break'] == pytest.approx(physical['minion_average_hit'] * 10)
+    beast_modifier(gem, 'PlayerMonsterDamageGainedAsFire1')
+    elemental = calculate_companions(root)
+    assert elemental['minion_average_hit'] > physical['minion_average_hit']
+    assert elemental['minion_armour_break'] == pytest.approx(physical['minion_armour_break'])
+    group = root.find('./Skills/SkillSet/Skill')
+    ET.SubElement(group, 'Gem', {'skillId': 'SupportExploitWeaknessPlayer', 'nameSpec': 'Exploit Weakness', 'level': '1', 'quality': '0', 'enabled': 'true'})
+    prohibited = calculate_companions(root)
+    assert prohibited['minion_armour_break'] == 0
 
 
 def test_real_item_grant_mirror_is_not_a_second_companion(calculate_companions):

@@ -4,7 +4,7 @@
 
 Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**: Währungspreise, Ausrüstungssuche auf der offiziellen Handelsseite, private Path-of-Building-Berechnungen und Ausrüstungsverbesserungen innerhalb eines Budgets.
 
-**Status: 0.9.0, experimentell.** Bis zu 26 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
+**Status: 0.10.0, experimentell.** Bis zu 26 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
 
 ## Funktionen
 
@@ -20,9 +20,9 @@ Standardliga: **Forbidden Rites**. Standardpreise: **Exalted Orbs pro Gegenstand
 
 Die Engine kombiniert eine feste PoB2-Entwicklungsversion mit hashgeprüften Daten für 0.5.5. Spieler-DPS, DPS des ausgewählten Begleiters und ausdrücklich konfigurierter FullDPS werden getrennt ausgewiesen. Unbekannte passive Knoten und nicht berechnete Effekte verhindern bestätigte Upgrade-Empfehlungen. [Engine-Kompatibilität](docs/pob-engine.md).
 
-Version 0.9 erweitert die Berechnung von Ladungen, Opferungen, Begleitern und Waffensätzen. Unterstützte Mechaniken und verbleibende Grenzen stehen in der [Übersicht zur aktuellen Liga](docs/league-coverage.md) (Englisch).
+Version 0.10 ergänzt kopierte Spirit-Vessel-Angriffe, Eigenschaften gezähmter Bestien, Martial-Artist-Mechaniken, die PoE2-Regeln für Leech und Impale sowie begrenzte Kampfszenarien für Ladungen und Mountain’s Teachings. Explizite [Berechnungsannahmen](docs/calculation-assumptions.md) gelten für den Ausgangsbuild und alle Ausrüstungskandidaten. Die [Ligaübersicht](docs/league-coverage.md) beschreibt den geprüften Umfang und verbleibende Grenzen (Englisch).
 
-**PoB-Codes und XML-Rohdaten bleiben außerhalb von MCP und Modellkontext.** Der private Importdienst verarbeitet Ninja-Daten oder ChatGPT-Dateireferenzen. Kein Dateiimport auf dem Serverhost erforderlich. Nur der Worker liest private Dateien; ChatGPT erhält IDs, geprüfte Zahlen und Statuswerte. Niemals einen PoB-Code in den Chat einfügen. [Datengrenze](docs/pob-boundary.md).
+**MCP gibt niemals PoB-Codes oder XML-Rohdaten zurück.** Der private Importdienst und Worker verarbeiten die Originaldaten; ChatGPT erhält begrenzte Zusammenfassungen, IDs, geprüfte Zahlen und Statuswerte. Kein Dateiimport auf dem Serverhost erforderlich. Niemals einen PoB-Code in den Chat einfügen. Die eigene Verarbeitung von Anhängen durch ChatGPT liegt außerhalb der Kontrolle des Plugins. [Datengrenze](docs/pob-boundary.md).
 
 ## Schnellstart
 

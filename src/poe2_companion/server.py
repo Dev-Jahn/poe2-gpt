@@ -173,6 +173,8 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             "Ninja refresh requires a separate per-user Ninja session on the server; ChatGPT OAuth is not Ninja authentication. Only invoke refresh_character when the user requests a refresh. "
             "A saved build projection is not a live character or a recalculated PoB result. "
             "When the private PoB worker is enabled, recalculate_build and validate_build_equipment compute the saved active configuration with the pinned PoE2 PoB engine. "
+            "Optional configuration fields are explicit hypothetical assumptions, not observed character state; report configuration_fields. Never enable favorable buffs without a stated assumption. "
+            "combat_scenario is a bounded user-supplied event schedule, separate from snapshot DPS. Report its assumptions and any truncation; never turn marginal charge probabilities into rotation DPS. "
             "Use selected_skill.actor to distinguish player and minion metrics. MinionTotalDPS and MinionCombinedDPS describe the selected minion, not all companions combined. "
             "FullDPS is absent when full_dps_enabled=false; this means unconfigured, not zero damage. Missing metrics must never be zero-filled. "
             "Prefer recommend_pob_trade_upgrades for actual character-stat optimization; its pass/fail/indeterminate validation is scoped to supported engine rules and a conservative equip order, not a live-game guarantee. "
@@ -281,7 +283,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def recalculate_build(request: EngineRequest) -> EngineCalculation:
-            """Recalculate an imported build using real PoE2 PoB on the private server. Only build_id accepted. Returns bounded character stats, active equipment IDs and requirement issues. Uses saved skill, tree, weapon set and configuration; no live character lookup or raw payload."""
+            """Recalculate an imported build using real PoE2 PoB on the private server. Supply build_id and optional typed configuration assumptions or bounded combat_scenario. Returns character stats, mechanics and requirement issues. Defaults to saved skill, tree, weapon set and configuration; supplied assumptions are identified separately. No live character lookup or raw payload."""
             return localize_engine_result(await run(engine.calculate(request)))
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)

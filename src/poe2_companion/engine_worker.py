@@ -24,6 +24,7 @@ from starlette.routing import Route
 
 from .builds import DTO, read_regular_file
 from .pob_io import MAX_CODE_BYTES, decode_pob, project_pob
+from .beast_metadata import MAX_BEAST_METADATA_BYTES, validate_beast_metadata
 from .engine_models import ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError, EngineSlot, BuildID, EngineSnapshot, SAFE_ENGINE_ERRORS
 
 MAX_REQUEST = 2 * 1024 * 1024
@@ -97,6 +98,19 @@ class PrivateEngine:
             node_ids=next((t.node_ids for t in trees if t.index==active-1),[])
             job={'xml':xml.decode('utf-8-sig'),'expected_node_ids':node_ids,
                  'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
+            metadata_path=self.private_dir/(request.build_id+'.beasts.json')
+            try:
+                metadata_path.lstat()
+            except FileNotFoundError:
+                metadata=None
+            else:
+                metadata=read_regular_file(metadata_path,MAX_BEAST_METADATA_BYTES)
+            if metadata is not None:
+                job['beast_metadata']=validate_beast_metadata(metadata,code)
+            if request.configuration is not None:
+                job['configuration']=request.configuration.model_dump(exclude_none=True)
+            if request.combat_scenario is not None:
+                job['combat_scenario']=request.combat_scenario.model_dump(exclude_none=True)
         except EngineError:
             raise
         except Exception:

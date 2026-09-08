@@ -10,6 +10,13 @@ local stonefist = dofile(companionRoot..'stonefist.lua')
 local companions = dofile(companionRoot..'companions.lua')
 local skillCoverage = dofile(companionRoot..'skill_coverage.lua')
 local weaponContext = dofile(companionRoot..'weapon_context.lua')
+local martialMechanics = dofile(companionRoot..'martial_mechanics.lua')
+local spiritVessel = dofile(companionRoot..'spirit_vessel.lua')
+local damageRules = dofile(companionRoot..'damage_rules.lua')
+local hitBuffs = dofile(companionRoot..'hit_buffs.lua')
+local curseMechanics = dofile(companionRoot..'curse_mechanics.lua')
+local beastMetadata = dofile(companionRoot..'beast_metadata.lua')
+local beastAuras = dofile(companionRoot..'beast_auras.lua')
 stonefist.register()
 companions.register()
 -- Exact crafting-only lines in the pinned 0.5.5 data affect future item
@@ -39,7 +46,44 @@ local function load()
  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
  loadBuildFromXML(job.xml, '')
  assert(build and build.savers and build.targetVersion==liveTargetVersion and build.calcsTab and build.calcsTab.mainOutput and not __mainObject__.promptMsg)
+ if beastMetadata.apply(build,job.beast_metadata) then
+  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
+  refresh()
+ end
  if weaponContext.activate(build) then refresh() end
+ local configuration=job.configuration
+ if configuration then
+  local aliases={ghost_shroud_lost_recently='conditionLostGhostShroudRecently',
+   refutation_active='conditionRefutationActive',refutation_ward_spent='refutationWardSpent',
+   tempest_bell_prior_hits='tempestBellPriorHits',tempest_bell_knockback_metres='tempestBellKnockbackMetres',
+   enemy_maimed='conditionEnemyMaimed',enemy_blinded='conditionEnemyBlinded',
+   wind_dancer_stages='windDancerStacks',impale_magnitude='companionImpaleMagnitude',
+   leech_resistance_percent='companionLeechResistance',onslaught_active='buffOnslaught',
+   thrill_of_the_kill_active='companionThrillOfTheKillActive',
+   culling_strike_recent_cull='companionCullingStrikeRecentCull'}
+  if configuration.tempest_bell_ailment_types then
+   local selected={}
+   for _,element in ipairs(configuration.tempest_bell_ailment_types) do selected[element]=true end
+   for _,element in ipairs({'Fire','Cold','Lightning'}) do
+    build.configTab.input['conditionTempestBell'..element..'Ailment']=selected[element:lower()] or false
+   end
+  end
+  for key,name in pairs(aliases) do
+   if configuration[key]~=nil then build.configTab.input[name]=configuration[key] end
+  end
+  companions.apply_configuration(build,configuration)
+  curseMechanics.apply_configuration(build,configuration)
+  beastAuras.apply_configuration(build,configuration)
+  if stonefist.apply_configuration then stonefist.apply_configuration(build,configuration) end
+  build.configTab:BuildModList()
+  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
+  refresh()
+  if configuration.spirit_vessel_skill_id then
+   assert(spiritVessel.configure(build,configuration.spirit_vessel_skill_id))
+   if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
+   refresh()
+  end
+ end
 end
 local function slotName(key)
  local name = slots[key]
@@ -195,13 +239,28 @@ local function inspect(expected, order, sequenceOk)
  end
  if config.ignoreJewelLimits or config.ignoreItemDisablers then issue(issues,'ignored_limits') end
  if sequenceOk==false then issue(issues,'equip_sequence_unverified') end
- for _,module in ipairs({stonefist,companions}) do
-  local moduleMechanics,moduleIssues=module.inspect(build,env,out)
+ for _,module in ipairs({stonefist,companions,martialMechanics,spiritVessel,damageRules,hitBuffs,curseMechanics,beastAuras}) do
+  local moduleMechanics,moduleIssues=module.inspect(build,env,out,job.configuration)
   for _,entry in ipairs(moduleMechanics) do mechanics[#mechanics+1]=entry end
   for _,entry in ipairs(moduleIssues) do issues[#issues+1]=entry end
  end
  for _,entry in ipairs(skillCoverage.inspect(build)) do issues[#issues+1]=entry end
  for _,entry in ipairs(weaponContext.inspect(build)) do issues[#issues+1]=entry end
+ -- A new projection module must not accidentally certify an incomplete
+ -- calculation merely because it omitted a parallel requirement issue.
+ local missingAssumptions={}
+ for _,entry in ipairs(issues) do
+  if entry.code=='missing_combat_assumption' then missingAssumptions[entry.skill_id or '']=true end
+ end
+ for _,entry in ipairs(mechanics) do
+  if entry.status=='partial' or entry.status=='unsupported' or entry.status=='requires_configuration' then
+   local key=entry.skill_id or ''
+   if not missingAssumptions[key] then
+    issues[#issues+1]={code='missing_combat_assumption',skill_id=entry.skill_id}
+    missingAssumptions[key]=true
+   end
+  end
+ end
  local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unknown_rune=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true,
   unsupported_item_transformation=true,stonefist_passive_missing=true,charge_sustain_unverified=true,ally_charge_state_unverified=true,conditional_recoup_unverified=true,companion_identity_unverified=true,unsupported_companion_mechanic=true,missing_companion_data=true,missing_combat_assumption=true,unsupported_weapon_context=true,granted_skill_source_unresolved=true}
  local status='pass'
@@ -219,7 +278,8 @@ local function inspect(expected, order, sequenceOk)
  while #uniqueIssues>16 do table.remove(uniqueIssues) end
  local mechanicCount=#mechanics
  while #mechanics>16 do table.remove(mechanics) end
- return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics}
+ local combat=job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
+ return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
 end
 local function scenario(changes)
  load()
@@ -287,6 +347,11 @@ local function scenario(changes)
  for _,k in ipairs(slotKeys) do selectItem(slotName(k),originals[k]);expected[k]=originals[k] end
  for _,c in ipairs(changes) do selectItem(slotName(c.slot),imported[c.slot]);expected[c.slot]=imported[c.slot] end
  refresh()
+ if job.configuration and job.configuration.spirit_vessel_skill_id then
+  assert(spiritVessel.configure(build,job.configuration.spirit_vessel_skill_id))
+  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
+  refresh()
+ end
  return inspect(expected,order,success)
 end
 load()

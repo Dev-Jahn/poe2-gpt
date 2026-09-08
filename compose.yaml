@@ -7,6 +7,6 @@ services:
     volumes:
       - prices:/home/companion/.cache/poe2-companion
     environment:
-      POE2_USER_AGENT: "poe2-companion/0.9.0 (contact: https://github.com/Dev-Jahn)"
+      POE2_USER_AGENT: "poe2-companion/0.10.0 (contact: https://github.com/Dev-Jahn)"
 volumes:
   prices:

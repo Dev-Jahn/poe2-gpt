@@ -11,6 +11,10 @@ The optional worker downloads pinned PathOfBuildingCommunity/PathOfBuilding-PoE2
 LuaJIT, and luautf8 sources during image construction. Their own licenses apply.
 The installers preserve the PoB LICENSE and Lua runtime license files in the
 image. No upstream engine checkout is vendored in this repository.
+A narrow 68-record TamedBeastMods catalog from reviewed upstream PR #2147
+is bundled under scripts/data, with its upstream MIT license and provenance.
+Canonical aliases derived from the pinned gem/spectre data support private
+metadata matching; these game identifiers remain Grinding Gear Games content.
 
 Trade request formats were studied in Exiled Exchange 2 and Sidekick. The
 adapter is independently implemented; it does not bundle their source code.

@@ -154,3 +154,6 @@ end
 \t\t\t\ttotalLife = totalLife + poolLife
 \t\t\t\tt_insert(lifeList, { name = minion.minionData and minion.minionData.name or activeSkill.activeEffect.grantedEffect.name, life = poolLife })'''
     _replace(perform, anchor, replacement)
+
+    from patch_companion_states import patch_companion_states
+    patch_companion_states(destination)
