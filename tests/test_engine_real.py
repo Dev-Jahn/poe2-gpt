@@ -187,3 +187,63 @@ async def test_real_engine_through_mcp_sdk_without_socket(real_engine):
             assert len(json_dump(result.structuredContent).encode())<=8192
     finally:
         await client.close();await scout.close()
+
+
+def save_synthetic(engine, root):
+    (engine.private_dir/(BID+'.pob')).write_bytes(base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))))
+
+
+async def test_real_unknown_nodes_and_modern_custom_modifiers(real_engine):
+    root=ET.fromstring(FIXTURE.read_bytes())
+    root.find('./Tree/Spec').set('nodes','47175,2147483647')
+    save_synthetic(real_engine,root)
+    unknown=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
+    assert unknown.validation=='indeterminate'
+    assert any(i.code=='unknown_passive' for i in unknown.issues)
+    root=ET.fromstring(FIXTURE.read_bytes())
+    block=root.find('./Config/ConfigSet/CustomModifierBlock')
+    block.text='+100 to maximum Life'
+    save_synthetic(real_engine,root)
+    enabled=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
+    assert enabled.validation=='indeterminate'
+    assert any(i.code=='custom_modifiers_present' for i in enabled.issues)
+    block.set('enabled','false')
+    save_synthetic(real_engine,root)
+    disabled=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
+    assert disabled.validation=='pass'
+    assert val(enabled,'Life')>val(disabled,'Life')
+
+
+async def test_real_minion_metrics_and_full_dps_scope(real_engine):
+    root=ET.fromstring(FIXTURE.read_bytes())
+    skill=ET.SubElement(root.find('./Skills/SkillSet'),'Skill',{'enabled':'true','mainActiveSkill':'1','includeInFullDPS':'false','label':MARKER})
+    ET.SubElement(skill,'Gem',{'nameSpec':'Skeletal Arsonist','gemId':'Metadata/Items/Gems/SkillGemSkeletalArsonist',
+        'skillId':'SummonSkeletalArsonistsPlayer','level':'1','quality':'0','enabled':'true'})
+    save_synthetic(real_engine,root)
+    result=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
+    assert result.selected_skill.actor=='minion'
+    assert result.selected_skill.skill_id=='SummonSkeletalArsonistsPlayer'
+    assert result.selected_skill.name=='Skeletal Arsonist Minion'
+    assert val(result,'MinionCombinedDPS')>0
+    assert not result.full_dps_enabled
+    assert 'FullDPS' not in {s.name for s in result.stats}
+    assert MARKER not in result.model_dump_json()
+
+
+async def test_real_055_socketed_soul_core_and_unknown_rune(real_engine):
+    body=item('Rusted Cuirass')
+    body['sockets']=[{'type':'rune'}]
+    body['socketedItems']=[{'baseType':'Soul Core of Jiquani','socket':0}]
+    unknown={**body,'socketedItems':[{'baseType':'Unknown Rune','socket':0}]}
+    vitality={**body,'corrupted':True,'socketedItems':[{'baseType':"Atziri's Soul Core of Vitality",'socket':0}]}
+    request=WorkerRequest(build_id=BID,scenarios=[[{'slot':'body_armour','item':body}],
+        [{'slot':'body_armour','item':unknown}],[{'slot':'body_armour','item':vitality}]])
+    result=await real_engine.calculate(request)
+    assert result.results[0].validation=='pass'
+    # 0.5.5 is 5% maximum Life; the previous core granted only 3%.
+    assert val(result.results[0],'Life')==1261  # 1146 base Life * 1.10, rounded by PoB
+    assert result.results[1].validation=='indeterminate'
+    assert any(i.code=='scenario_calculation_failed' for i in result.results[1].issues)
+    assert result.results[2].validation=='pass'
+    # One corrupted equipped item contributes 1% increased Life from this new core.
+    assert val(result.results[2],'Life')==1215

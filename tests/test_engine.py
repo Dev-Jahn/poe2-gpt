@@ -6,7 +6,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 from poe2_companion.engine import EngineClient
-from poe2_companion.engine_models import EngineRequest, CompareRequest, EngineTradeRequest, EngineError, ENGINE_COMMIT
+from poe2_companion.engine_models import EngineRequest, CompareRequest, EngineTradeRequest, EngineError, ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY
 from poe2_companion.engine_worker import PrivateEngine, worker_app
 from poe2_companion.engine_protocol import WorkerRequest, WorkerResult, private_trade_item
 from poe2_companion.server import build_server
@@ -89,8 +89,30 @@ async def test_private_worker_resource_timeout_and_version(tmp_path):
     bid=import_file(raw,tmp_path/'private',tmp_path/'projection')
     source=tmp_path/'source';source.mkdir();(source/'src').mkdir()
     (source/'COMPANION_COMMIT').write_text(ENGINE_COMMIT)
+    (source/'COMPANION_DATA_COMMIT').write_text(ENGINE_DATA_COMMIT)
+    (source/'COMPANION_COMPATIBILITY').write_text(ENGINE_COMPATIBILITY)
     slow=tmp_path/'slow';slow.write_text('#!/bin/sh\nexec /bin/sleep 10\n');slow.chmod(0o700)
     engine=PrivateEngine(tmp_path/'private',source,str(slow),timeout=.05)
     with pytest.raises(EngineError,match='engine_timeout'):await engine.calculate(WorkerRequest(build_id=bid))
     (source/'COMPANION_COMMIT').write_text('wrong')
     with pytest.raises(EngineError,match='engine_version_mismatch'):await engine.calculate(WorkerRequest(build_id=bid))
+
+
+def test_engine_comparison_bounds_diagnostics_without_losing_status_or_counts():
+    from typing import get_args
+    from poe2_companion.engine import bounded_engine_dto
+    from poe2_companion.engine_models import (EngineSnapshot,EngineCalculation,RequirementIssue,EquippedItem,SelectedSkill,EngineSlot)
+    from poe2_companion.builds import STAT_NAMES,PlayerStat
+    stats=[PlayerStat(name=s,value=1e15) for s in sorted(STAT_NAMES)]
+    issues=[RequirementIssue(code='attribute_requirement',slot='body_armour',stat='Int',required=1e15,available=-1e15,passive_node_id=2147483647-i) for i in range(16)]
+    equipped=[EquippedItem(slot=s,saved_item_id=1000000,level_required=100) for s in get_args(EngineSlot)]
+    skill=SelectedSkill(skill_id='A'*120,name='B'*120,gem_name='C'*120,actor='minion')
+    snapshot=EngineSnapshot(stats=stats,issues=issues,issue_count=1000,validation='fail',equipped=equipped,selected_skill=skill,active_weapon_set=2,main_skill_group=10000)
+    value=EngineCalculation(build_id=BID,calculated_at_epoch=1788888888,baseline=snapshot,result=snapshot,deltas=stats)
+    assert len(value.model_dump_json().encode())>8192
+    result=bounded_engine_dto(value)
+    assert len(result.model_dump_json().encode())<=8192
+    for s in (result.baseline,result.result):
+        assert s.issue_count==1000 and s.validation=='fail' and s.issues_truncated
+        assert s.stats==stats and s.equipped==equipped and s.selected_skill==skill
+    assert len(value.baseline.issues)==16  # Don't mutate the private calculation.

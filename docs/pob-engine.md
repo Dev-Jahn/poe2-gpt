@@ -6,17 +6,32 @@ The optional Linux worker uses the upstream headless PoE2 Path of Building engin
 
 | Component | Pin |
 |---|---|
-| PathOfBuilding-PoE2 | `3887ae68a6a6b8bb7b41d1b61998f1aa184201e4` |
+| PathOfBuilding-PoE2 | `fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15` |
+| PoE2 0.5.5 data | `b3282b7a9111ed6c4ec6be643edf0806d7beb675` (37 reviewed data files from open PR #2505) |
+| Companion compatibility | `forbidden-rites-0.5.5-v1` |
 | LuaJIT | `24c20c94e7db195b640854619577441f9b4bc6be` |
 | luautf8 | `0.2.0` |
 
-Installers verify archive SHA-256 digests and retain licenses. Source is downloaded during setup, never auto-updated at runtime. See `scripts/install_pob_engine.py` and `scripts/install_lua_runtime.py` for digests and URLs. A PoB document's `Build.targetVersion=0_1` differs from passive-tree `treeVersion=0_5`; unsupported documents are rejected, and an outdated active tree is excluded from recommendations.
+Installers verify the source archive and each overlaid data file with SHA-256 and retain licenses. Health checks verify both source commits and the compatibility revision. The data snapshot updates Soul Cores, skill/base/modifier data, spectres, trade stat mappings, and the 0.5 passive tree. The 17 new 0.5.5 Soul Cores and existing Soul Core balance changes are included. A narrow importer correction preserves `explicitMods[].flags.desecrated` while retaining legacy modifier arrays. Source is downloaded during setup, never auto-updated at runtime. See `scripts/install_pob_engine.py` and `scripts/install_lua_runtime.py` for digests and URLs. A PoB document's `Build.targetVersion=0_1` differs from passive-tree `treeVersion=0_5`; unsupported documents are rejected, and an outdated active tree is excluded from recommendations.
 
-The integration uses [HeadlessWrapper.lua](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/blob/3887ae68a6a6b8bb7b41d1b61998f1aa184201e4/src/HeadlessWrapper.lua), the upstream [slot validator](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/blob/3887ae68a6a6b8bb7b41d1b61998f1aa184201e4/src/Classes/ItemsTab.lua), and [trade item importer](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/blob/3887ae68a6a6b8bb7b41d1b61998f1aa184201e4/src/Classes/ImportTab.lua).
+The integration uses [HeadlessWrapper.lua](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/blob/fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15/src/HeadlessWrapper.lua), the upstream [slot validator](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/blob/fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15/src/Classes/ItemsTab.lua), and [trade item importer](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/blob/fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15/src/Classes/ImportTab.lua).
+
+## Data coverage and upstream review
+
+This is a versioned community calculation engine, not a promise that every current game mechanic is implemented. The latest upstream release on the review date (2026-09-08) was v0.23.1, and the 0.5.5 export remained an open PR. Only reviewed data files from [PR #2505](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2505) are overlaid; its UI changes are excluded. [PR #2504](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2504) independently covers the Soul Core changes already represented by that export. The importer correction follows [PR #2507](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2507), preserving compatibility with older upstream responses.
+
+Open mechanics PRs require individual validation before inclusion:
+
+- [Way of the Stonefist #2350](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2350) has ambiguous affix matching and midpoint conversion of transformed rolls; it is not applied.
+- [Way of the Mountain #2073](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2073) matches older wording and omits conditional small-hit reduction; it is not applied. [Current Mountain's Teachings mechanics](https://poe2db.tw/us/Mountains_Teachings) require explicit buff state and hit-threshold calculations.
+- [Tamed beast modifiers #2147](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2147) has numerous entries without calculations and incomplete aura behavior; it is not applied.
+- [Runeforged unique variants #2511](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/pull/2511) changes editor/database variant selection and remains unmerged; existing actual item imports use their explicit base and modifier data.
+
+A successful calculation or `pass` means the implemented validation checks passed. It does not establish full mechanical coverage of all upstream skills. Unparsed allocated passives and missing saved passive nodes produce explicit diagnostics instead of silently disappearing.
 
 ## Validation
 
-The worker checks supported level and attribute requirements, global requirement modifiers, slot/weapon restrictions, class restrictions, gem levels and attributes, support requirements, resource warnings, and unchanged equipment affected by a replacement. One physical item cannot occupy two slots.
+The worker detects active modern custom-modifier blocks, legacy custom modifiers, and disabled item-limit enforcement. Diagnostic details are deduplicated and limited to 16 entries; `issue_count` retains the original count. Unknown passive diagnostics include numeric node IDs. The worker checks supported level and attribute requirements, global requirement modifiers, slot/weapon restrictions, class restrictions, gem levels and attributes, support requirements, resource warnings, and unchanged equipment affected by a replacement. One physical item cannot occupy two slots.
 
 For up to three replacements, it removes changed gear first and searches equip orders without crediting a new item's own attribute bonus in advance. This is a conservative sufficient condition. Temporary gear or retaining old gear longer may make other transitions possible; those are not exhaustively searched. Validating a current build checks its final state, not its historical equip sequence.
 
@@ -28,6 +43,12 @@ For up to three replacements, it removes changed gear first and searches equip o
 
 Unsupported mechanics are not replaced with zeroes. A failed candidate scenario is excluded with a reason; an uncalculable baseline fails the request. The engine exposes selected numeric metrics and statuses only. Synthetic tests do not establish compatibility with every real build or game mechanic.
 
+## Damage scope
+
+`selected_skill` identifies the selected canonical engine skill and whether its damage actor is the player or a minion. Saved skill labels are never returned. `gem_name`, when available, is the pinned gem database name and can be localized separately.
+
+`TotalDPS` and `CombinedDPS` retain their upstream player-output meaning. `MinionTotalDPS`, `MinionCombinedDPS`, and `MinionSpeed` come from the selected minion's output and are explicit optimization objectives. They describe the selected minion calculation, not an inferred sum across every summoned actor. `FullDPS` is omitted when no skills are configured for Full DPS; `full_dps_enabled` distinguishes an absent aggregate from a genuine zero result. Optimization requests for missing metrics fail rather than treating them as zero.
+
 ## Budget optimization
 
 Use `search_trade_stats`, then `search_trade_equipment`, then pass short search IDs and the imported build ID to `recommend_pob_trade_upgrades`. The server sends candidate item payloads directly to the worker.
@@ -36,7 +57,7 @@ Use `search_trade_stats`, then `search_trade_equipment`, then pass short search 
 
 Requests allow up to four searches, 32 selected unique listings, three changes, and 64 affordable combinations. Larger spaces fail before calculation; narrow them with `candidate_refs`. Scout supplies estimated FX when price currencies differ. Listing fetch freshness defaults to 300 seconds, and handles expire at ten minutes. Results are not a post-calculation availability check.
 
-Supported candidate slots cover weapons, armor, and accessories, including uniques the engine can parse. Jewels, flasks, and charms are not exposed as trade replacement slots. Candidates with nested `socketedItems`, unknown bases, hidden modifiers, or unresolved mechanics are excluded. Trade items have `origin=trade_candidate` and `saved_item_id=null`; use `changes[].listing_ref`, never an internal temporary engine ID.
+Supported candidate slots cover weapons, armor, and accessories, including uniques the engine can parse. Jewels, flasks, and charms are not exposed as trade replacement slots. Socketed runes and Soul Cores are supported through a bounded projection containing their exact base names and socket indices, resolved against the pinned worker data. Socketed jewels, unknown rune bases, hidden modifiers, and unresolved mechanics remain excluded. Invalid individual trade candidates are excluded before building the calculation batch. Trade items have `origin=trade_candidate` and `saved_item_id=null`; use `changes[].listing_ref`, never an internal temporary engine ID.
 
 ## Runtime and tests
 

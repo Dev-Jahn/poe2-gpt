@@ -54,7 +54,7 @@ class CharacterProvider:
         self.state = state_dir
         # Separate clients prevent Ninja cookies leaking to file download hosts.
         self.http = http or httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False,
-            headers={"User-Agent": "poe2-gpt/0.7.0 (https://github.com/Dev-Jahn/poe2-gpt)", "Accept": "application/json"})
+            headers={"User-Agent": "poe2-gpt/0.8.0 (https://github.com/Dev-Jahn/poe2-gpt)", "Accept": "application/json"})
         self.attachment_http = attachment_http or httpx.AsyncClient(timeout=30, trust_env=False, follow_redirects=False)
         self.attachment_hosts = set(attachment_hosts or ["files.oaiusercontent.com"])
         self.lock = asyncio.Lock()

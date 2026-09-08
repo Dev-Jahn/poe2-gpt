@@ -9,8 +9,8 @@ from pathlib import Path
 from datetime import datetime
 import httpx
 
-from .builds import bounded_dto, PlayerStat
-from .engine_models import (ENGINE_COMMIT, EngineError, SAFE_ENGINE_ERRORS, EngineStatus, EngineRequest, CompareRequest,
+from .builds import bounded_dto, PlayerStat, MAX_TOOL_JSON_BYTES
+from .engine_models import (ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError, SAFE_ENGINE_ERRORS, EngineStatus, EngineRequest, CompareRequest,
     EngineCalculation, EngineTradeRequest, EngineTradeResult, TradeChange)
 from .engine_protocol import WorkerRequest, WorkerResult, private_trade_item
 from .trade import TradeError, CATEGORY_SLOTS
@@ -20,6 +20,21 @@ from .equipment import EquipmentService
 def deltas(before,after):
     b={s.name:s.value for s in before.stats}
     return [PlayerStat(name=s.name,value=s.value-b[s.name]) for s in after.stats if s.name in b]
+
+
+def bounded_engine_dto(value):
+    """Preserve stats/status/counts while bounding repeated diagnostic details."""
+    value=value.model_copy(deep=True)
+    calculation=value.calculation if isinstance(value,EngineTradeResult) else value
+    snapshots=[calculation.baseline]+([calculation.result] if calculation.result else [])
+    while len(value.model_dump_json().encode('utf-8'))>MAX_TOOL_JSON_BYTES:
+        candidates=[s for s in snapshots if s.issues]
+        if not candidates:
+            return bounded_dto(value)
+        snapshot=max(candidates,key=lambda s:len(s.issues))
+        snapshot.issues.pop()
+        snapshot.issues_truncated=True
+    return bounded_dto(value)
 
 
 class EngineClient:
@@ -34,7 +49,8 @@ class EngineClient:
     async def status(self):
         try:
             r=await self.http.get('/health')
-            available=r.status_code==200 and r.json()=={'engine_commit':ENGINE_COMMIT}
+            available=r.status_code==200 and r.json()=={'engine_commit':ENGINE_COMMIT,
+                'engine_data_commit':ENGINE_DATA_COMMIT,'engine_compatibility':ENGINE_COMPATIBILITY}
         except Exception:
             available=False
         return EngineStatus(enabled=True,reachable=available)
@@ -69,7 +85,7 @@ class EngineClient:
         scenarios=[[v.model_dump() for v in request.replacements]] if isinstance(request,CompareRequest) else []
         result=await self.batch(WorkerRequest(build_id=request.build_id,scenarios=scenarios))
         after=result.results[0] if result.results else None
-        return bounded_dto(EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
+        return bounded_engine_dto(EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
             result=after,deltas=deltas(result.baseline,after) if after else []))
 
     async def recommend(self, request: EngineTradeRequest, trade, scout):
@@ -99,6 +115,10 @@ class EngineClient:
                 row=entry['rows'].get(ref)
                 raw=entry.get('engine_items',{}).get(ref)
                 if not row or not raw or not slots or not row.price or time.time()-row.observed_at_epoch>request.max_listing_age_seconds:
+                    excluded+=1;continue
+                try:
+                    raw=private_trade_item(raw)
+                except EngineError:
                     excluded+=1;continue
                 candidates.append((ref,slots,raw,row.price))
         if not candidates:
@@ -165,7 +185,7 @@ class EngineClient:
         calc=EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
             result=snapshot if best else None,deltas=deltas(result.baseline,snapshot) if best else [])
         # Return just the best plan; all bounded combinations were still evaluated.
-        return bounded_dto(EngineTradeResult(calculation=calc,changes=changes,cost=float(cost),currency=request.budget.currency,
+        return bounded_engine_dto(EngineTradeResult(calculation=calc,changes=changes,cost=float(cost),currency=request.budget.currency,
             remaining_budget=float(budget-cost),score_gain=float(gain),feasible=bool(eligible),evaluated_combinations=len(plans),
             failed_requirements=failed,indeterminate_combinations=unknown,excluded_listings=excluded,
             fx_retrieved_at_epoch=int(datetime.fromisoformat(fx.retrieved_at.replace('Z','+00:00')).timestamp()) if fx.retrieved_at else None))

@@ -55,9 +55,21 @@ def private_trade_item(item: dict) -> dict:
                 lines.append(text)
         result[key]=lines
     if result.get('socketedItems'):
-        # Socketed rune / jewel conversion needs its full PoB character API shape.
-        # Refuse ambiguity instead of silently evaluating an incomplete item.
-        raise EngineError('engine_invalid_request')
+        # Rune/Soul Core effects are resolved by exact base name against the
+        # pinned worker data. Socketed jewels remain unsupported replacements.
+        runes=[]
+        seen=set()
+        for child in result['socketedItems']:
+            if not isinstance(child,dict):
+                raise EngineError('engine_invalid_request')
+            base,slot=child.get('baseType'),child.get('socket')
+            if (not isinstance(base,str) or not 1<=len(base)<=160 or '\n' in base or '\r' in base
+                or base in {'Diamond','Emerald','Ruby','Sapphire'} or type(slot) is not int
+                or not 0<=slot<=9 or slot in seen or child.get('socketedItems')):
+                raise EngineError('engine_invalid_request')
+            seen.add(slot)
+            runes.append({'baseType':base,'socket':slot})
+        result['socketedItems']=sorted(runes,key=lambda x:x['socket'])
     return result
 
 

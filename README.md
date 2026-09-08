@@ -4,7 +4,7 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.7.0, experimental.** The code includes up to 25 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.8.0, experimental.** The code includes up to 26 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
 ## Features
 

@@ -22,6 +22,7 @@ import httpx
 from pydantic import Field, model_validator
 
 from .builds import DTO, BuildError, bounded_dto
+from .game_terms import name_fields
 from .equipment import (Currency, DatasetID, LeagueName, Number, OptimizeRequest, Price, Stat,
                         Candidate, Dataset, EquipmentService, UpgradeResult, unique)
 
@@ -123,6 +124,8 @@ class TradeListing(DTO):
     key: Annotated[str, Field(pattern=r"^i_[0-9a-f]{24}$")]
     listing_ref: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     base_type: Annotated[str, Field(max_length=100)]
+    base_type_ko: Annotated[str, Field(max_length=160)] | None = None
+    base_type_source_ko: Annotated[str, Field(max_length=1024)] | None = None
     rarity: Literal["normal", "magic", "rare", "unique"]
     corrupted: bool
     required_level: Annotated[int, Field(ge=0,le=100)] | None
@@ -602,7 +605,7 @@ def parse_listing(row: dict, observed: int) -> TradeListing | None:
         # Non-identified items and alternate effect-bearing components require a
         # broader semantic evaluator even if the few visible lines look simple.
         complete=item.get("identified") is True and not unknown and rarity!="unique" and not any(item.get(k) for k in ("grantedSkills","socketedItems","veiledMods","sanctified","mirrored"))
-        return TradeListing(key="i_"+hashlib.sha256(ref.encode()).hexdigest()[:24],listing_ref=ref,base_type=base,rarity=rarity,corrupted=item.get("corrupted",False),required_level=level,
+        return TradeListing(key="i_"+hashlib.sha256(ref.encode()).hexdigest()[:24],listing_ref=ref,base_type=base,**name_fields(base, "base_type"),rarity=rarity,corrupted=item.get("corrupted",False),required_level=level,
             price=price,price_status="available" if price else "missing_or_unsupported_currency",observed_at_epoch=observed,listing_indexed_at=indexed,
             item_stats=[Stat(metric=k,value=v) for k,v in values.items()] if complete else [],equipment_values=props,unknown_modifier_count=unknown,unscored_modifier_count=unscored,
             optimization_eligible=complete and price is not None and level is not None)

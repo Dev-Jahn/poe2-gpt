@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poe2-gpt"
-version = "0.7.0"
+version = "0.8.0"
 description = "PoE2 prices, trade search and private Path of Building analysis via MCP"
 readme = "README.md"
 license = "MIT"
@@ -38,4 +38,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-poe2_companion = ["lua/*.lua"]
+poe2_companion = ["lua/*.lua", "data/*.json"]

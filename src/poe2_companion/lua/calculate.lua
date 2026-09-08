@@ -1,10 +1,19 @@
 -- Private, one-job process. Only closed numeric projections leave stdout.
--- Uses unmodified, commit-pinned community PoE2 PoB modules (MIT).
+-- Uses commit-pinned community PoE2 PoB modules and reviewed data (MIT).
 print = function() end
 local json = require('dkjson')
 local job = assert(json.decode(io.stdin:read('*a')))
 dofile('HeadlessWrapper.lua')
 assert(build and not __mainObject__.promptMsg)
+-- Exact crafting-only lines in the pinned 0.5.5 data affect future item
+-- modification, not the current combat stats. No broad pattern suppression.
+-- See upstream PR2509 (crafting influences) and ModRunes' Atziri cores.
+for _,line in ipairs({'Can roll Ring Modifiers','Can roll Chronomancy modifiers',
+ 'Can roll Marksman modifiers','Can roll Berserking modifiers',
+ 'Can roll Destruction modifiers','Can roll Soul modifiers','Can roll Decay modifiers',
+ 'Corrupting will always result in change'}) do
+ modLib.parseModCache[line]={{},nil}
+end
 local slots = {helmet='Helmet',body_armour='Body Armour',gloves='Gloves',boots='Boots',belt='Belt',amulet='Amulet',ring_left='Ring 1',ring_right='Ring 2',weapon_main='Weapon 1',weapon_off='Weapon 2'}
 local slotKeys = {'helmet','body_armour','gloves','boots','belt','amulet','ring_left','ring_right','weapon_main','weapon_off'}
 local statKeys = {'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
@@ -60,9 +69,25 @@ local function inspect(expected, order, sequenceOk)
  local out,env=build.calcsTab.mainOutput,build.calcsTab.mainEnv
  local stats,equipped,issues=array(),array(),array()
  local seenItems={}
+ local fullDpsEnabled=type(out.SkillDPS)=='table' and #out.SkillDPS>0
  for _, key in ipairs(statKeys) do
   local v=out[key]
-  if type(v)=='number' and v==v and math.abs(v)<=1e15 then stats[#stats+1]={name=key,value=v} end
+  if (key~='FullDPS' or fullDpsEnabled) and type(v)=='number' and v==v and math.abs(v)<=1e15 then stats[#stats+1]={name=key,value=v} end
+ end
+ local mainSkill=env.player.mainSkill
+ local effect=mainSkill and mainSkill.activeEffect and mainSkill.activeEffect.grantedEffect
+ local selectedSkill=nil
+ -- Resolve identity from immutable engine data; saved labels are private.
+ if effect and effect.id and build.data.skills[effect.id]==effect then
+  selectedSkill={skill_id=effect.id,name=effect.name,actor=mainSkill.minion and 'minion' or 'player'}
+  local gem=mainSkill.activeEffect.srcInstance and mainSkill.activeEffect.srcInstance.gemData
+  if gem and type(gem.name)=='string' then selectedSkill.gem_name=gem.name end
+ end
+ if mainSkill and mainSkill.minion and type(out.Minion)=='table' then
+  for _,key in ipairs({'TotalDPS','CombinedDPS','Speed'}) do
+   local v=out.Minion[key]
+   if type(v)=='number' and v==v and math.abs(v)<=1e15 then stats[#stats+1]={name='Minion'..key,value=v} end
+  end
  end
  for _,key in ipairs(slotKeys) do
   local name=slotName(key);local id=selected(name);local item=build.itemsTab.items[id]
@@ -110,9 +135,16 @@ local function inspect(expected, order, sequenceOk)
  for _,group in pairs(build.skillsTab.socketGroupList or {}) do
   if group.enabled then
    for _,g in ipairs(group.gemList or {}) do
-    if g.enabled and not g.gemData and not g.fromItem and not g.fromNode then issue(issues,'unknown_gem') end
+    if g.enabled and not g.gemData and not g.grantedEffect then issue(issues,'unknown_gem') end
    end
   end
+ end
+ -- Same tree version does not prove every allocated node was loaded/parsed.
+ for _,id in ipairs(job.expected_node_ids or {}) do
+  if not build.spec.nodes[id] then issue(issues,'unknown_passive');issues[#issues].passive_node_id=id end
+ end
+ for _,node in pairs(build.spec.allocNodes or {}) do
+  if node.unknown or node.extra then issue(issues,'unparsed_passive');issues[#issues].passive_node_id=node.id end
  end
  for _,values in pairs(env.itemWarnings or {}) do if type(values)=='table' and next(values) then issue(issues,'engine_item_warning') end end
  if env.player.mainSkill and env.player.mainSkill.disableReason then issue(issues,'skill_unusable') end
@@ -124,17 +156,27 @@ local function inspect(expected, order, sequenceOk)
  local config=build.configTab.input
  if build.spec.treeVersion ~= latestTreeVersion then issue(issues,'unsupported_tree_version') end
  if config.customMods and config.customMods:match('%S') then issue(issues,'custom_modifiers_present') end
- if config.ignoreJewelLimits then issue(issues,'ignored_limits') end
+ local configSet=build.configTab.configSets[build.configTab.activeConfigSetId]
+ for _,block in ipairs(configSet and configSet.customModsList or {}) do
+  if block.enabled~=false and type(block.text)=='string' and block.text:match('%S') then issue(issues,'custom_modifiers_present') end
+ end
+ if config.ignoreJewelLimits or config.ignoreItemDisablers then issue(issues,'ignored_limits') end
  if sequenceOk==false then issue(issues,'equip_sequence_unverified') end
- local uncertain={unparsed_modifier=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true}
+ local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true}
  local status='pass'
  for _,v in ipairs(issues) do
   if not uncertain[v.code] then status='fail';break end
   status='indeterminate'
  end
  local count=#issues
- while #issues>32 do table.remove(issues) end
- return {stats=stats,equipped=equipped,issues=issues,issue_count=count,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0}
+ local uniqueIssues,seenIssues=array(),{}
+ for _,v in ipairs(issues) do
+  local key=json.encode(v)
+  if not seenIssues[key] then seenIssues[key]=true;uniqueIssues[#uniqueIssues+1]=v end
+ end
+ local truncated=#uniqueIssues>16
+ while #uniqueIssues>16 do table.remove(uniqueIssues) end
+ return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled}
 end
 local function scenario(changes)
  load()
@@ -144,6 +186,9 @@ local function scenario(changes)
  for _,c in ipairs(changes) do
   local name=slotName(c.slot)
   if c.item then
+   for _,rune in ipairs(c.item.socketedItems or {}) do
+    assert(build.data.itemMods.Runes[rune.baseType])
+   end
    build.importTab:ImportItem(c.item,name)
    local id=selected(name)
    local item=build.itemsTab.items[id]
