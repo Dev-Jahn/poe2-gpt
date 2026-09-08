@@ -19,6 +19,7 @@ import sys
 import time
 from urllib.parse import unquote, urljoin, urlsplit
 import urllib.request
+import urllib.error
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -232,21 +233,90 @@ def anchors(body: bytes, url: str, language: str) -> list[dict]:
     return parser.rows
 
 
-def download_html(directory: Path, requested_pages: list[str]) -> None:
+
+class ExposeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # HTTPError exposes Location; no automatic network request.
+
+
+def html_destination(source: str, destination: str) -> str:
+    source_parts = urlsplit(source)
+    target = urlsplit(urljoin(source, destination))
+    language_prefix = "/" + source_parts.path.split("/")[1] + "/"
+    if (source_parts.hostname != "poe2db.tw" or target.scheme != "https"
+            or target.hostname != source_parts.hostname or target.username or target.password
+            or target.port not in (None, 443) or target.query or target.fragment
+            or not target.path.startswith(language_prefix)
+            or any(p in {".", ".."} for p in unquote(target.path).split("/"))):
+        raise ValueError("html_redirect_refused")
+    return target.geturl()
+
+
+def fetch_html(url: str, *, open_request=None) -> tuple[bytes, str, list[dict]]:
+    """Follow at most two documented public HTML canonicalization redirects."""
+    current = html_destination(url, url)
+    opener = urllib.request.build_opener(ExposeRedirect())
+    open_request = open_request or opener.open
+    visited, redirects = {current}, []
+    for hop in range(3):
+        request = urllib.request.Request(current, headers={"User-Agent": "poe2-gpt-localization-updater/1 (+https://github.com/Dev-Jahn/poe2-gpt)"})
+        try:
+            with open_request(request, timeout=30) as response:
+                content = response.read(MAX_SOURCE_BYTES + 1)
+            if len(content) > MAX_SOURCE_BYTES:
+                raise ValueError("source_too_large")
+            return content, current, redirects
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (301, 302, 303, 307, 308):
+                raise
+            if hop == 2 or not exc.headers.get("Location"):
+                raise ValueError("html_redirect_limit") from None
+            destination = html_destination(current, exc.headers["Location"])
+            if destination in visited:
+                raise ValueError("html_redirect_loop") from None
+            redirects.append({"from": current, "to": destination, "status": exc.code})
+            visited.add(destination)
+            current = destination
+    raise ValueError("html_redirect_limit")
+
+def download_html(directory: Path, requested_pages: list[str], *, resume: bool = False) -> None:
     """Explicit alternative source, never an automatic retry of a denied CDN."""
     directory.mkdir(parents=True, exist_ok=True)
     sources = []
     homes = {}
+    checkpoint_path = directory / "html-progress.json"
+    cached = {}
+    if resume:
+        if not checkpoint_path.exists():
+            raise ValueError("html_resume_provenance_missing")
+        checkpoint = json.loads(checkpoint_path.read_bytes())
+        if checkpoint.get("requested_pages") != requested_pages:
+            raise ValueError("html_resume_selection_changed")
+        cached = {s["requested_url"]: s for s in checkpoint["sources"]}
 
     def save(url, language):
-        content = fetch(url)
+        prior = cached.get(url)
+        if prior:
+            if not re.fullmatch(r"page-\d{2}-(us|kr)\.html", prior["file"]):
+                raise ValueError("invalid_source_provenance")
+            content = (directory / prior["file"]).read_bytes()
+            if len(content) > MAX_SOURCE_BYTES or hashlib.sha256(content).hexdigest() != prior["sha256"]:
+                raise ValueError("source_hash_mismatch")
+            final_url = html_destination(url, prior["url"])
+            redirects = prior["redirects"]
+        else:
+            content, final_url, redirects = fetch_html(url)
         number = len(sources)
         filename = f"page-{number:02}-{language}.html"
         (directory / filename).write_bytes(content)
-        sources.append({"language": "en" if language == "us" else "ko", "url": url,
+        sources.append({"language": "en" if language == "us" else "ko", "url": final_url,
+                        "requested_url": url, "redirects": redirects,
+                        "retrieved_at": prior["retrieved_at"] if prior else datetime.now(timezone.utc).isoformat(),
                         "sha256": hashlib.sha256(content).hexdigest(), "file": filename})
-        time.sleep(0.5)
-        return anchors(content, url, language)
+        checkpoint_path.write_text(json.dumps({"requested_pages": requested_pages, "sources": sources}, indent=2) + "\n")
+        if not prior:
+            time.sleep(0.5)
+        return anchors(content, final_url, language)
 
     for language in ("us", "kr"):
         homes[language] = save(f"https://poe2db.tw/{language}/", language)
@@ -294,7 +364,7 @@ def build_html(directory: Path, output: Path, game_version: str) -> dict:
             if language == "ko" and not re.search(r"[가-힣]", row["label"]):
                 continue
             rows[language].append(row)
-        sources.append({k: source[k] for k in ("language", "url", "sha256")})
+        sources.append({k: source[k] for k in ("language", "url", "sha256", "requested_url", "redirects", "retrieved_at") if k in source})
     index, diagnostics = {}, {}
     for language in rows:
         index[language], diagnostics[language] = index_rows(rows[language])
@@ -329,12 +399,13 @@ def main() -> None:
     parser.add_argument("--source-dir", type=Path, required=True, help="Local public-index cache, not a character/build directory")
     parser.add_argument("--fetch", action="store_true", help="Discover and download current public sources; abort on refusal")
     parser.add_argument("--html-pages", nargs="*", default=None, help="Explicit HTML anchor catalog mode; optional English category names discovered from homepage")
+    parser.add_argument("--resume-html", action="store_true", help="Resume only a hash-verified HTML checkpoint with source provenance")
     parser.add_argument("--game-version", required=True, help="Game patch verified independently against PoE2DB homepage")
     parser.add_argument("--output", type=Path, default=ROOT / "src/poe2_companion/data/localization-ko.json")
     args = parser.parse_args()
     if args.html_pages is not None:
         if args.fetch:
-            download_html(args.source_dir, args.html_pages or list(DEFAULT_HTML_PAGES))
+            download_html(args.source_dir, args.html_pages or list(DEFAULT_HTML_PAGES), resume=args.resume_html)
         result = build_html(args.source_dir, args.output, args.game_version)
     else:
         if args.fetch:
