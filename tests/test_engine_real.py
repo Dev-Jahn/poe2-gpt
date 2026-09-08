@@ -321,3 +321,62 @@ async def test_real_chakra_unknown_rune_never_silently_disappears(real_engine):
     save_synthetic(real_engine,root)
     empty=(await real_engine.calculate(WorkerRequest(build_id=BID))).baseline
     assert not any(i.code=='unknown_rune' for i in empty.issues)
+
+
+async def test_real_explicit_configuration_reapplies_to_comparison_and_preserves_source(real_engine,monkeypatch):
+    from poe2_companion.engine_models import CompareRequest
+    import hashlib
+    root=ET.fromstring(FIXTURE.read_bytes())
+    group=ET.SubElement(root.find('./Skills/SkillSet'),'Skill',{'enabled':'true','mainActiveSkill':'1'})
+    ET.SubElement(group,'Gem',{'skillId':'GhostDancePlayer','nameSpec':'Ghost Dance','level':'1','quality':'0','enabled':'true'})
+    ET.SubElement(root.find('./Config/ConfigSet'),'Input',{'name':'conditionLostGhostShroudRecently','boolean':'true'})
+    ET.SubElement(root,'Notes').text=MARKER
+    items=root.find('./Items')
+    for item_id,evasion in ((42,1000),(43,2000)):
+        ET.SubElement(items,'Item',{'id':str(item_id)}).text=(
+            'Rarity: RARE\nSynthetic Test\nIron Ring\nImplicits: 0\n'
+            f'+{evasion} to Evasion Rating\n+500 to maximum Energy Shield')
+    root.find("./Items/ItemSet/Slot[@name='Ring 1']").set('itemId','42')
+    save_synthetic(real_engine,root)
+    path=real_engine.private_dir/(BID+'.pob')
+    before=hashlib.sha256(path.read_bytes()).hexdigest()
+    private_results=[]
+    calculate=real_engine.calculate
+    async def observe(request):
+        result=await calculate(request)
+        private_results.append(result)
+        return result
+    monkeypatch.setattr(real_engine,'calculate',observe)
+    client=EngineClient('/unused',http=httpx.AsyncClient(transport=httpx.ASGITransport(app=worker_app(real_engine)),base_url='http://worker'))
+    try:
+        args={'build_id':BID,'replacements':[{'slot':'ring_left','saved_item_id':43}],
+            'combat_scenario':{'horizon_seconds':2,'gain_roll_model':'independent_nonrecursive_per_event','events':[]}}
+        on=await client.calculate(CompareRequest(**args,configuration={'ghost_shroud_lost_recently':True}))
+        off=await client.calculate(CompareRequest(**args,configuration={'ghost_shroud_lost_recently':False}))
+        def metrics(row):
+            mechanic=next(m for m in row.mechanics if m.mechanic=='ghost_dance')
+            return {m.name:m.value for m in mechanic.metrics}
+        # The public 8 KiB projection may omit mechanics; verify native values
+        # at the private boundary, and verify public truncation separately.
+        active,inactive=private_results
+        assert metrics(active.baseline)['ghost_shroud_recent_loss_configured']==metrics(active.results[0])['ghost_shroud_recent_loss_configured']==1
+        assert metrics(inactive.baseline)['ghost_shroud_recent_loss_configured']==metrics(inactive.results[0])['ghost_shroud_recent_loss_configured']==0
+        assert metrics(active.results[0])['energy_shield_regeneration_per_second']>metrics(active.baseline)['energy_shield_regeneration_per_second']>0
+        assert metrics(inactive.baseline)['energy_shield_regeneration_per_second']==metrics(inactive.results[0])['energy_shield_regeneration_per_second']==0
+        assert on.scope==off.scope=='explicit_configuration_active_weapon_set'
+        for calc in (on,off):
+            assert len(calc.model_dump_json().encode())<=8192
+            assert MARKER not in calc.model_dump_json()
+            for row in (calc.baseline,calc.result):
+                assert row.combat_scenario_status=='calculated'
+                if row.combat_scenario is None:
+                    assert row.combat_scenario_truncated
+                else:
+                    assert row.combat_scenario.snapshot_dps_unchanged
+        for result in private_results:
+            for row in (result.baseline,*result.results):
+                assert row.combat_scenario.status=='calculated'
+                assert row.combat_scenario.snapshot_dps_unchanged
+        assert hashlib.sha256(path.read_bytes()).hexdigest()==before
+    finally:
+        await client.close()

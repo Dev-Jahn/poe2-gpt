@@ -4,7 +4,7 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.9.0, experimental.** The code includes up to 26 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.10.0, experimental.** The code includes up to 26 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
 ## Features
 
@@ -20,9 +20,9 @@ The default league is **Forbidden Rites**; check `list_leagues` before using ano
 
 The engine combines a pinned PoB2 development revision with a checksummed 0.5.5 data overlay. It reports the selected skill and distinguishes player DPS, selected-minion DPS and explicitly configured FullDPS. Unknown passive nodes, unparsed effects and unsupported configurations remain visible and block verified upgrade recommendations. See [engine compatibility](docs/pob-engine.md) and [localization coverage](docs/localization.md).
 
-Version 0.9 adds scoped charge, Offering, companion and weapon-context calculations. See the [current-league coverage matrix](docs/league-coverage.md) for supported mechanics and remaining limits.
+Version 0.10 adds copied Spirit Vessel attacks, captured-beast modifiers, Martial Artist mechanics, PoE2 leech and Impale rules, and bounded charge/Mountain combat scenarios. Optional typed [calculation assumptions](docs/calculation-assumptions.md) apply equally to the baseline and equipment candidates. See the [current-league coverage matrix](docs/league-coverage.md) and [upstream review](docs/upstream-review-010.md) for tested scope and remaining gaps.
 
-**MCP never returns raw PoB codes or XML.** A private ingestion service downloads Ninja exports or attached-file references; the calculation worker reads private files. Tool results contain only IDs, validated numbers, and statuses. Never paste a PoB code into chat. ChatGPT's own attachment processing is outside the plugin's control. See the [data boundary](docs/pob-boundary.md).
+**MCP never returns raw PoB codes or XML.** A private ingestion service downloads Ninja exports or attached-file references; the calculation worker reads private files. Tool results contain bounded summaries, IDs, validated numbers, and statuses. Never paste a PoB code into chat. ChatGPT's own attachment processing is outside the plugin's control. See the [data boundary](docs/pob-boundary.md).
 
 ## Quick start
 

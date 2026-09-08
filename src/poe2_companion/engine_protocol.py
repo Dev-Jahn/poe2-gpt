@@ -3,6 +3,8 @@ import json
 from typing import Annotated, Literal
 from pydantic import Field, model_validator
 from .builds import DTO
+from .calculation_config import CalculationConfiguration
+from .combat_models import CombatScenario
 from .engine_models import (EngineError, EngineSlot, BuildID, EngineSnapshot,
     ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY)
 
@@ -101,6 +103,8 @@ class WorkerChange(DTO):
 
 class WorkerRequest(DTO):
     build_id: BuildID
+    configuration: CalculationConfiguration | None = None
+    combat_scenario: CombatScenario | None = None
     scenarios: Annotated[list[Annotated[list[WorkerChange],Field(max_length=3)]],Field(max_length=64)] = Field(default_factory=list)
 
     @model_validator(mode='after')

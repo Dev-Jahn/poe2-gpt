@@ -224,3 +224,208 @@ def test_identifiers_and_removed_host_file_import():
     root = Path(__file__).resolve().parents[1]
     assert 'sub.add_parser("import-build"' not in (root/"scripts/mac.py").read_text()
     assert "poe2-pob-files =" not in (root/"pyproject.toml").read_text()
+
+
+# Synthetic Ninja payloads exercise structural joins without any character data.
+def beast_fixture():
+    import base64
+    import xml.etree.ElementTree as ET
+    import zlib
+    from test_build_boundary import xml
+    root = ET.fromstring(xml())
+    ET.SubElement(root.find('Build'), 'BeastCompanion', {'id': 'Metadata/Monsters/Quadrilla/Quadrilla'})
+    section = root.find('Skills')
+    section.clear()
+    section.set('activeSkillSet', '1')
+    skill_set = ET.SubElement(section, 'SkillSet', {'id': '1'})
+    support_sets = [
+        [('Rapid Attacks II', 'SupportRapidAttacksPlayerTwo'), ('Rage III', 'SupportRagePlayerThree'),
+         ('Muster', 'SupportMusterPlayer'), ('Loyalty', 'SupportLoyaltyPlayer')],
+        [('Rapid Attacks II', 'SupportRapidAttacksPlayerTwo'), ('Rage III', 'SupportRagePlayerThree'),
+         ('Feeding Frenzy II', 'SupportFeedingFrenzyPlayerTwo'), ('Loyalty', 'SupportLoyaltyPlayer')],
+    ]
+    groups = []
+    for index, supports in enumerate(support_sets):
+        skill = ET.SubElement(skill_set, 'Skill', {'enabled': 'true', 'mainActiveSkill': '1'})
+        ET.SubElement(skill, 'Gem', {'nameSpec': 'Companion: Quadrilla', 'skillId': 'SummonBeastPlayer', 'skillMinion': 'Metadata/Monsters/Quadrilla/Quadrilla', 'level': '18', 'quality': '0', 'enabled': 'true'})
+        labels = ('[public_link|Extra Physical Damage Aura]\n[public_link|Breaks Armour]' if index == 0
+                  else '[public_link|Haste Aura]\n[public_link|All Damage Chills]')
+        gems = [{'name': 'Companion: Quadrilla', 'level': 18, 'quality': 0,
+            'itemData': {'id': 'private-synthetic-' + str(index), 'support': False, 'gemSkill': 'noncanonical display',
+                'name': 'Companion: Quadrilla', 'baseType': 'Companion: Quadrilla', 'typeLine': 'Companion: Quadrilla',
+                'tamedBeastProperties': [{'name': 'PRIVATE_BEAST_PROPERTY', 'displayMode': 3, 'values': [[labels, 0]]}]}}]
+        for name, identifier in supports:
+            ET.SubElement(skill, 'Gem', {'nameSpec': name, 'skillId': identifier, 'level': '1', 'quality': '0', 'enabled': 'true'})
+            # Ninja support levels differ from the XML and are not identity.
+            gems.append({'name': name, 'level': 0, 'quality': 0, 'itemData': {'support': True}})
+        groups.append({'allGems': gems})
+    encoded = base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))).rstrip(b'=')
+    return encoded, groups
+
+
+async def test_beast_ingestion_unique_signatures_private_ids_and_immutable_dedup(tmp_path, caplog):
+    from poe2_companion.beast_metadata import validate_beast_metadata
+    original, groups = beast_fixture()
+    backend = NinjaBackend()
+    backend.model.update(pathOfBuildingExport=original.decode(), skills=list(reversed(groups)))
+    p = provider(tmp_path, backend)
+    result = await p.get_character(REQUEST)
+    path = p.private / (result.build.build_id + '.beasts.json')
+    before = path.read_bytes()
+    metadata = validate_beast_metadata(before, original)
+    assert metadata['species_verified'] is True and metadata['unresolved_records'] == 0
+    assert [(row['skill_group'], row['mod_ids']) for row in metadata['gems']] == [
+        (1, ['PlayerMonsterArmourPenetration1', 'PlayerMonsterPhysicalDamageAura1']),
+        (2, ['PlayerMonsterFreezeDamageIncrease1', 'PlayerMonsterIncreasedSpeedAura1'])]
+    assert all(row['complete'] for row in metadata['gems'])
+    assert all(row['species_id'] == 'Metadata/Monsters/Quadrilla/Quadrilla' for row in metadata['gems'])
+    assert MARKER.encode() not in before and b'PRIVATE_BEAST_PROPERTY' not in before and b'private-synthetic' not in before and b'public_link' not in before
+    assert (p.private / (result.build.build_id + '.pob')).read_bytes() == original
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert not list(p.projections.glob('*.beasts.json'))
+    assert (await p.get_character(REQUEST)).reused
+    assert MARKER not in result.model_dump_json() and original.decode() not in result.model_dump_json()
+    groups[0]['allGems'][0]['itemData']['tamedBeastProperties'][0]['values'][0][0] = 'Hasted'
+    refreshed = await p.get_character(REQUEST)
+    assert not refreshed.reused and refreshed.build.build_id != result.build.build_id
+    assert path.read_bytes() == before  # Previously imported identity is immutable.
+    assert (p.private / (refreshed.build.build_id + '.pob')).read_bytes() == original
+    assert (await p.get_character(REQUEST)).reused
+    assert MARKER not in caplog.text
+    await p.close()
+
+
+def test_beast_join_rejects_model_and_export_ambiguity_unknown_support_and_wrong_roman_tier():
+    import base64
+    import copy
+    import xml.etree.ElementTree as ET
+    import zlib
+    from poe2_companion.beast_metadata import build_beast_metadata
+    from poe2_companion.pob_io import decode_pob
+    original, groups = beast_fixture()
+    model = {'skills': groups + [copy.deepcopy(groups[0])]}
+    metadata = json.loads(build_beast_metadata(model, original))
+    assert metadata['unresolved_records'] == 2
+    assert [row['skill_group'] for row in metadata['gems']] == [2]
+    root = ET.fromstring(decode_pob(original))
+    skill_set = root.find('./Skills/SkillSet')
+    skill_set.append(copy.deepcopy(skill_set[0]))
+    duplicate_xml = base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))).rstrip(b'=')
+    metadata = json.loads(build_beast_metadata({'skills': groups}, duplicate_xml))
+    assert metadata['unresolved_records'] == 1
+    assert [row['skill_group'] for row in metadata['gems']] == [2]
+    for name in ['unrecognised support', 'Rapid Attacks I']:
+        changed = copy.deepcopy(groups)
+        changed[0]['allGems'][1]['name'] = name
+        metadata = json.loads(build_beast_metadata({'skills': changed}, original))
+        assert not any(row['skill_group'] == 1 for row in metadata['gems'])
+        assert metadata['unresolved_records'] >= 1
+    root = ET.fromstring(decode_pob(original))
+    root.find('./Skills/SkillSet/Skill/Gem[@skillId="SupportRapidAttacksPlayerTwo"]').set('skillId', 'SupportRapidAttacksPlayer')
+    conflicting_xml = base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))).rstrip(b'=')
+    metadata = json.loads(build_beast_metadata({'skills': groups}, conflicting_xml))
+    assert metadata['unresolved_records'] == 2 and metadata['gems'] == []
+    root = ET.fromstring(decode_pob(original))
+    root.find('./Skills/SkillSet/Skill/Gem').set('skillMinion', 'Metadata/Monsters/GoreCharger/GoreCharger')
+    mismatched_species = base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))).rstrip(b'=')
+    metadata = json.loads(build_beast_metadata({'skills': groups}, mismatched_species))
+    assert metadata['unresolved_records'] == 2 and metadata['gems'] == []
+    root = ET.fromstring(decode_pob(original))
+    root.find('./Skills').append(copy.deepcopy(root.find('./Skills/SkillSet/Skill')))
+    legacy = base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))).rstrip(b'=')
+    metadata = json.loads(build_beast_metadata({'skills': groups}, legacy))
+    assert metadata['unresolved_records'] == 2 and metadata['gems'] == []
+
+
+def test_beast_unknown_modifiers_stay_partial_and_tampered_sidecar_is_rejected():
+    import copy
+    from poe2_companion.beast_metadata import build_beast_metadata, validate_beast_metadata, BeastMetadataError
+    original, groups = beast_fixture()
+    groups[0]['allGems'][0]['itemData']['tamedBeastProperties'][0]['values'][0][0] = 'Hasted\n' + MARKER
+    encoded = build_beast_metadata({'skills': groups}, original)
+    value = validate_beast_metadata(encoded, original)
+    assert value['gems'][0]['mod_ids'] == ['PlayerMonsterIncreasedSpeed1']
+    assert not value['gems'][0]['complete'] and MARKER.encode() not in encoded
+    for mutate in [lambda data: data['gems'][0].update(skill_group=2),
+                   lambda data: data['gems'][0].update(mod_ids=[MARKER]),
+                   lambda data: data['gems'][0].update(mod_ids=['PlayerMonsterIncreasedSpeed1'] * 2),
+                   lambda data: data.update(export_sha256='0'*64),
+                   lambda data: data.update(provenance=MARKER)]:
+        corrupted = copy.deepcopy(value)
+        mutate(corrupted)
+        with pytest.raises(BeastMetadataError, match='^invalid_beast_metadata$'):
+            validate_beast_metadata(json.dumps(corrupted).encode(), original)
+    with pytest.raises(BeastMetadataError, match='^invalid_beast_metadata$'):
+        validate_beast_metadata(encoded, original + b'\n')
+
+
+@pytest.mark.parametrize('mismatch', ['missing_selection', 'missing_declaration', 'calcs_species', 'duplicate_set'])
+def test_beast_export_identity_never_uses_engine_first_beast_fallback(mismatch):
+    import base64
+    import copy
+    import xml.etree.ElementTree as ET
+    import zlib
+    from poe2_companion.beast_metadata import build_beast_metadata
+    from poe2_companion.pob_io import decode_pob
+    original, groups = beast_fixture()
+    root = ET.fromstring(decode_pob(original))
+    gem = root.find('./Skills/SkillSet/Skill/Gem')
+    if mismatch == 'missing_selection':
+        del gem.attrib['skillMinion']
+    elif mismatch == 'missing_declaration':
+        root.find('Build').remove(root.find('./Build/BeastCompanion'))
+    elif mismatch == 'calcs_species':
+        gem.set('skillMinionCalcs', 'Metadata/Monsters/GoreCharger/GoreCharger')
+    else:
+        root.find('Skills').append(copy.deepcopy(root.find('./Skills/SkillSet')))
+    encoded = base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))).rstrip(b'=')
+    metadata = json.loads(build_beast_metadata({'skills': groups}, encoded))
+    assert metadata['gems'] == [] and metadata['unresolved_records'] == 2
+
+
+async def test_beast_sidecar_schema_limits_and_failed_storage_leave_no_import(tmp_path, monkeypatch):
+    import poe2_companion.character_provider as module
+    original, groups = beast_fixture()
+    backend = NinjaBackend()
+    backend.model.update(pathOfBuildingExport=original.decode(), skills=groups)
+    p = provider(tmp_path, backend)
+    raw = groups[0]['allGems'][0]['itemData']['tamedBeastProperties'][0]['values'][0][0]
+    groups[0]['allGems'][0]['itemData']['tamedBeastProperties'][0]['values'][0][0] = MARKER * 500
+    with pytest.raises(CharacterError, match='schema_changed'):
+        await p.get_character(REQUEST)
+    groups[0]['allGems'][0]['itemData']['tamedBeastProperties'][0]['values'][0][0] = raw
+    writer = module.atomic_write
+    def fail_sidecar(path, content):
+        if path.name.endswith('.beasts.json'):
+            raise OSError('synthetic-write-failure')
+        writer(path, content)
+    monkeypatch.setattr(module, 'atomic_write', fail_sidecar)
+    with pytest.raises(CharacterError, match='import_unavailable'):
+        await p.get_character(REQUEST)
+    assert not list(p.private.glob('bld_*')) and not list(p.projections.glob('bld_*'))
+    assert not list(p.state.glob('import-*'))
+    monkeypatch.setattr(module, 'atomic_write', writer)
+    assert (await p.get_character(REQUEST)).build.build_id
+    await p.close()
+
+
+async def test_beast_dedup_integrity_and_user_isolation(tmp_path):
+    original, groups = beast_fixture()
+    backend = NinjaBackend()
+    backend.model.update(pathOfBuildingExport=original.decode(), skills=groups)
+    owner, guest = provider(tmp_path/'owner', backend), provider(tmp_path/'guest1', backend)
+    first, other = await owner.get_character(REQUEST), await guest.get_character(REQUEST)
+    assert first.build.build_id != other.build.build_id
+    sidecar = owner.private/(first.build.build_id+'.beasts.json')
+    sidecar.write_bytes(b'{}')
+    repaired = await owner.get_character(REQUEST)
+    assert not repaired.reused and repaired.build.build_id != first.build.build_id
+    assert sidecar.read_bytes() == b'{}'  # No silent mutation of existing IDs.
+    assert (await guest.get_character(REQUEST)).reused
+    # The TXT-only import path retains exact bytes and does not acquire Ninja
+    # metadata from a separate earlier import, even when code bytes are equal.
+    attachment, reused = owner.store(original)
+    assert not reused and not (owner.private/(attachment.build_id+'.beasts.json')).exists()
+    assert owner.store(original)[1]
+    await owner.close()
+    await guest.close()

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0
+
+- Implement Spirit Vessel copied attacks, supports and defences; bounded charge,
+  recoup and Mountain's Teachings event scenarios; Ghost Dance, Hollow Focus/Form,
+  Tempest Bell, Wind Dancer and Refutation calculations.
+- Apply PoE2 hit-leech caps/duration and Impale generation/extraction rules;
+  update Vaal Pact, Mana Drain and Soul Tether behavior. Unverified resistance
+  values and combat uptime remain explicit assumptions.
+- Add captured-beast modifier support and immutable private Ninja metadata,
+  matched by unique canonical species/skill/support signatures. Apply verified
+  captured-beast ally auras with separate source and recipient state. PoB payloads
+  and private upstream text remain outside MCP responses and arguments.
+- Implement explicit hit/kill buffs, curse target-level checks, Charged Mark
+  ground and Rite of Passage states; retain native support and actor scope.
+- Add typed calculation configuration to recalculation, equipment validation,
+  comparisons and budget optimization. Apply the same assumptions to every
+  candidate without altering saved builds; reject verified recommendations
+  when baseline or candidate calculations are incomplete.
+- Backport narrowly reviewed curse-condition, rune-parser and Baryanic Leylines
+  fixes. Record all six upstream branches and 71 open PRs reviewed during this
+  release's inventory, distinguishing triage from detailed source review.
+- Preserve numeric status and truncation markers within the 8 KiB public output
+  limit; synchronize package, MCP initialization and health version metadata.
+
 ## 0.9.0
 
 - Add source-anchored Stonefist requirement, charge-event, Offering Life,

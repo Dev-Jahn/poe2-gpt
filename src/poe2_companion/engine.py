@@ -22,6 +22,12 @@ def deltas(before,after):
     return [PlayerStat(name=s.name,value=s.value-b[s.name]) for s in after.stats if s.name in b]
 
 
+def calculation_context(request):
+    fields=list(request.configuration.model_dump(exclude_none=True)) if request.configuration else []
+    return {'scope':'explicit_configuration_active_weapon_set' if fields else 'saved_configuration_active_weapon_set',
+            'configuration_fields':fields}
+
+
 def bounded_engine_dto(value):
     """Preserve stats/status/counts while bounding repeated diagnostic details."""
     value=value.model_copy(deep=True)
@@ -32,7 +38,34 @@ def bounded_engine_dto(value):
         if not candidates:
             candidates=[s for s in snapshots if s.mechanics]
             if not candidates:
-                return bounded_dto(value)
+                candidates=[s for s in snapshots if s.combat_scenario is not None]
+                if not candidates:
+                    candidates=[s for s in snapshots if s.selected_skill and
+                                (s.selected_skill.name_ko or s.selected_skill.name_source_ko)]
+                    if candidates:
+                        snapshot=max(candidates,key=lambda s:len(s.selected_skill.model_dump_json()))
+                        snapshot.selected_skill.name_ko=None
+                        snapshot.selected_skill.name_source_ko=None
+                        snapshot.selected_skill_labels_truncated=True
+                        continue
+                    candidates=[s for s in snapshots if s.selected_skill and s.selected_skill.gem_name]
+                    if candidates:
+                        snapshot=max(candidates,key=lambda s:len(s.selected_skill.gem_name))
+                        snapshot.selected_skill.gem_name=None
+                        snapshot.selected_skill_labels_truncated=True
+                        continue
+                    candidates=[s for s in snapshots if s.selected_skill and s.selected_skill.name]
+                    if candidates:
+                        snapshot=max(candidates,key=lambda s:len(s.selected_skill.name.encode('utf-8')))
+                        snapshot.selected_skill.name=None
+                        snapshot.selected_skill_labels_truncated=True
+                        continue
+                    return bounded_dto(value)
+                snapshot=max(candidates,key=lambda s:len(s.combat_scenario.model_dump_json()))
+                snapshot.combat_scenario_status=snapshot.combat_scenario.status
+                snapshot.combat_scenario=None
+                snapshot.combat_scenario_truncated=True
+                continue
             snapshot=max(candidates,key=lambda s:len(s.mechanics))
             snapshot.mechanics.pop()
             snapshot.mechanics_truncated=True
@@ -98,10 +131,11 @@ class EngineClient:
 
     async def calculate(self, request: EngineRequest | CompareRequest):
         scenarios=[[v.model_dump() for v in request.replacements]] if isinstance(request,CompareRequest) else []
-        result=await self.batch(WorkerRequest(build_id=request.build_id,scenarios=scenarios))
+        result=await self.batch(WorkerRequest(build_id=request.build_id,scenarios=scenarios,
+            configuration=request.configuration,combat_scenario=request.combat_scenario))
         after=result.results[0] if result.results else None
         return bounded_engine_dto(EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
-            result=after,deltas=deltas(result.baseline,after) if after else []))
+            result=after,deltas=deltas(result.baseline,after) if after else [],**calculation_context(request)))
 
     async def recommend(self, request: EngineTradeRequest, trade, scout):
         entries=[trade.retained(s) for s in request.search_ids]
@@ -169,7 +203,8 @@ class EngineClient:
                     plans.append((changes,cost,public))
                     if len(plans)>64:
                         raise EngineError('engine_candidate_space_too_large')
-        result=await self.batch(WorkerRequest(build_id=request.build_id,scenarios=[p[0] for p in plans[1:]]))
+        result=await self.batch(WorkerRequest(build_id=request.build_id,scenarios=[p[0] for p in plans[1:]],
+            configuration=request.configuration,combat_scenario=request.combat_scenario))
         snapshots=[result.baseline,*result.results]
         need={w.stat for w in request.weights}|{c.stat for c in request.constraints}
         def values(snapshot):
@@ -185,7 +220,7 @@ class EngineClient:
             v=values(snapshot)
             if snapshot.validation=='fail':
                 failed+=1;continue
-            if snapshot.validation!='pass' or not need<=v.keys():
+            if result.baseline.validation!='pass' or snapshot.validation!='pass' or not need<=v.keys():
                 unknown+=1;continue
             if any(v[c.stat]<c.minimum for c in request.constraints):
                 continue
@@ -198,7 +233,7 @@ class EngineClient:
             best,gain=0,0.0
         snapshot,cost,changes=snapshots[best],plans[best][1],plans[best][2]
         calc=EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
-            result=snapshot if best else None,deltas=deltas(result.baseline,snapshot) if best else [])
+            result=snapshot if best else None,deltas=deltas(result.baseline,snapshot) if best else [],**calculation_context(request))
         # Return just the best plan; all bounded combinations were still evaluated.
         return bounded_engine_dto(EngineTradeResult(calculation=calc,changes=changes,cost=float(cost),currency=request.budget.currency,
             remaining_budget=float(budget-cost),score_gain=float(gain),feasible=bool(eligible),evaluated_combinations=len(plans),

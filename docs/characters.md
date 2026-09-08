@@ -5,7 +5,7 @@ Character entry has two user flows:
 1. Supply a PoE account tag and character name. `get_character` discovers an unambiguous league, downloads the public poe.ninja snapshot and privately imports its PoB export. A league slug is needed only to resolve ambiguity.
 2. Attach an original PoB export as a UTF-8 `.txt` file in ChatGPT and ask to import it. `import_pob_attachment` takes a top-level `file` object supplied by ChatGPT, not file contents or a filesystem path. The private service downloads the bytes directly.
 
-Both return an opaque build ID and bounded summary. Continue with `recalculate_build`, `validate_build_equipment` or `recommend_pob_trade_upgrades`. Re-fetch or reattach when the character changes; existing snapshots and calculations are not live game state. Identical original bytes reuse an existing import within the same user store.
+Both return an opaque build ID and bounded summary. Continue with `recalculate_build`, `validate_build_equipment` or `recommend_pob_trade_upgrades`. Re-fetch or reattach when the character changes; existing snapshots and calculations are not live game state. Identical original bytes and supplemental metadata reuse an existing import within the same user store.
 
 There is no physical-server file transfer, `import-build` command or public PoB import/export CLI. Do not read attachments using other tools, ask users to paste codes, generate replacement codes, or expose private files through filesystem connectors.
 
@@ -16,6 +16,18 @@ GGG/Steam users can use **Connect** at [poe.ninja/account](https://poe.ninja/acc
 The public profile must be available to Ninja. Account tags are converted to profile slugs by replacing the final `#` separator with `-`. Names and leagues are individually URL-encoded. This public lookup is not proof that the requesting user owns the PoE account; imports belong to the authenticated MCP user's isolated store.
 
 The adapter follows the website's event stream to obtain the current snapshot version, reads the versioned character list/model, and closes the stream after the first version event. It does not hard-code `model/15`. Requests use a fixed `poe.ninja` origin, bounded response sizes/timeouts, no redirects, fixed errors and no credential collection through MCP. Private profiles and challenges fail explicitly.
+
+For captured beasts, the provider privately joins Ninja metadata to the original
+export only when canonical skill, species, level, quality and the complete support
+multiset identify exactly one instance on both sides. It also verifies the
+export's selected species and companion membership. Ambiguous or unmapped records
+do not establish complete modifier coverage. The bounded supplement contains
+canonical identifiers and verification hashes; it is unavailable to MCP file
+readers and contains no raw upstream properties. The worker verifies it again
+before applying it to a temporary calculation. Original export bytes remain
+unchanged, and changed metadata creates a new immutable build ID. Re-fetching
+through `get_character` enables this enrichment for previously imported builds;
+an attachment without verified supplemental data retains missing-roll diagnostics.
 
 ## File reference contract
 
@@ -39,4 +51,4 @@ The provider stores this session as a restricted file in that user's private `ch
 
 `compose.engine.yaml` and the Mac engine overlay include the character provider automatically. Its private Unix socket and state volume are unique per member. It writes raw builds and safe projections; MCP reads projections and sockets only. PoB calculation keeps `network_mode: none`.
 
-Original bytes and summaries persist across restarts. Imports are limited to 500 builds and 128 MiB of raw data per user; capacity errors do not evict older builds. Operator backup/deletion remains an administration task. Credential state and signed URLs must not be logged. The provider container disables Docker log collection; HTTP client debug logging must remain disabled.
+Original bytes and summaries persist across restarts. Imports are limited to 500 builds and 128 MiB of original bytes plus supplemental metadata per user; capacity errors do not evict older builds. Operator backup/deletion remains an administration task. Credential state and signed URLs must not be logged. The provider container disables Docker log collection; HTTP client debug logging must remain disabled.

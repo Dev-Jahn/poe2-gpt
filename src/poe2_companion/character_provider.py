@@ -31,6 +31,8 @@ from .characters import (AccountRequest, CharacterRequest, CharacterIdentity, Ch
     CharacterOverview, CharacterImport, CharacterRefresh, AttachmentRequest, AttachmentImport,
     CHARACTER_INPUTS, CHARACTER_ERRORS, CharacterError, account_slug)
 from .pob_io import import_stream, atomic_write, MAX_CODE_BYTES
+from .beast_metadata import (build_beast_metadata, validate_beast_metadata,
+    BeastMetadataError, MAX_BEAST_METADATA_BYTES)
 
 NINJA = "https://poe.ninja"
 STAT_MAP = {"life": "Life", "energyShield": "EnergyShield", "mana": "Mana",
@@ -191,27 +193,48 @@ class CharacterProvider:
             pob_available=isinstance(model.get("pathOfBuildingExport"), str) and bool(model["pathOfBuildingExport"]),
             retrieved_at_epoch=int(time.time()), source_updated_at=timestamp(model.get("updatedUtc")))
 
-    def store(self, code):
+    def store(self, code, *, beast_metadata=None):
         if len(code) > MAX_CODE_BYTES:
             raise CharacterError("attachment_too_large")
         digest = hashlib.sha256(code).hexdigest()
+        if beast_metadata is not None:
+            try:
+                validate_beast_metadata(beast_metadata, code)
+            except BeastMetadataError:
+                raise CharacterError("character_schema_changed") from None
+            # One immutable build identity includes the private supplemental
+            # metadata. A refresh never overwrites metadata of an existing ID.
+            digest = hashlib.sha256(digest.encode("ascii") + b"\0" + beast_metadata).hexdigest()
         index = self.state / ("import-" + digest + ".json")
         if index.exists():
             try:
                 saved = json.loads(read_regular_file(index, 1024))
                 summary = BuildReader(self.projections).summary(saved["build_id"])
-                if (self.private / (summary.build_id + ".pob")).is_file():
+                raw = read_regular_file(self.private / (summary.build_id + ".pob"), MAX_CODE_BYTES)
+                sidecar = self.private / (summary.build_id + ".beasts.json")
+                same_metadata = (read_regular_file(sidecar, MAX_BEAST_METADATA_BYTES) == beast_metadata
+                    if beast_metadata is not None else not sidecar.exists() and not sidecar.is_symlink())
+                if raw == code and same_metadata:
                     return summary, True
             except Exception:
                 pass
         paths = list(self.private.glob("bld_*.pob"))
-        if len(paths) >= 500 or sum(p.stat().st_size for p in paths) + len(code) > 128 * 1024 * 1024:
+        sidecars = list(self.private.glob("bld_*.beasts.json"))
+        if len(paths) >= 500 or sum(p.stat().st_size for p in paths + sidecars) + len(code) + len(beast_metadata or b"") > 128 * 1024 * 1024:
             raise CharacterError("character_storage_full")
+        build_id = None
         try:
             build_id = import_stream(BytesIO(code), self.private, self.projections)
+            if beast_metadata is not None:
+                atomic_write(self.private / (build_id + ".beasts.json"), beast_metadata)
+            summary = BuildReader(self.projections).summary(build_id)
             atomic_write(index, json.dumps({"build_id": build_id}).encode())
-            return BuildReader(self.projections).summary(build_id), False
+            return summary, False
         except Exception:
+            if build_id is not None:
+                for path in (self.private / (build_id + ".pob"), self.private / (build_id + ".beasts.json"),
+                             self.projections / (build_id + ".json")):
+                    path.unlink(missing_ok=True)
             raise CharacterError("character_import_unavailable") from None
 
     async def get_character(self, request: CharacterRequest):
@@ -220,7 +243,12 @@ class CharacterProvider:
         overview = self.overview(request, model)
         if not overview.pob_available:
             raise CharacterError("character_import_unavailable")
-        summary, reused = self.store(model["pathOfBuildingExport"].encode("ascii"))
+        try:
+            original = model["pathOfBuildingExport"].encode("ascii")
+            metadata = build_beast_metadata(model, original)
+        except (UnicodeEncodeError, BeastMetadataError):
+            raise CharacterError("character_schema_changed") from None
+        summary, reused = self.store(original, beast_metadata=metadata)
         return CharacterImport(character=overview, build=summary, reused=reused)
 
     def session(self):

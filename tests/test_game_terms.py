@@ -72,11 +72,9 @@ async def test_term_tool_is_offline_bounded_and_rejects_payload_echo(names):
         await scout.close()
 
 
-def test_localized_dense_engine_result_preserves_numeric_budget(monkeypatch):
+def dense_engine_result(*, fully_configured=False):
     from typing import get_args
-    from poe2_companion import game_terms
     from poe2_companion.builds import STAT_NAMES, PlayerStat
-    from poe2_companion.engine import bounded_engine_dto
     from poe2_companion.engine_models import (EngineCalculation, EngineSnapshot, EngineTradeResult,
         EngineSlot, EquippedItem, SelectedSkill, RequirementIssue, TradeChange)
 
@@ -93,6 +91,26 @@ def test_localized_dense_engine_result_preserves_numeric_budget(monkeypatch):
         changes=[TradeChange(slot=slot, listing_ref="f"*64) for slot in ("body_armour", "weapon_main", "weapon_off")], cost=1e15, currency="exalted",
         remaining_budget=1e15, score_gain=1e15, feasible=False, evaluated_combinations=64,
         failed_requirements=64, indeterminate_combinations=0, excluded_listings=32)
+    if fully_configured:
+        from poe2_companion.calculation_config import ConfigurationField
+        calculation.scope = 'explicit_configuration_active_weapon_set'
+        calculation.configuration_fields = list(get_args(ConfigurationField))
+        for row in (calculation.baseline, calculation.result):
+            row.issue_count = row.mechanic_count = 1000000
+            row.combat_scenario_status = 'unsupported'
+            row.combat_scenario_truncated = True
+            row.equip_order = ['body_armour', 'weapon_main', 'weapon_off']
+            # Long Unicode display names may consume four bytes per character;
+            # canonical IDs and all numeric results still fit without labels.
+            row.selected_skill.name = '\U00010400' * 120
+            row.selected_skill.gem_name = '\U00010401' * 120
+    return value
+
+
+def test_localized_dense_engine_result_preserves_numeric_budget(monkeypatch):
+    from poe2_companion import game_terms
+    from poe2_companion.engine import bounded_engine_dto
+    value = dense_engine_result()
     value = bounded_engine_dto(value)
     before = value.model_dump()
     monkeypatch.setattr(game_terms, "name_fields", lambda _: {
@@ -102,9 +120,69 @@ def test_localized_dense_engine_result_preserves_numeric_budget(monkeypatch):
     after = result.model_dump()
     for side in ("baseline", "result"):
         assert after["calculation"][side]["selected_skill"]["name_source_ko"] is None
+        assert after["calculation"][side]["selected_skill_labels_truncated"]
         for label in ("name_ko", "name_source_ko"):
             after["calculation"][side]["selected_skill"][label] = None
+        after["calculation"][side]["selected_skill_labels_truncated"] = before["calculation"][side]["selected_skill_labels_truncated"]
     assert after == before
+
+
+async def test_fully_configured_dense_result_fits_actual_mcp_schema_and_roundtrip(monkeypatch):
+    from jsonschema import Draft202012Validator
+    from mcp.shared.memory import create_connected_server_and_client_session
+    from poe2_companion import game_terms
+    from poe2_companion.engine import bounded_engine_dto
+    from poe2_companion.engine_models import EngineTradeResult
+    from poe2_companion.trade import TradeClient
+
+    original = dense_engine_result(fully_configured=True)
+    before = original.model_dump()
+    bounded = bounded_engine_dto(original)
+    assert original.model_dump() == before
+    assert bounded.calculation.configuration_fields == original.calculation.configuration_fields
+    for side in ('baseline', 'result'):
+        prior, after = getattr(original.calculation, side), getattr(bounded.calculation, side)
+        assert after.stats == prior.stats and after.equipped == prior.equipped
+        assert after.issue_count == prior.issue_count and after.mechanic_count == prior.mechanic_count
+        assert after.validation == prior.validation and after.equip_order == prior.equip_order
+        assert after.selected_skill.skill_id == prior.selected_skill.skill_id
+        assert after.selected_skill.actor == prior.selected_skill.actor
+        if after.selected_skill.name is None:
+            assert after.selected_skill_labels_truncated
+    assert bounded.calculation.deltas == original.calculation.deltas
+    assert EngineTradeResult.model_validate_json(bounded.model_dump_json()) == bounded
+
+    monkeypatch.setattr(game_terms, 'name_fields', lambda _: {
+        'name_ko': '한' * 160, 'name_source_ko': 'https://poe2db.tw/kr/' + 'a' * 1000})
+    class DenseEngine:
+        async def recommend(self, request, trade, scout):
+            return bounded.model_copy(deep=True)
+    scout = Scout(user_agent='test', transport=httpx.MockTransport(Backend()), interval=0)
+    trade = TradeClient(user_agent='synthetic-test')
+    server = build_server(scout, trade=trade, engine=DenseEngine())
+    try:
+        async with create_connected_server_and_client_session(server) as session:
+            tool = next(t for t in (await session.list_tools()).tools if t.name == 'recommend_pob_trade_upgrades')
+            response = await session.call_tool('recommend_pob_trade_upgrades', {'request': {
+                'build_id': original.calculation.build_id, 'search_ids': ['ts_' + '2' * 32],
+                'budget': {'amount': 1e9, 'currency': 'exalted'},
+                'weights': [{'stat': 'Life', 'weight': 1}]}})
+        assert not response.isError
+        structured = response.structuredContent
+        assert len(json.dumps(structured, ensure_ascii=False, separators=(',', ':')).encode()) <= 8192
+        assert 'calculation' in tool.outputSchema['required']
+        definitions = tool.outputSchema['$defs']
+        assert {'skill_id', 'actor'} <= set(definitions['SelectedSkill']['required'])
+        assert 'name' not in definitions['SelectedSkill']['required']
+        assert {'slot', 'level_required'} <= set(definitions['EquippedItem']['required'])
+        assert 'origin' not in definitions['EquippedItem']['required']
+        Draft202012Validator(tool.outputSchema).validate(structured)
+        roundtrip = EngineTradeResult.model_validate(structured)
+        assert roundtrip == bounded
+        assert all(item.origin == 'saved_build' for item in roundtrip.calculation.baseline.equipped)
+    finally:
+        await trade.close()
+        await scout.close()
 
 
 async def test_localized_character_pages_keep_all_entries_across_byte_limit(tmp_path, monkeypatch):
