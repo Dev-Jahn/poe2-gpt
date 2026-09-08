@@ -219,6 +219,9 @@ class Anchors(HTMLParser):
         href, parts = self.active
         self.active = None
         label = " ".join("".join(parts).split())
+        # Language-menu self-links are UI labels, not names of game entries.
+        if label in {"US English", "KR 한국어"}:
+            return
         target = urlsplit(urljoin(self.url, href))
         prefix = "/" + self.language + "/"
         if (not href or href.startswith("#") or target.scheme != "https"
@@ -378,6 +381,7 @@ def build_html(directory: Path, output: Path, game_version: str) -> dict:
     if not 2 <= len(provenance["sources"]) <= 50:
         raise ValueError("invalid_source_provenance")
     rows = {"en": [], "ko": []}
+    page_titles = {"en": defaultdict(set), "ko": defaultdict(set)}
     sources = []
     for source in provenance["sources"]:
         language = source["language"]
@@ -387,6 +391,12 @@ def build_html(directory: Path, output: Path, game_version: str) -> dict:
         if len(raw) > MAX_SOURCE_BYTES or hashlib.sha256(raw).hexdigest() != source["sha256"]:
             raise ValueError("source_hash_mismatch")
         valid_asset(source["url"])
+        title_parser = Anchors(source["url"], "us" if language == "en" else "kr")
+        title_parser.feed(raw.decode("utf-8"))
+        title = " ".join("".join(title_parser.title_parts).split())
+        page_key = unquote(urlsplit(source["url"]).path.rsplit("/", 1)[-1])
+        if page_key and " - PoE2DB" in title:
+            page_titles[language][page_key].add(title.split(" - PoE2DB", 1)[0].strip())
         parsed = anchors(raw, source["url"], "us" if language == "en" else "kr")
         for row in parsed:
             # Navigation labels like "Item" must not become item translations.
@@ -399,6 +409,13 @@ def build_html(directory: Path, output: Path, game_version: str) -> dict:
         sources.append({k: source[k] for k in ("language", "url", "sha256", "requested_url", "redirects", "retrieved_at") if k in source})
     index, diagnostics = {}, {}
     for language in rows:
+        # A paired canonical page title identifies the entry; links elsewhere
+        # can label that same destination with a weapon or navigation category.
+        for key, titles in page_titles[language].items():
+            english_titles = page_titles["en"].get(key, set())
+            if len(titles) == len(english_titles) == 1 and name_key(next(iter(english_titles))) == name_key(key):
+                title = next(iter(titles))
+                rows[language] = [r for r in rows[language] if r["value"] != key or r["label"] == title]
         index[language], diagnostics[language] = index_rows(rows[language])
     records = []
     untranslated = 0
