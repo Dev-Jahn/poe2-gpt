@@ -4,7 +4,7 @@
 
 Um plugin do ChatGPT e servidor MCP para hospedagem própria, dedicado ao **Path of Exile 2**: preços de moedas, busca de equipamentos no site oficial de trocas, cálculos privados do Path of Building e melhorias dentro do orçamento.
 
-**Status: 0.6.0, experimental.** Há até 21 ferramentas MCP somente de leitura. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
+**Status: 0.7.0, experimental.** Há até 25 ferramentas MCP. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
 
 ## Recursos
 
@@ -12,13 +12,13 @@ Um plugin do ChatGPT e servidor MCP para hospedagem própria, dedicado ao **Path
 |---|---|
 | Preços de moedas | API JSON do Scout, 17 grupos de categorias, seleção de liga, busca, avaliação de conjuntos, cache e informações de origem e horário |
 | Busca de equipamentos | Filtros tipados e busca de atributos pela API web experimental `trade2` do site oficial de trocas |
-| Builds salvas | Importação externa de arquivos, IDs opacos, resumos limitados e páginas de nós passivos |
+| Builds salvas | Tag/nome do personagem ou anexo do ChatGPT, IDs opacos, resumos limitados e páginas de nós passivos |
 | Cálculo PoB | Versão fixada do PoE2 PoB em um processo privado; comparação de equipamentos e validação de requisitos |
 | Melhorias | Maximizar atributos explícitos do personagem ou minimizar o custo respeitando orçamento e valores mínimos |
 
 A liga padrão é **Forbidden Rites**; confirme outras temporadas com `list_leagues`. Os preços padrão são em **Exalted Orbs por item**. Há suporte a nomes de itens em inglês e apelidos coreanos de orbes comuns. O servidor não precisa de uma chave da API OpenAI.
 
-**Códigos PoB e XML bruto ficam fora do MCP e do contexto do modelo.** O operador executa a importação e exportação diretamente. Somente o processo privado lê os arquivos; o ChatGPT recebe IDs, números validados e status. Nunca cole um código PoB no chat. [Limite de dados](docs/pob-boundary.md).
+**Códigos PoB e XML bruto ficam fora do MCP e do contexto do modelo.** O serviço privado recebe dados do Ninja ou referências a anexos do ChatGPT. Não é necessário enviar arquivos ao servidor físico. Somente o processo privado lê os arquivos; o ChatGPT recebe IDs, números validados e status. Nunca cole um código PoB no chat. [Limite de dados](docs/pob-boundary.md).
 
 ## Início rápido
 
@@ -62,7 +62,7 @@ Os preços do Scout são estimativas agregadas; o horário da consulta não é o
 
 O PoB calcula a configuração ativa salva, não um personagem ao vivo. Somente combinações aprovadas nas verificações suportadas entram nas recomendações; mecânicas desconhecidas ficam como `indeterminate`. A otimização considera os candidatos retidos, não o mercado inteiro. O otimizador separado de atributos de itens não calcula PoB nem DPS do personagem.
 
-Busca por nome de personagem, importação do poe.ninja, compras automáticas e exportação de builds modificadas ainda não estão implementadas. Teste o Docker e a compatibilidade do seu PoB no servidor de destino.
+São aceitos a tag da conta e o nome do personagem, ou um arquivo `.txt` anexado no ChatGPT. Compras automáticas e exportação de builds modificadas não estão implementadas. Teste o Docker e a compatibilidade do seu PoB no servidor de destino.
 
 ## Desenvolvimento e licença
 
@@ -75,3 +75,5 @@ Busca por nome de personagem, importação do poe.ninja, compras automáticas e 
 Os testes com o motor real são explicitamente ignorados quando o ambiente opcional não está configurado. [Contribuição](CONTRIBUTING.md) · [Arquitetura](docs/architecture.md) · [Motor](docs/pob-engine.md) · [CI/CD](docs/releases.md) · [Segurança](SECURITY.md) · [Privacidade](docs/privacy.md).
 
 [Licença MIT](LICENSE); consulte [NOTICE](NOTICE) para componentes de terceiros e marcas. O inglês é a referência principal. Os cinco idiomas do README foram escolhidos usando um indicador público de comunidades linguísticas, com a inclusão do coreano solicitada; não representam um ranking de países por jogadores. [Localização](docs/localization.md).
+
+[Character integration / file attachments](docs/characters.md)

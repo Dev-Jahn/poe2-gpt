@@ -2,11 +2,15 @@ services:
   poe2-companion:
     environment:
       POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+      POE2_CHARACTER_SOCKET: /character-socket/characters.sock
       POE2_BUILD_PROJECTION_DIR: /build-projections
     volumes:
+      - character-socket:/character-socket:ro
       - engine-socket:/engine-socket:ro
       - build-projections:/build-projections:ro
     depends_on:
+      character-provider:
+        condition: service_healthy
       pob-engine:
         condition: service_healthy
   pob-engine:
@@ -41,22 +45,35 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-  pob-import:
+  character-provider:
     image: poe2-gpt:local
-    profiles: [operator]
-    entrypoint: [poe2-pob-files]
-    network_mode: none
+    build:
+      context: ..
+    entrypoint: [poe2-character-provider]
+    environment:
+      POE2_ATTACHMENT_HOSTS: ${POE2_ATTACHMENT_HOSTS:-files.oaiusercontent.com}
+    command: []
+    restart: unless-stopped
+    init: true
     read_only: true
     user: "10001:10001"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 256m
-    pids_limit: 32
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 64
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=32m,mode=1777
     volumes:
+      - character-socket:/character-socket
+      - character-state:/character-state
       - private-builds:/private-builds
       - build-projections:/build-projections
+    healthcheck:
+      test: [CMD, python, -c, "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/character-socket/characters.sock')); c.get('http://provider/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     logging:
       driver: none
 volumes:
@@ -64,3 +81,5 @@ volumes:
   private-builds:
   build-projections:
   engine-coordination:
+  character-socket:
+  character-state:

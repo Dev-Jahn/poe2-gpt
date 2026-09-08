@@ -4,7 +4,7 @@
 
 Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**: Währungspreise, Ausrüstungssuche auf der offiziellen Handelsseite, private Path-of-Building-Berechnungen und Ausrüstungsverbesserungen innerhalb eines Budgets.
 
-**Status: 0.6.0, experimentell.** Bis zu 21 lesende MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
+**Status: 0.7.0, experimentell.** Bis zu 25 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
 
 ## Funktionen
 
@@ -12,13 +12,13 @@ Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**
 |---|---|
 | Währungspreise | Scout-JSON-API, 17 Kategoriegruppen, Ligaauswahl, Suche, Sammelbewertung, Cache und Quellenzeitangaben |
 | Ausrüstungssuche | Typisierte Filter und Stat-Suche über die experimentelle `trade2`-Web-API der offiziellen Handelsseite |
-| Gespeicherte Builds | Externer Dateiimport, undurchsichtige Build-IDs, begrenzte Zusammenfassungen und passive Knoten |
+| Gespeicherte Builds | Kontotag/Charaktername oder ChatGPT-Dateianhang, undurchsichtige Build-IDs, begrenzte Zusammenfassungen und passive Knoten |
 | PoB-Berechnung | Festgelegte PoE2-PoB-Version in einem privaten Worker; Ausrüstungsvergleich und Anforderungsprüfung |
 | Verbesserungen | Explizite Charakterwerte maximieren oder Kosten unter Budget- und Mindestwertvorgaben minimieren |
 
 Standardliga: **Forbidden Rites**. Standardpreise: **Exalted Orbs pro Gegenstand**. Andere Saisons zuerst mit `list_leagues` prüfen. Englische Gegenstandsnamen und koreanische Aliasse für häufige Orbs werden unterstützt. Der Server benötigt keinen OpenAI-API-Schlüssel.
 
-**PoB-Codes und XML-Rohdaten bleiben außerhalb von MCP und Modellkontext.** Import und Export führt der Betreiber direkt aus. Nur der Worker liest private Dateien; ChatGPT erhält IDs, geprüfte Zahlen und Statuswerte. Niemals einen PoB-Code in den Chat einfügen. [Datengrenze](docs/pob-boundary.md).
+**PoB-Codes und XML-Rohdaten bleiben außerhalb von MCP und Modellkontext.** Der private Importdienst verarbeitet Ninja-Daten oder ChatGPT-Dateireferenzen. Kein Dateiimport auf dem Serverhost erforderlich. Nur der Worker liest private Dateien; ChatGPT erhält IDs, geprüfte Zahlen und Statuswerte. Niemals einen PoB-Code in den Chat einfügen. [Datengrenze](docs/pob-boundary.md).
 
 ## Schnellstart
 
@@ -62,7 +62,7 @@ Scout liefert aggregierte Schätzwerte. Abrufzeit und ursprünglicher Marktbeoba
 
 PoB berechnet die gespeicherte aktive Konfiguration, keinen Live-Charakter. Nur Kombinationen mit bestandenen unterstützten Ausrüstungsprüfungen werden empfohlen; unbekannte Mechaniken bleiben `indeterminate`. Optimiert wird über gespeicherte Kandidaten, nicht den gesamten Markt. Der separate Gegenstandswerte-Optimierer berechnet weder PoB noch Charakter-DPS.
 
-Charaktersuche nach Namen, poe.ninja-Import, automatische Käufe und Export eines geänderten Builds sind nicht implementiert. Docker-Betrieb und Kompatibilität des eigenen PoB müssen auf dem Zielhost geprüft werden.
+Kontotag und Charaktername oder eine in ChatGPT angehängte `.txt`-Datei werden unterstützt. Automatische Käufe und Export geänderter Builds bleiben nicht verfügbar. Docker-Betrieb und Kompatibilität des eigenen PoB müssen auf dem Zielhost geprüft werden.
 
 ## Entwicklung und Lizenz
 
@@ -75,3 +75,5 @@ Charaktersuche nach Namen, poe.ninja-Import, automatische Käufe und Export eine
 Tests mit der echten Engine werden ohne optionale Laufzeit ausdrücklich übersprungen. [Mitwirken](CONTRIBUTING.md) · [Architektur](docs/architecture.md) · [Engine](docs/pob-engine.md) · [CI/CD](docs/releases.md) · [Sicherheit](SECURITY.md) · [Datenschutz](docs/privacy.md).
 
 [MIT-Lizenz](LICENSE); Drittkomponenten und Marken siehe [NOTICE](NOTICE). Englisch ist maßgeblich. Die fünf README-Sprachen wurden anhand eines öffentlichen Sprachgemeinschaftsindikators und der Vorgabe, Koreanisch einzuschließen, gewählt; sie sind keine Länderrangliste. [Lokalisierung](docs/localization.md).
+
+[Character integration / file attachments](docs/characters.md)

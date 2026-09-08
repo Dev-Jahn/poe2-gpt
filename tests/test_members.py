@@ -46,14 +46,15 @@ def test_renderer_preserves_owner_and_separates_private_volumes():
     base = {"services": {
         "poe2-companion": {"image": "mcp:local", "command": ["--transport", "streamable-http"],
             "environment": {"POE2_CF_OWNER_EMAIL": "owner@example.com"},
-            "depends_on": {"pob-engine": {"condition": "service_healthy"}},
+            "depends_on": {n: {"condition": "service_healthy"} for n in ("pob-engine", "character-provider")},
             "volumes": [{"type": "volume", "source": n, "target": "/" + n}
-                        for n in ("prices", "engine-socket", "build-projections")]},
+                        for n in ("prices", "engine-socket", "build-projections", "character-socket")]},
         "pob-engine": {"image": "engine:local", "build": {"context": "."}, "network_mode": "none",
             "volumes": [{"type": "volume", "source": n, "target": "/" + n}
                         for n in ("private-builds", "engine-socket", "engine-coordination")]},
-        "pob-import": {"image": "mcp:local", "volumes": [{"type": "volume", "source": "private-builds", "target": "/private-builds"}]}},
-        "volumes": {n: {"name": "poe2_" + n} for n in ("private-builds", "engine-socket", "build-projections", "prices", "engine-coordination")}}
+        "character-provider": {"image": "mcp:local", "volumes": [{"type": "volume", "source": n, "target": "/" + n}
+            for n in ("private-builds", "build-projections", "character-socket", "character-state")]}},
+        "volumes": {n: {"name": "poe2_" + n} for n in ("private-builds", "engine-socket", "build-projections", "prices", "engine-coordination", "character-socket", "character-state")}}
     before = deepcopy(base)
     stack = render_member_stack(base, MEMBERS)
     assert base == before
@@ -65,7 +66,11 @@ def test_renderer_preserves_owner_and_separates_private_volumes():
         assert mcp["command"][-1] == f"/u/{identity}/mcp"
         assert mcp["ports"][0]["host_ip"] == "127.0.0.1"
         mounts = {v["source"] for v in mcp["volumes"]}
-        assert mounts == {"prices", "engine-socket-" + identity, "build-projections-" + identity}
+        assert mounts == {"prices", "engine-socket-" + identity, "build-projections-" + identity, "character-socket-" + identity}
+        assert set(mcp["depends_on"]) == {"pob-engine-" + identity, "character-provider-" + identity}
+        provider = stack["services"]["character-provider-" + identity]
+        assert {v["source"] for v in provider["volumes"]} == {
+            n + "-" + identity for n in ("private-builds", "build-projections", "character-socket", "character-state")}
         assert stack["volumes"]["private-builds-" + identity]["name"] == "poe2_private-builds-" + identity
         worker = stack["services"]["pob-engine-" + identity]
         assert worker["network_mode"] == "none" and "build" not in worker

@@ -11,19 +11,23 @@ The default Compose service binds `127.0.0.1:8000` and persists Scout's SQLite c
 | Capability | Configuration |
 |---|---|
 | Currency and trade | `compose.yaml` |
-| Saved build summaries | Add `compose.builds.yaml`; set `POE2_HOST_PROJECTION_DIR` |
+| Saved build summaries | Included in `compose.engine.yaml` |
 | Imported equipment datasets | Add `compose.equipment.yaml`; set `POE2_HOST_EQUIPMENT_DIR` |
-| Real PoB calculations | Add `compose.engine.yaml`; set `POE2_HOST_PRIVATE_DIR` |
+| Real PoB calculations | Add `compose.engine.yaml` |
 
-Use absolute host paths. The files must already exist; Compose will not create a missing private bind source.
+Character imports use [account/name lookup or ChatGPT attachments](characters.md).
+The provider writes private named volumes; no host PoB path or file-transfer
+workflow is required. Existing deployments using raw bind mounts must migrate
+those stores as an operator backup/restore operation before changing topology.
 
 ```bash
-export POE2_HOST_PRIVATE_DIR=/srv/poe2/private
-# Run the external import workflow first, then grant the worker read access.
 docker compose -f compose.yaml -f compose.engine.yaml up -d --build
 ```
 
-Both containers use UID/GID 10001. Import writes directories as 0700 and files as 0600. Run imports with an appropriate operator identity or grant the worker narrowly scoped directory traversal and file-read ACLs after every import. Do not fix permissions by mounting the private directory into MCP or making it world-readable. The worker socket volume is also owned by UID 10001.
+All services use UID/GID 10001. Private volumes and sockets use restricted
+permissions. MCP never mounts raw builds or provider credential state. The
+network-enabled character provider writes raw files and projections; the
+calculation worker reads raw files only.
 
 The worker is read-only, has no network or exposed TCP port, drops capabilities, and uses a private tmpfs. MCP talks to it through a dedicated Unix socket. The worker retains upstream licenses in its image. Build the engine image on a Linux host with enough disk and memory; source extraction is hundreds of megabytes and calculation processes have a 3 GiB address-space cap.
 
@@ -36,6 +40,8 @@ The worker is read-only, has no network or exposed TCP port, drops capabilities,
 | `POE2_TRADE_ENABLED` | `1` by default; set `0` to disable direct trade tools |
 | `POE2_BUILD_PROJECTION_DIR` | MCP-readable summaries only |
 | `POE2_EQUIPMENT_PROJECTION_DIR` | MCP-readable typed equipment snapshots |
+| `POE2_CHARACTER_SOCKET` | Private ingestion Unix-socket path |
+| `POE2_ATTACHMENT_HOSTS` | Exact approved HTTPS file-download hosts on provider only |
 | `POE2_ENGINE_SOCKET` | Private worker Unix-socket path |
 | `POE2_PRIVATE_DIR` | Worker-only raw store |
 | `POE2_ENGINE_DIR` / `POE2_LUAJIT` | Worker-only pinned runtime locations |

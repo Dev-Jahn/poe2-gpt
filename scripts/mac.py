@@ -62,7 +62,7 @@ def compose(settings, *, base=False):
     command = [binary("docker"), "--context", CONTEXT, "compose", "--project-name", PROFILE,
                "--env-file", str(STATE / "deployment.env")]
     if settings.get("members") and not base:
-        resolved = json.loads(run(compose(settings, base=True) + ["--profile", "operator", "config", "--format", "json"],
+        resolved = json.loads(run(compose(settings, base=True) + ["config", "--format", "json"],
                                   capture_output=True, text=True).stdout)
         stack = render_member_stack(resolved, settings["members"])
         path = STATE / "compose.members.json"
@@ -88,7 +88,7 @@ def add_member(settings, identity):
     used_ports = {member["port"] for member in members}
     available = next((port for port in range(18082, 18146) if port not in used_ports), None)
     candidate = {"id": identity, "email": email, "port": available, "enabled": True}
-    resolved = json.loads(run(compose(settings, base=True) + ["--profile", "operator", "config", "--format", "json"],
+    resolved = json.loads(run(compose(settings, base=True) + ["config", "--format", "json"],
                               capture_output=True, text=True).stdout)
     validate_members([*members, candidate], resolved["services"]["poe2-companion"]["environment"]["POE2_CF_OWNER_EMAIL"])
     settings["members"] = [*members, candidate]
@@ -213,9 +213,8 @@ def main():
         sub.add_parser(name)
     for name in ("add-user", "remove-user"):
         sub.add_parser(name).add_argument("--id", required=True)
-    load = sub.add_parser("import-build", help="Operator terminal only; never run through model tools")
-    load.add_argument("--input", required=True, type=Path)
-    load.add_argument("--user", default="owner", help="Owner or an active friend ID; chosen by the operator")
+    session = sub.add_parser("configure-ninja", help="Operator-only Ninja refresh session; never paste credentials in chat")
+    session.add_argument("--user", default="owner")
     args = parser.parse_args()
     if platform.system() != "Darwin":
         parser.error("This deployment helper runs on macOS")
@@ -261,19 +260,19 @@ def main():
             print("Tunnel credential updated and tunnel restarted.")
         elif args.command == "status":
             sys.exit(status(settings))
-        elif args.command == "import-build":
+        elif args.command == "configure-ninja":
             if not settings["engine"]:
-                raise ValueError("Enable engine in deployment.json and run start first")
-            importer = "pob-import"
+                raise ValueError("Enable the character provider first")
+            service = "character-provider"
             if args.user != "owner":
                 if not any(m["id"] == args.user and m["enabled"] for m in settings.get("members", [])):
-                    raise ValueError("Import requires owner or an active friend ID")
-                importer += "-" + args.user
-            if args.input.is_symlink() or not args.input.is_file() or args.input.stat().st_size > 2 * 1024 * 1024:
-                raise ValueError("Input must be a regular PoB file of at most 2 MiB")
-            with args.input.open("rb") as source:
-                run(compose(settings) + ["run", "--rm", "-T", "--no-deps", importer, "import", "--stdin",
-                    "--private-dir", "/private-builds", "--projection-dir", "/build-projections"], stdin=source)
+                    raise ValueError("Select owner or an active member")
+                service += "-" + args.user
+            account = input("PoE account tag: ").strip()
+            cookie = getpass.getpass("Ninja Cookie header (hidden; empty revokes): ")
+            payload = json.dumps({"account_tag": account, "cookie": cookie}).encode()
+            run(compose(settings) + ["exec", "-T", service, "python", "-m",
+                "poe2_companion.character_provider", "--configure-session"], input=payload)
     except (ValueError, OSError, subprocess.CalledProcessError, urllib.error.URLError) as error:
         # Never print subprocess arguments, token contents or PoB input on failure.
         if isinstance(error, ValueError) and not isinstance(error, json.JSONDecodeError):

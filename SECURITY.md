@@ -7,3 +7,10 @@ Do not expose tools backed by private build data without an account-scoped tunne
 For a vulnerability, use GitHub's **Report a vulnerability** option on this repository's Security tab when it is enabled. If private reporting is unavailable, open a minimal issue asking the maintainer for a private contact channel, without exploit details, credentials, build payloads, or personal data. Do not attach private PoB codes to a public issue.
 
 A report should identify the affected version, impact, and a reproduction using synthetic data. Maintainers should validate privately, fix the issue with a regression test, and publish an advisory after the fix is available. No fixed response-time guarantee is offered.
+
+The network-enabled character ingestion service holds private raw write access
+and optional per-user Ninja credentials; the PoB computation worker remains
+network-disabled. MCP has neither raw nor credential mounts. Attachment input
+uses `openai/fileParams` with exact approved HTTPS hosts, no redirects, and
+bounded downloads. Never collect cookies, raw content or host paths in MCP
+arguments. The host's own handling of ChatGPT attachments is outside this boundary.

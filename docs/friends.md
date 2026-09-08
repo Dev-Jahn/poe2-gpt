@@ -68,21 +68,15 @@ sent by these scripts.
 
 ## Register each person's build
 
-Current PoB import remains an operator-only file workflow. There is no public
-upload page or character-name lookup yet. Transfer the file to the operator
-outside ChatGPT, then select the intended member explicitly:
+Each person uses their own authenticated MCP endpoint. Provide an account tag and
+character name, or attach an original PoB `.txt` file in ChatGPT. The private
+provider for that endpoint imports the build automatically. No physical-host
+file transfer or operator PoB import command is provided. Build IDs and Ninja
+refresh sessions are local to the member; owner credentials are never reused.
 
-```bash
-python3.12 scripts/mac.py import-build --user owner --input /absolute/path/to/owner.pob
-python3.12 scripts/mac.py import-build --user alice --input /absolute/path/to/alice.pob
-python3.12 scripts/mac.py import-build --user bob --input /absolute/path/to/bob.pob
-```
-
-Only give the resulting build ID to its owner. Each person can register several
-builds, leagues and characters in their own instance. The same character name
-does not merge stores. Never paste raw Base64 or XML into ChatGPT or expose the
-private store using another filesystem connector. The operator must select the
-correct `--user`; this assigns file ownership and is not inferred from PoB text.
+See [character integration](characters.md) for account linking, file references,
+refresh session setup and snapshot semantics. Guest IDs such as `guest1` and
+`guest2` are configured normally; examples elsewhere are placeholders.
 
 ## What is shared
 
@@ -131,3 +125,5 @@ authentication. Check a concurrent PoB request returns `engine_busy`, then succe
 after the first calculation finishes. Verify revocation with an already signed-in
 client. Cloudflare account setup and these real-client checks are deployment gates;
 the repository CI uses synthetic identities and synthetic builds.
+
+Each member also has a separate `character-provider`, `character-socket` and `character-state` volume. The provider reaches Ninja and approved attachment hosts; only the calculation worker has no network.

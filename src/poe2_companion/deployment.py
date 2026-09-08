@@ -8,7 +8,7 @@ import re
 
 MEMBER_ID = re.compile(r"[a-z][a-z0-9-]{0,23}")
 EMAIL = re.compile(r"[A-Za-z0-9._+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}")
-PRIVATE_VOLUMES = {"engine-socket", "private-builds", "build-projections"}
+PRIVATE_VOLUMES = {"engine-socket", "private-builds", "build-projections", "character-socket", "character-state"}
 
 
 def validate_members(members, owner_email):
@@ -34,7 +34,7 @@ def validate_members(members, owner_email):
 
 
 def member_services(identity, engine):
-    names = ["poe2-companion"] + (["pob-engine", "pob-import"] if engine else [])
+    names = ["poe2-companion"] + (["pob-engine", "character-provider"] if engine else [])
     return [name + "-" + identity for name in names]
 
 
@@ -43,9 +43,7 @@ def render_member_stack(base, members):
     validate_members(members, owner["environment"]["POE2_CF_OWNER_EMAIL"])
     stack = deepcopy(base)
     engine = "pob-engine" in base["services"]
-    if engine and "pob-import" not in base["services"]:
-        raise ValueError("Render Compose with --profile operator to include the private importer")
-    names = ["poe2-companion"] + (["pob-engine", "pob-import"] if engine else [])
+    names = ["poe2-companion"] + (["pob-engine", "character-provider"] if engine else [])
     for member in members:
         if not member["enabled"]:
             continue

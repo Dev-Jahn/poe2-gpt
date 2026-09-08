@@ -27,24 +27,36 @@ def main():
         return subprocess.run(command + args, check=True, env=env, cwd=ROOT, **kwargs)
     temporary = tempfile.TemporaryDirectory(prefix="poe2-members-ci-")
     try:
-        run(["build"])
-        base = json.loads(run(["--profile", "operator", "config", "--format", "json"], capture_output=True, text=True).stdout)
+        base = json.loads(run(["config", "--format", "json"], capture_output=True, text=True).stdout)
+        # Disjoint from production ports and image tags on a running Mac.
+        base["services"]["poe2-companion"]["ports"][0]["published"] = "28080"
+        for service in base["services"].values():
+            if "image" in service:
+                service["image"] = service["image"].removesuffix(":local") + ":ci"
         members = [{"id": name, "email": name + "@example.com", "port": port, "enabled": True}
                    for name, port in (("alice", 18082), ("bob", 18083))]
         rendered = Path(temporary.name) / "compose.json"
-        rendered.write_text(json.dumps(render_member_stack(base, members)))
+        stack = render_member_stack(base, members)
+        for service in stack["services"].values():
+            for port in service.get("ports", []):
+                if int(port["published"]) in (18082, 18083):
+                    port["published"] = str(int(port["published"]) + 10000)
+        rendered.write_text(json.dumps(stack))
         command = ["docker", "compose", "--project-name", "poe2-mac-ci", "-f", str(rendered)]
+        run(["build"])
         run(["up", "-d", "--wait", "--wait-timeout", "120"])
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        for port in (18080, 18082, 18083):
+        for port in (28080, 28082, 28083):
             try:
                 opener.open(f"http://127.0.0.1:{port}/mcp", timeout=5)
                 raise AssertionError("Unauthenticated origin request succeeded")
             except urllib.error.HTTPError as error:
                 assert error.code == 403 and json.load(error) == {"error": "access_denied"}
         code = base64.urlsafe_b64encode(zlib.compress((ROOT / "tests/fixtures/engine_synthetic.xml").read_bytes()))
-        result = run(["run", "--rm", "-T", "--no-deps", "pob-import", "import", "--stdin",
-                      "--private-dir", "/private-builds", "--projection-dir", "/build-projections"], input=code, capture_output=True)
+        result = run(["exec", "-T", "character-provider", "python", "-c",
+                      "import sys,json; from pathlib import Path; from poe2_companion.pob_io import import_stream; "
+                      "b=import_stream(sys.stdin.buffer,Path('/private-builds'),Path('/build-projections')); "
+                      "print(json.dumps({'status':'imported','build_id':b}))"], input=code, capture_output=True)
         imported = json.loads(result.stdout)
         assert imported["status"] == "imported"
         build_id = imported["build_id"]
@@ -64,14 +76,21 @@ def main():
         imported_ids = {"": build_id}
         for member in members:
             suffix = "-" + member["id"]
-            result = run(["run", "--rm", "-T", "--no-deps", "pob-import" + suffix, "import", "--stdin",
-                          "--private-dir", "/private-builds", "--projection-dir", "/build-projections"], input=code, capture_output=True)
+            result = run(["exec", "-T", "character-provider" + suffix, "python", "-c",
+                          "import sys,json; from pathlib import Path; from poe2_companion.pob_io import import_stream; "
+                          "b=import_stream(sys.stdin.buffer,Path('/private-builds'),Path('/build-projections')); "
+                          "print(json.dumps({'build_id':b}))"], input=code, capture_output=True)
             imported_ids[suffix] = json.loads(result.stdout)["build_id"]
         for suffix, own_id in imported_ids.items():
             foreign_id = next(value for key, value in imported_ids.items() if key != suffix)
             # Exercise real Unix sockets and the real engine from each isolated MCP container.
             run(["exec", "-T", "poe2-companion" + suffix, "python", "-c",
                  "import httpx; from pathlib import Path; "
+                 "assert not list(Path('/character-state').iterdir()); "
+                 "p=httpx.Client(transport=httpx.HTTPTransport(uds='/character-socket/characters.sock')); "
+                 "assert p.get('http://provider/health').json()=={'status':'ok'}; "
+                 "r=p.post('http://provider/refresh_character',json={'account_tag':'Example#1234','character_name':'Synthetic'}); "
+                 "assert r.status_code==200 and r.json()['status']=='authentication_required'; "
                  "assert {p.stem for p in Path('/build-projections').glob('*.json')} == {'" + own_id + "'}; "
                  "c=httpx.Client(transport=httpx.HTTPTransport(uds='/engine-socket/pob.sock'),timeout=90); "
                  "r=c.post('http://worker/batch',json={'build_id':'" + own_id + "','scenarios':[]}); "

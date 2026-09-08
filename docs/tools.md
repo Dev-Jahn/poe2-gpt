@@ -1,6 +1,6 @@
 # MCP tool reference
 
-Tools declare typed input schemas and read-only annotations. Inspect the live tool list for the authoritative schema. Optional tools are registered only when their backing service is configured. Most equipment and engine tools take one `request` object; build-summary tools take `build_id` directly.
+Tools declare typed input schemas and operation-specific annotations. Inspect the live tool list for the authoritative schema. Optional tools are registered only when their backing service is configured. Most equipment and engine tools take one `request` object; build-summary tools take `build_id` directly.
 
 | Tool | Purpose | Enablement |
 |---|---|---|
@@ -25,8 +25,16 @@ Tools declare typed input schemas and read-only annotations. Inspect the live to
 | `validate_build_equipment` | Check supported level, attribute, slot, and gem requirements | Engine socket |
 | `compare_build_equipment` | Compare up to three saved-item replacements | Engine socket |
 | `recommend_pob_trade_upgrades` | Optimize trade candidates with PoB and equipment validation | Engine socket + trade |
+| `list_account_characters` | Public account characters and league slugs | Character socket |
+| `get_character` | Account tag + character name → automatic private Ninja import | Character socket |
+| `import_pob_attachment` | ChatGPT `.txt` file reference → private import | Character socket + host fileParams support |
+| `refresh_character` | Explicit Ninja refresh with cooldown | Character socket + per-user Ninja session |
 
-The standard configuration exposes 10 tools; all optional services together expose 21. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
+The standard configuration exposes 10 tools; all optional services together expose 25. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
+
+
+
+The two character-entry flows return build IDs for the existing engine tools. The three import/refresh tools declare `readOnlyHint=false`; refresh also declares `idempotentHint=false`. No raw-content or host-path argument is accepted. See [characters](characters.md).
 
 ## Currency response semantics
 
@@ -38,6 +46,6 @@ Supported category families include `currency`, `fragments`, `runes`, `essences`
 
 ## Identifier flow
 
-Search for currency before quoting exact item IDs. Discover trade stat IDs before submitting filters. Reuse short server-side trade search IDs instead of the upstream query token. For private calculations, supply only the opaque ID returned by an external operator import.
+Search for currency before quoting exact item IDs. Discover trade stat IDs before submitting filters. Reuse short server-side trade search IDs instead of the upstream query token. For private calculations, supply only the opaque ID returned by `get_character` or `import_pob_attachment`.
 
 Trade handles expire after ten minutes. Engine trade optimization accepts up to four searches, 32 selected unique listings, three slot changes, and 64 affordable combinations. Narrow an oversized search explicitly; the server does not silently prune candidates and claim a global optimum.

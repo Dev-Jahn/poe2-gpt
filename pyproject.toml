@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poe2-gpt"
-version = "0.6.0"
+version = "0.7.0"
 description = "PoE2 prices, trade search and private Path of Building analysis via MCP"
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,7 @@ Issues = "https://github.com/Dev-Jahn/poe2-gpt/issues"
 poe2-gpt = "poe2_companion.server:main"
 poe2-companion = "poe2_companion.server:main"
 poe2-companion-check = "poe2_companion.check:main"
-poe2-pob-files = "poe2_companion.pob_io:main"
+poe2-character-provider = "poe2_companion.character_provider:main"
 poe2-pob-worker = "poe2_companion.engine_worker:main"
 poe2-equipment-import = "poe2_companion.equipment_io:main"
 

@@ -4,7 +4,7 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.6.0, experimental.** The code includes up to 21 read-only MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.7.0, experimental.** The code includes up to 25 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
 ## Features
 
@@ -12,13 +12,13 @@ A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency pr
 |---|---|
 | Currency prices | Scout JSON API, 17 category families, league selection, search, basket quotes, cache and source timestamps |
 | Equipment search | Typed filters and stat lookup through the official trade site's experimental `trade2` web API |
-| Saved builds | External file import, opaque build IDs, bounded summaries and passive-node pages |
+| Saved builds | Account + character lookup or ChatGPT .txt attachment, opaque build IDs, bounded summaries and passive-node pages |
 | PoB calculation | Pinned PoE2 PoB engine in a private worker; compare equipment and validate requirements |
 | Upgrade planning | Maximize explicit character metrics or minimize cost under budget and minimum-stat constraints |
 
 The default league is **Forbidden Rites**; check `list_leagues` before using another season. Prices default to **Exalted Orbs per item**. English item names are supported, with Korean aliases for common orbs. The server does not need an OpenAI API key.
 
-**Raw PoB codes and XML stay outside MCP and model context.** Import/export runs directly on the operator's machine. The worker receives private files; ChatGPT receives only IDs, validated numbers, and statuses. Never paste a PoB code into chat. See the [data boundary](docs/pob-boundary.md).
+**MCP never returns raw PoB codes or XML.** A private ingestion service downloads Ninja exports or attached-file references; the calculation worker reads private files. Tool results contain only IDs, validated numbers, and statuses. Never paste a PoB code into chat. ChatGPT's own attachment processing is outside the plugin's control. See the [data boundary](docs/pob-boundary.md).
 
 ## Quick start
 
@@ -48,6 +48,12 @@ For a Mac mini behind an inbound firewall, use the [Mac mini + Cloudflare setup]
 
 The repository includes `.codex-plugin/plugin.json`, `.mcp.json`, and a Git-backed marketplace catalog for local plugin hosts. Installing a local STDIO server does not make it available to ChatGPT web. Public directory publication requires a separate OpenAI review. [Plugin packaging reference](https://developers.openai.com/plugins/build/plugins).
 
+## Character connection
+
+Provide a PoE account tag and character name, or attach the original PoB export as a UTF-8 `.txt` file in ChatGPT. `get_character` resolves the league and imports Ninja's snapshot; `import_pob_attachment` consumes the host file reference without asking the model to read or rewrite the file. Both return a build ID for calculation and upgrade tools. No file transfer to the physical server or PoB import command is provided.
+
+Link the public profile through [poe.ninja Connect](https://poe.ninja/account). Kakao users first click **English** on [Kakao account connections](https://poe.kakaogames.com/my-account/connections) to transfer their signed-in GGG session, then authorize Ninja. Public lookup needs no server-side login; explicit refresh requires a separately configured per-user Ninja session. See [character integration and file boundaries](docs/characters.md).
+
 ## Try it
 
 - “Check Divine Orb prices in Forbidden Rites, quoted in Exalted Orbs. Show freshness and the source.”
@@ -62,7 +68,7 @@ Scout prices are aggregated estimates; fetch time is not the original market obs
 
 PoB evaluates the saved active configuration, not a live character. Only combinations that pass supported equipment checks enter PoB recommendations; unknown mechanics remain `indeterminate`. Optimization covers retained candidates, not the entire market. The separate item-stat optimizer is not a PoB or character-DPS calculation.
 
-Character-name lookup, poe.ninja import, automatic purchasing, and modified-build export are not implemented. Docker deployment and your own PoB compatibility must be checked on the target host.
+Account-tag character lookup and private poe.ninja import are available. Automatic purchasing and modified-build export are not implemented. Docker deployment and your own PoB compatibility must be checked on the target host.
 
 ## Development and license
 

@@ -157,19 +157,15 @@ Do not work around these errors by disabling origin auth or bypassing Access.
 
 ## Private builds and operation
 
-```bash
-# Operator terminal only. The file is streamed directly into an isolated importer.
-python3.12 scripts/mac.py import-build --input /absolute/path/to/build.pob
-```
+Use the two [character entry flows](characters.md): account tag + character name,
+or an original `.txt` file attached in ChatGPT. The private character provider
+downloads and imports the bytes. No file transfer to this Mac or operator PoB
+import command is supported. Existing private builds remain available after upgrade.
 
-Only an opaque build ID is printed. The importer is an ephemeral, network-disabled
-container with raw/projection write access. It writes 0600 files as UID 10001 into
-separate Linux-native named volumes. This avoids macOS shared-folder UID/ACL
-translation. The worker mounts raw data read-only; MCP mounts only projections
-and the worker socket. Raw code/XML never passes through a model tool. Export
-remains an operator-only original-file operation; changed-build export is not
-implemented. Keep this Mac's private data out of model-accessible filesystem
-connectors as well.
+The provider has network access and private raw/projection write mounts. MCP has
+only safe projections and private sockets; the PoB calculation worker remains
+network-disabled. `configure-ninja` is an optional local credential prompt for
+explicit Ninja refresh and does not import PoB files.
 
 For maintenance, use `python3.12 scripts/mac.py stop`. It stops this login session;
 remove the two matching files in `~/Library/LaunchAgents/` to disable future login

@@ -30,8 +30,6 @@ jobs:
       - run: python -m build
       - name: Check optional Compose configuration
         env:
-          POE2_HOST_PRIVATE_DIR: /tmp/poe2-private
-          POE2_HOST_PROJECTION_DIR: /tmp/poe2-projections
           POE2_HOST_EQUIPMENT_DIR: /tmp/poe2-equipment
         run: docker compose -f compose.yaml -f compose.engine.yaml -f compose.builds.yaml -f compose.equipment.yaml config --quiet
       - name: Build MCP image

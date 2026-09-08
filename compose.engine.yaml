@@ -1,18 +1,26 @@
-# Optional private computation service. No worker TCP port or network access.
+# Private ingestion and computation; no raw host file mounts or public worker ports.
 services:
   poe2-companion:
     environment:
       POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+      POE2_CHARACTER_SOCKET: /character-socket/characters.sock
+      POE2_BUILD_PROJECTION_DIR: /build-projections
     volumes:
+      - character-socket:/character-socket:ro
       - engine-socket:/engine-socket:ro
+      - build-projections:/build-projections:ro
     depends_on:
+      character-provider:
+        condition: service_healthy
       pob-engine:
         condition: service_healthy
   pob-engine:
+    image: poe2-gpt-engine:local
     build:
       context: .
       dockerfile: Dockerfile.engine
     restart: unless-stopped
+    init: true
     network_mode: none
     read_only: true
     user: "10001:10001"
@@ -23,22 +31,56 @@ services:
     pids_limit: 64
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    environment:
+      POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+      POE2_ENGINE_LOCK_FILE: /engine-coordination/compute.lock
     volumes:
       - engine-socket:/engine-socket
-      - type: bind
-        source: ${POE2_HOST_PRIVATE_DIR:?Set the absolute private PoB directory}
-        target: /private-builds
-        read_only: true
-        bind:
-          create_host_path: false
-    environment:
-      POE2_PRIVATE_DIR: /private-builds
-      POE2_ENGINE_DIR: /opt/pob
-      POE2_ENGINE_SOCKET: /engine-socket/pob.sock
+      - private-builds:/private-builds:ro
+      - engine-coordination:/engine-coordination
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     healthcheck:
       test: [CMD, python, -c, "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/engine-socket/pob.sock')); c.get('http://pob-worker/health').raise_for_status()"]
       interval: 30s
       timeout: 5s
       retries: 3
+  character-provider:
+    image: poe2-gpt:local
+    build:
+      context: .
+    entrypoint: [poe2-character-provider]
+    environment:
+      POE2_ATTACHMENT_HOSTS: ${POE2_ATTACHMENT_HOSTS:-files.oaiusercontent.com}
+    command: []
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+    volumes:
+      - character-socket:/character-socket
+      - character-state:/character-state
+      - private-builds:/private-builds
+      - build-projections:/build-projections
+    healthcheck:
+      test: [CMD, python, -c, "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/character-socket/characters.sock')); c.get('http://provider/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: none
 volumes:
   engine-socket:
+  private-builds:
+  build-projections:
+  engine-coordination:
+  character-socket:
+  character-state:

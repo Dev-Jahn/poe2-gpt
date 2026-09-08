@@ -74,21 +74,6 @@ def test_export_copies_exact_original_bytes_no_reencoding(tmp_path):
         assert destination.stat().st_mode & 0o777 == 0o600
 
 
-def test_export_and_import_cli_never_emit_payload(tmp_path):
-    source = tmp_path/"input.pob"
-    source.write_bytes(code())
-    private, projections = tmp_path/"private", tmp_path/"projections"
-    result = subprocess.run([sys.executable, "-m", "poe2_companion.pob_io", "import",
-        "--input", str(source), "--private-dir", str(private), "--projection-dir", str(projections)], capture_output=True, text=True)
-    assert result.returncode == 0
-    build_id = json.loads(result.stdout)["build_id"]
-    out = tmp_path/"export.pob"
-    result = subprocess.run([sys.executable, "-m", "poe2_companion.pob_io", "export", "--build-id", build_id,
-        "--private-dir", str(private), "--output", str(out)], capture_output=True, text=True)
-    assert result.returncode == 0 and out.read_bytes() == code()
-    assert code().decode() not in result.stdout+result.stderr and MARKER not in result.stdout+result.stderr
-
-
 def test_node_paging_returns_only_numeric_subset(tmp_path):
     build_id, _, projections, _ = imported(tmp_path)
     reader = BuildReader(projections)
@@ -96,15 +81,6 @@ def test_node_paging_returns_only_numeric_subset(tmp_path):
     assert page.node_ids == [2,3] and page.next_offset == 3 and page.total == 5
     with pytest.raises(BuildError): reader.nodes(build_id, 0, 0, 101)
     with pytest.raises(BuildError): reader.summary("../../private/input.pob")
-
-
-def test_cli_argument_errors_do_not_echo_payload():
-    result = subprocess.run([sys.executable, "-m", "poe2_companion.pob_io", code().decode()],
-        capture_output=True, text=True)
-    assert result.returncode == 2
-    assert not result.stdout
-    assert json.loads(result.stderr)["code"] == "invalid_cli_arguments"
-    assert code().decode() not in result.stderr
 
 
 @pytest.mark.parametrize("body", [b"not-a-code", b"https://somewhere.example/pob/abc", b"<PathOfBuilding2/>", b"AAAA"])

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- Add account-tag character discovery and automatic private poe.ninja PoB ingestion, using current snapshot versions from the upstream event stream.
+- Add ChatGPT `.txt` file attachment import with `openai/fileParams`; raw bytes remain outside MCP responses.
+- Add explicitly requested Ninja refresh with per-user session binding and persistent cooldowns.
+- Isolate the network-enabled importer, raw store and credentials from MCP and the network-disabled PoB worker.
+- Remove the physical-host PoB import workflow, CLI and operator Compose service; preserve existing saved builds.
+- Move synthetic deployment checks away from production ports.
+
+
 ## 0.6.0
 
 - Share one Mac with two friends using authenticated per-person MCP paths, separate processes, private volumes and worker sockets.

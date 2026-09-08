@@ -1,7 +1,6 @@
-"""Operator-only file import/export, intentionally absent from MCP tools.
+"""Internal import/export primitives for private services and synthetic tests.
 
-Run on the homelab directly. Never send code as command-line arguments,
-stdout, MCP fields, resources, or model-visible metadata.
+No public CLI or operator file-transfer workflow. Never send raw data to MCP.
 """
 from __future__ import annotations
 
@@ -36,7 +35,7 @@ def decode_pob(code: bytes) -> bytes:
     if len(code) > MAX_CODE_BYTES:
         raise BuildError("input_too_large")
     # Strip ASCII whitespace only. Do not accept URLs, pasted chat, or XML as code.
-    normalized = b"".join(code.split())
+    normalized = b"".join(code.removeprefix(b"\xef\xbb\xbf").split())
     if not normalized or not re.fullmatch(rb"[A-Za-z0-9_+/\-]+={0,2}", normalized):
         raise BuildError("invalid_pob_code")
     try:
@@ -189,41 +188,6 @@ def export_file(build_id: str, private_dir: Path, destination: Path):
 
 
 class PrivateArgumentParser(argparse.ArgumentParser):
+    """Shared safe diagnostics for the separate equipment snapshot utility."""
     def error(self, message):
-        # argparse normally echoes invalid values/unknown arguments. A mistaken
-        # pasted payload must not be copied into diagnostics or captured logs.
         self.exit(2, '{"status": "failed", "code": "invalid_cli_arguments"}\n')
-
-
-def main():
-    parser = PrivateArgumentParser(description="Local operator PoB file import/export. Never run via model tools.")
-    commands = parser.add_subparsers(dest="command", required=True)
-    load = commands.add_parser("import")
-    input_group = load.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--input", type=Path)
-    input_group.add_argument("--stdin", action="store_true", help="Read a bounded operator-only pipe")
-    load.add_argument("--private-dir", required=True, type=Path)
-    load.add_argument("--projection-dir", required=True, type=Path)
-    save = commands.add_parser("export")
-    save.add_argument("--build-id", required=True)
-    save.add_argument("--private-dir", required=True, type=Path)
-    save.add_argument("--output", required=True, type=Path)
-    args = parser.parse_args()
-    try:
-        if args.command == "import":
-            build_id = (import_stream(sys.stdin.buffer, args.private_dir, args.projection_dir)
-                        if args.stdin else import_file(args.input, args.private_dir, args.projection_dir))
-            print(json.dumps({"status": "imported", "build_id": build_id}))
-        else:
-            export_file(args.build_id, args.private_dir, args.output)
-            print(json.dumps({"status": "exported", "build_id": args.build_id}))
-    except BuildError as exc:
-        print(json.dumps({"status": "failed", "code": str(exc)}), file=sys.stderr)
-        sys.exit(1)
-    except (OSError, ValidationError, ValueError, RecursionError):
-        print(json.dumps({"status": "failed", "code": "pob_operation_failed"}), file=sys.stderr)
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
