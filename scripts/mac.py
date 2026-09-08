@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -131,8 +132,16 @@ def agent_spec(kind):
 
 
 def unload_agent(kind):
-    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LABELS[kind]}"],
+    target = f"gui/{os.getuid()}/{LABELS[kind]}"
+    subprocess.run(["launchctl", "bootout", target],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    # bootout can return while launchd is still waiting for the process to exit.
+    deadline = time.monotonic() + 30
+    while subprocess.run(["launchctl", "print", target], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, check=False).returncode == 0:
+        if time.monotonic() >= deadline:
+            raise ValueError("Login service did not finish unloading")
+        time.sleep(0.1)
 
 
 def install_agent(kind):
