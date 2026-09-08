@@ -30,6 +30,22 @@ Do not delete and recreate a developer-mode connection as the normal update proc
 
 For a deployment with character ingestion enabled, verify that `get_character`, `list_account_characters`, `refresh_character`, and `import_pob_attachment` appear and are enabled in ChatGPT. Release 0.8 also adds `search_game_terms`. If the server's `tools/list` includes them but ChatGPT does not, refresh that connection. If the live server omits them, check its deployment configuration first. Check each separately created guest connection after a metadata update.
 
+## Version labels
+
+From 0.9.0, MCP `initialize.serverInfo.version`, `/healthz.version`, and
+`get_pob_engine_status.server_version` report the project release. Earlier
+versions accidentally advertised the Python MCP SDK version during initialization.
+The release check keeps the runtime, Python package, and plugin manifest versions
+equal. The engine source/data pins are reported separately.
+
+ChatGPT's installed plugin version is separate metadata. A developer-mode
+connection created from a URL does not read this Git repository's manifest.
+The server cannot directly edit ChatGPT's plugin record, and the official
+connection documentation does not promise that its displayed version follows
+`serverInfo.version`. Refresh the existing connection after metadata changes;
+if the UI still shows `1.0.0`, use the engine-status tool to check the actual
+deployed release. Do not recreate the connection just to change that label.
+
 ## Local plugin hosts
 
 Install the Python package in the host environment. The bundled `.mcp.json` invokes `poe2-gpt` from PATH over STDIO. If needed, run the following with your virtual-environment Python to bind this checkout to that interpreter:

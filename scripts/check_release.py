@@ -12,10 +12,13 @@ def main():
     manifest = json.loads((ROOT / '.codex-plugin/plugin.json').read_text())
     assert project['name'] == manifest['name'] == 'poe2-gpt'
     assert project['version'] == manifest['version']
+    source_version = re.search(r'^__version__ = "([0-9.]+)"$',
+        (ROOT / 'src/poe2_companion/__init__.py').read_text(), re.MULTILINE)
+    assert source_version and source_version[1] == project['version']
     assert manifest['license'] == 'MIT'
     assert manifest['mcpServers'] == './.mcp.json'
     config = json.loads((ROOT / '.mcp.json').read_text())
-    assert config == {'poe2-gpt': {'command': 'poe2-gpt', 'args': ['--transport', 'stdio']}}
+    assert config == {'mcpServers': {'poe2-gpt': {'command': 'poe2-gpt', 'args': ['--transport', 'stdio']}}}
     catalog = json.loads((ROOT / '.agents/plugins/marketplace.json').read_text())
     entry = catalog['plugins'][0]
     assert entry['name'] == manifest['name']

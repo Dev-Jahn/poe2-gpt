@@ -1,6 +1,6 @@
 FROM python:3.14-slim AS engine-build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY scripts/install_lua_runtime.py scripts/install_pob_engine.py /install/
+COPY scripts/install_lua_runtime.py scripts/install_pob_engine.py scripts/patch_stonefist.py scripts/patch_companions.py scripts/patch_skill_coverage.py scripts/patch_weapon_context.py scripts/patch_spirit_vessel.py /install/
 RUN python /install/install_lua_runtime.py && python /install/install_pob_engine.py /opt/pob
 
 FROM python:3.14-slim AS runtime

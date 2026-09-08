@@ -4,7 +4,7 @@
 
 Um plugin do ChatGPT e servidor MCP para hospedagem própria, dedicado ao **Path of Exile 2**: preços de moedas, busca de equipamentos no site oficial de trocas, cálculos privados do Path of Building e melhorias dentro do orçamento.
 
-**Status: 0.8.0, experimental.** Há até 26 ferramentas MCP. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
+**Status: 0.9.0, experimental.** Há até 26 ferramentas MCP. A implantação no homelab, a autenticação e os testes com seu personagem são etapas da instalação. Este repositório não oferece um servidor hospedado nem uma publicação no diretório público do ChatGPT.
 
 ## Recursos
 

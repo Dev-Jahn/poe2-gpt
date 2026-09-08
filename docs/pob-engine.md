@@ -8,7 +8,7 @@ The optional Linux worker uses the upstream headless PoE2 Path of Building engin
 |---|---|
 | PathOfBuilding-PoE2 | `fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15` |
 | PoE2 0.5.5 data | `b3282b7a9111ed6c4ec6be643edf0806d7beb675` (37 reviewed data files from open PR #2505) |
-| Companion compatibility | `forbidden-rites-0.5.5-v1` |
+| Companion compatibility | `forbidden-rites-0.5.5-v2` |
 | LuaJIT | `24c20c94e7db195b640854619577441f9b4bc6be` |
 | luautf8 | `0.2.0` |
 
@@ -33,7 +33,7 @@ A successful calculation or `pass` means the implemented validation checks passe
 
 Two verified item mechanics have narrow integration fixes. The Vertex's **Equipment has no Attribute Requirements** applies to both weapons and other equipment, while gem attributes and level requirements remain enforced. [Forgotten Warden](https://poe2db.tw/us/Forgotten_Warden)'s Deflection per 50 missing Energy Shield uses the saved current-ES percentage, defaults to full ES, and floors each complete 50-point step. Explicit zero ES is honored; overflow ES and characters unable to have ES cannot create negative or phantom missing ES. Flat Deflection and converted Armour/Evasion contributions all receive applicable increased/more Deflection modifiers. `DeflectionRating` exposes the resulting player value. These source patches are guarded against the exact pinned source.
 
-Remaining diagnosed gaps include transformed-affix validation for Stonefist, Offering spike maximum Life (the upstream engine has no separate spike actor/base-Life calculation), and some charge-generation/consumption effects. [Trusted Kinship](https://poe2db.tw/us/Trusted_Kinship)'s companion/non-companion reservation modifiers already calculate, but distinct-companion composition limits remain unsupported. The Natural Order's random Azmeri Spirit behavior and unimplemented tamed-beast modifiers are not inferred. Already transformed Fists of Stone imports retain their supplied item data; this integration does not run the unsafe transformation PR again.
+The 0.9 compatibility layer adds scoped charge-event calculations, Offering spike Life, Companion composition checks, Wolf Pack Life pools, and conditional Verglas damage. It also diagnoses unmapped game-visible skill stats that upstream otherwise omits. See the [current league coverage matrix](league-coverage.md) for exact calculations, required inputs, and remaining gaps. Already transformed Fists of Stone imports retain their supplied data; this integration does not run the unsafe midpoint transformation PR.
 
 ## Validation
 

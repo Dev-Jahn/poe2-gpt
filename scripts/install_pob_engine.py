@@ -11,7 +11,7 @@ from pathlib import Path
 COMMIT='fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15'
 ARCHIVE_SHA256='1f34fb7a0b35d6916e9e5d1dea79a16b57cc282225abf3a2f1fc0ed3deb80630'
 DATA_COMMIT='b3282b7a9111ed6c4ec6be643edf0806d7beb675'
-COMPATIBILITY='forbidden-rites-0.5.5-v1'
+COMPATIBILITY='forbidden-rites-0.5.5-v2'
 # Reviewed data-only subset of open upstream PR2505; no UI or executable
 # module changes are imported from the PR. Every file is immutable and hashed.
 DATA_FILES={
@@ -138,6 +138,16 @@ def main():
         install_data(args.destination)
         patch_importer(args.destination)
         patch_deflection(args.destination)
+        from patch_stonefist import patch_stonefist
+        from patch_companions import patch_companions
+        from patch_skill_coverage import patch_skill_coverage
+        from patch_weapon_context import patch_weapon_context
+        from patch_spirit_vessel import patch_spirit_vessel
+        patch_weapon_context(args.destination)
+        patch_stonefist(args.destination)
+        patch_companions(args.destination)
+        patch_spirit_vessel(args.destination)
+        patch_skill_coverage(args.destination)
         (args.destination/'COMPANION_COMMIT').write_text(COMMIT+'\n')
         (args.destination/'COMPANION_DATA_COMMIT').write_text(DATA_COMMIT+'\n')
         (args.destination/'COMPANION_COMPATIBILITY').write_text(COMPATIBILITY+'\n')

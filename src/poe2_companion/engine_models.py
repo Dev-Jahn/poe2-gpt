@@ -6,10 +6,11 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 from .builds import DTO, StatName, PlayerStat
 from .equipment import Price, LeagueName, unique
+from . import __version__
 
 ENGINE_COMMIT = "fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15"
 ENGINE_DATA_COMMIT = "b3282b7a9111ed6c4ec6be643edf0806d7beb675"
-ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v1"
+ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v2"
 # Public output metadata has a stable schema across engine/data updates.
 # Exact pin equality remains enforced by worker health and EngineClient.status.
 EngineCommit = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$", min_length=40, max_length=40)]
@@ -21,7 +22,11 @@ Number = Annotated[float, Field(ge=-1e15, le=1e15, allow_inf_nan=False)]
 IssueCode = Literal["level_requirement", "attribute_requirement", "class_requirement", "slot_incompatible", "item_not_equipped",
     "gem_level_requirement", "unparsed_modifier", "unknown_item_base", "unknown_gem", "engine_item_warning", "reservation_invalid",
     "equip_sequence_unverified", "custom_modifiers_present", "ignored_limits", "unsupported_tree_version", "unsupported_slot", "configuration_override",
-    "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unknown_rune", "unsupported_skill_stat"]
+    "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unknown_rune", "unsupported_skill_stat",
+    "unsupported_item_transformation", "stonefist_passive_missing", "charge_sustain_unverified", "ally_charge_state_unverified", "conditional_recoup_unverified",
+    "companion_limit_exceeded", "duplicate_companion_type", "unique_companion_limit_exceeded", "unique_companion_not_allowed",
+    "companion_identity_unverified", "unsupported_companion_mechanic", "missing_companion_data", "missing_combat_assumption", "unsupported_weapon_context"]
+CanonicalSkillID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$", min_length=1, max_length=120)]
 
 
 class EngineRequest(DTO):
@@ -53,6 +58,39 @@ class RequirementIssue(DTO):
     required: Number | None = None
     available: Number | None = None
     passive_node_id: Annotated[int, Field(ge=0, le=2147483647)] | None = None
+    skill_id: CanonicalSkillID | None = None
+    skill_stat_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9_%+.-]+$", min_length=1, max_length=180)] | None = None
+
+
+class MechanicMetric(DTO):
+    name: Literal[
+        "glove_attribute_exemption", "already_transformed",
+        "power_extra_charge_chance", "frenzy_extra_charge_chance", "endurance_extra_charge_chance",
+        "power_grant_chance_per_hit", "frenzy_grant_chance_per_hit", "endurance_grant_chance_per_hit",
+        "charge_retention_chance", "expected_removed_fraction",
+        "power_charges_configured", "frenzy_charges_configured", "endurance_charges_configured",
+        "power_charges_counted_for_consumption", "frenzy_charges_counted_for_consumption", "endurance_charges_counted_for_consumption",
+        "life_recoup_percent_per_deflected_hit", "recoup_duration_seconds", "deflect_chance", "energy_shield_recharge_delay",
+        "regulation_interval_seconds", "regulation_removals_per_charge_type_per_second",
+        "same_type_extra_charge_chance", "random_type_extra_charge_chance",
+        "bone_offering_life_minimum", "bone_offering_life_maximum",
+        "pain_offering_life_minimum", "pain_offering_life_maximum",
+        "soul_offering_life_minimum", "soul_offering_life_maximum",
+        "active_companion_types", "companion_limit", "exempt_companion_types", "unique_tamed_beasts",
+        "unlimited_companion_types", "unique_tamed_beast_movement_speed_increase", "gold_quantity_increase", "unverified_tamed_beasts",
+        "spirit_vessel_life_minimum", "spirit_vessel_life_maximum", "spirit_vessel_socketed_skills_minimum", "spirit_vessel_socketed_skills_maximum",
+        "spirit_vessel_damage_more_minimum", "spirit_vessel_damage_more_maximum", "wolf_pack_size", "hyena_pack_size"]
+    value: Number
+
+
+class MechanicResult(DTO):
+    mechanic: Literal["stonefist", "charge_gain", "charge_consumption", "charge_regulation", "charge_skill_gain",
+        "ally_charges", "deflected_recoup", "offering_life", "companion_composition", "natural_order", "economy_effects", "tamed_beast_modifiers", "spirit_vessel", "companion_pack_size"]
+    status: Literal["calculated", "partial", "unsupported", "requires_configuration", "inactive"]
+    skill_id: CanonicalSkillID | None = None
+    metrics: Annotated[list[MechanicMetric], Field(max_length=8)] = Field(default_factory=list)
+    required_inputs: Annotated[list[Literal["transformed_glove_data", "stonefist_passive", "charge_gain_events",
+        "charge_consumption_events", "ally_presence", "ally_charge_events", "incoming_hit_sequence", "azmeri_spirit", "captured_beast_modifiers"]], Field(max_length=8)] = Field(default_factory=list)
 
 
 class EquippedItem(DTO):
@@ -84,6 +122,9 @@ class EngineSnapshot(DTO):
     main_skill_group: Annotated[int, Field(ge=0, le=10000)]
     selected_skill: SelectedSkill | None = None
     full_dps_enabled: bool = False
+    mechanics: Annotated[list[MechanicResult], Field(max_length=16)] = Field(default_factory=list)
+    mechanic_count: Annotated[int, Field(ge=0, le=1000000)] = 0
+    mechanics_truncated: bool = False
 
 
 class EngineCalculation(DTO):
@@ -103,6 +144,7 @@ class EngineCalculation(DTO):
 
 
 class EngineStatus(DTO):
+    server_version: Annotated[str, Field(pattern=r"^\d+\.\d+\.\d+$", max_length=32)] = Field(default_factory=lambda: __version__, validate_default=True)
     enabled: bool
     reachable: bool
     engine_commit: EngineCommit = Field(default_factory=lambda: ENGINE_COMMIT, validate_default=True)

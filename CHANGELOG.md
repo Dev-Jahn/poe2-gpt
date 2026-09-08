@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0
+
+- Add source-anchored Stonefist requirement, charge-event, Offering Life,
+  Companion composition, Wolf Pack and Verglas calculations and diagnostics.
+- Detect unmapped game-visible stats on effective skills and compatible supports;
+  preserve missing-data and combat-assumption uncertainty in recommendations.
+- Return bounded numeric mechanics separately from character DPS, with explicit
+  coverage status, required inputs and truncation counts.
+- Advertise the project version in MCP initialization and engine status, keep
+  package/runtime/manifest versions synchronized, and document separate ChatGPT
+  plugin metadata. Correct the local `.mcp.json` wrapper to the plugin schema.
+
 ## 0.8.0
 
 - Pin the current PoB2 development source and a checksummed, data-only 0.5.5 overlay for Forbidden Rites, with separate source/data/compatibility health markers.

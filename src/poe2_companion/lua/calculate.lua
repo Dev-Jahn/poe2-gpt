@@ -5,6 +5,13 @@ local json = require('dkjson')
 local job = assert(json.decode(io.stdin:read('*a')))
 dofile('HeadlessWrapper.lua')
 assert(build and not __mainObject__.promptMsg)
+local companionRoot = assert(arg[0]:match('^(.*[/\\])'))
+local stonefist = dofile(companionRoot..'stonefist.lua')
+local companions = dofile(companionRoot..'companions.lua')
+local skillCoverage = dofile(companionRoot..'skill_coverage.lua')
+local weaponContext = dofile(companionRoot..'weapon_context.lua')
+stonefist.register()
+companions.register()
 -- Exact crafting-only lines in the pinned 0.5.5 data affect future item
 -- modification, not the current combat stats. No broad pattern suppression.
 -- See upstream PR2509 (crafting influences) and ModRunes' Atziri cores.
@@ -32,6 +39,7 @@ local function load()
  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
  loadBuildFromXML(job.xml, '')
  assert(build and build.savers and build.targetVersion==liveTargetVersion and build.calcsTab and build.calcsTab.mainOutput and not __mainObject__.promptMsg)
+ if weaponContext.activate(build) then refresh() end
 end
 local function slotName(key)
  local name = slots[key]
@@ -61,7 +69,7 @@ local function itemChecks(item, key, out, env, issues)
  if not item.base then issue(issues,'unknown_item_base',key); return end
  local mult = item.base.weapon and out.GlobalWeaponAttributeRequirements or out.GlobalItemAttributeRequirements
  if not mult then issue(issues,'configuration_override',key); return end
- if not env.modDB:Flag(nil,'IgnoreAttributeRequirements') then
+ if not env.modDB:Flag(nil,'IgnoreAttributeRequirements') and not stonefist.ignore_glove_attributes(item,env) then
   for _, attr in ipairs({'Str','Dex','Int'}) do
    local required = math.floor((tonumber(req[attr:lower()..'Mod']) or 0) * mult)
    local available = out[attr] or 0
@@ -72,7 +80,7 @@ local function itemChecks(item, key, out, env, issues)
 end
 local function inspect(expected, order, sequenceOk)
  local out,env=build.calcsTab.mainOutput,build.calcsTab.mainEnv
- local stats,equipped,issues=array(),array(),array()
+ local stats,equipped,issues,mechanics=array(),array(),array(),array()
  local seenItems={}
  local fullDpsEnabled=type(out.SkillDPS)=='table' and #out.SkillDPS>0
  for _, key in ipairs(statKeys) do
@@ -187,7 +195,15 @@ local function inspect(expected, order, sequenceOk)
  end
  if config.ignoreJewelLimits or config.ignoreItemDisablers then issue(issues,'ignored_limits') end
  if sequenceOk==false then issue(issues,'equip_sequence_unverified') end
- local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unknown_rune=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true}
+ for _,module in ipairs({stonefist,companions}) do
+  local moduleMechanics,moduleIssues=module.inspect(build,env,out)
+  for _,entry in ipairs(moduleMechanics) do mechanics[#mechanics+1]=entry end
+  for _,entry in ipairs(moduleIssues) do issues[#issues+1]=entry end
+ end
+ for _,entry in ipairs(skillCoverage.inspect(build)) do issues[#issues+1]=entry end
+ for _,entry in ipairs(weaponContext.inspect(build)) do issues[#issues+1]=entry end
+ local uncertain={unparsed_modifier=true,unparsed_passive=true,unknown_passive=true,unknown_rune=true,unsupported_skill_stat=true,unknown_item_base=true,unknown_gem=true,engine_item_warning=true,equip_sequence_unverified=true,custom_modifiers_present=true,ignored_limits=true,configuration_override=true,
+  unsupported_item_transformation=true,stonefist_passive_missing=true,charge_sustain_unverified=true,ally_charge_state_unverified=true,conditional_recoup_unverified=true,companion_identity_unverified=true,unsupported_companion_mechanic=true,missing_companion_data=true,missing_combat_assumption=true,unsupported_weapon_context=true}
  local status='pass'
  for _,v in ipairs(issues) do
   if not uncertain[v.code] then status='fail';break end
@@ -201,7 +217,9 @@ local function inspect(expected, order, sequenceOk)
  end
  local truncated=#uniqueIssues>16
  while #uniqueIssues>16 do table.remove(uniqueIssues) end
- return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled}
+ local mechanicCount=#mechanics
+ while #mechanics>16 do table.remove(mechanics) end
+ return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics}
 end
 local function scenario(changes)
  load()
