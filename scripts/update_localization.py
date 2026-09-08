@@ -74,11 +74,11 @@ def download(directory: Path) -> None:
     sources = []
     directory.mkdir(parents=True, exist_ok=True)
     for language in ("us", "kr"):
-        pattern = rf'(?:https?://(?:cdn\.)?poe2db\.tw)?/?json/autocompletecb_{language}\.[a-fA-F0-9]+\.json'
+        pattern = rf"['\"]autocompletecb_{language}\.json['\"]\s*:\s*['\"](autocompletecb_{language}\.[a-fA-F0-9]+\.json)['\"]"
         candidates = set(re.findall(pattern, script))
         if len(candidates) != 1:
             raise ValueError("autocomplete_asset_not_found")
-        asset_url = urljoin("https://poe2db.tw/", candidates.pop())
+        asset_url = urljoin("https://cdn.poe2db.tw/json/", candidates.pop())
         content = fetch(asset_url)
         json.loads(content)  # Do not publish an HTML denial page as a catalog.
         (directory / f"{language}.json").write_bytes(content)
