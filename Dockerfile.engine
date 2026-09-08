@@ -1,9 +1,9 @@
-FROM python:3.12-slim AS engine-build
+FROM python:3.14-slim AS engine-build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY scripts/install_lua_runtime.py scripts/install_pob_engine.py /install/
 RUN python /install/install_lua_runtime.py && python /install/install_pob_engine.py /opt/pob
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 WORKDIR /app
 COPY --from=engine-build /opt/pob /opt/pob
 COPY --from=engine-build /opt/lua /opt/lua
