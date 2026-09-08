@@ -325,14 +325,23 @@ def download_html(directory: Path, requested_pages: list[str], *, resume: bool =
                   if name_key(r["label"]) in requested or name_key(r["value"]) in requested}
     korean = {r["value"]: r for r in homes["kr"]}
     keys = sorted(candidates.keys() & korean.keys())
-    if len(keys) > 24:
+    include_currency = name_key("Currency") in requested and "Currency" not in keys
+    if len(keys) + int(include_currency) > 24:
         raise ValueError("too_many_html_pages")
     if not keys:
         raise ValueError("html_category_links_not_found")
     for key in keys:
         save(candidates[key]["url"], "us")
         save(korean[key]["url"], "kr")
+    if include_currency:
+        # Both canonical endpoints were independently verified as normal HTTP
+        # 200 on 2026-09-08. The dynamically rendered homepage can omit this
+        # link; this fixed public pair must not disappear from price UX.
+        save("https://poe2db.tw/us/Currency", "us")
+        save("https://poe2db.tw/kr/Currency", "kr")
     seen = {name_key(v) for key in keys for v in (key, candidates[key]["label"])}
+    if include_currency:
+        seen.add(name_key("Currency"))
     metadata = {"snapshot_date": datetime.now(timezone.utc).date().isoformat(),
                 "source_kind": "html_anchors", "requested_pages_not_found": sorted(p for p in requested_pages if name_key(p) not in seen),
                 "sources": sources}
