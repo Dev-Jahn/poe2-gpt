@@ -271,7 +271,10 @@ class CharacterProvider:
         from .builds import BuildOrigin
         if request.league is None:
             raise CharacterError('character_schema_changed')
-        origin = BuildOrigin(league_name=model['league'], league_slug=request.league)
+        # Preserve the model identifier as well as the requested URL slug.
+        # Recommendation verifies both against an explicit catalog name/slug pair.
+        origin = BuildOrigin(league_name=model['league'] if model['league'] != request.league else None,
+            league_slug=request.league)
         summary, reused = self.store(original, beast_metadata=metadata, equipment_source="poe.ninja", origin=origin)
         return CharacterImport(character=overview, build=summary, reused=reused,
             new_snapshot_stored=not reused,

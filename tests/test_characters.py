@@ -25,7 +25,7 @@ class NinjaBackend:
         self.calls = []
         self.status = 200
         self.rows = [{"accountName":TAG, "name": REQUEST.character_name, "leagueUrl": "forbiddenrites", "level": 91, "className": "Witch"}]
-        self.model = {"account": TAG, "name": REQUEST.character_name, "league": "Forbidden Rites",
+        self.model = {"account": TAG, "name": REQUEST.character_name, "league": "forbiddenrites",
                       "level": 91, "class": "Witch", "pathOfBuildingExport": code().decode(),
                       "defensiveStats": {"life": 2100, "energyShield": 4300, "unknown": MARKER},
                       "updatedUtc": "2026-09-08T09:00:00Z", "notes": MARKER}
@@ -62,12 +62,20 @@ async def test_account_resolution_import_dedup_and_private_projection(tmp_path):
     assert result.upstream_revalidated and result.new_snapshot_stored and result.reused_reason is None
     assert MARKER not in text and code().decode() not in text and "pathOfBuildingExport" not in text
     assert (p.private/(result.build.build_id+".pob")).read_bytes() == code()
+    origin = json.loads((p.private/(result.build.build_id+'.origin.json')).read_text())
+    assert origin['league_slug'] == 'forbiddenrites' and origin['league_name'] is None
     second = await p.get_character(REQUEST)
     assert second.reused and not second.new_snapshot_stored
     assert second.reused_reason == "identical_export_and_import_metadata" and second.upstream_revalidated
     assert sum("/model/" in r.url.path for r in backend.calls) == 2
     assert sum("/events/character/" in r.url.path for r in backend.calls) == 2
     assert len(list(p.private.glob("*.pob"))) == 1
+    backend.model['league'] = 'Forbidden Rites'
+    named = await p.get_character(REQUEST)
+    named_origin = json.loads((p.private/(named.build.build_id+'.origin.json')).read_text())
+    assert named_origin['league_name'] == 'Forbidden Rites'
+    assert named_origin['league_slug'] == 'forbiddenrites'
+    backend.model['league'] = 'forbiddenrites'
     backend.rows += [{**backend.rows[0], "leagueUrl": "standard"}]
     with pytest.raises(CharacterError, match="ambiguous_league"):
         await p.get_character(CharacterRequest(account_tag=TAG, character_name=REQUEST.character_name))

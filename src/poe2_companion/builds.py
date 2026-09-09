@@ -58,7 +58,7 @@ class Counts(DTO):
 
 
 class BuildOrigin(DTO):
-    league_name: Annotated[str, Field(min_length=1, max_length=80, pattern=r'^[A-Za-z0-9 ()-]+$')]
+    league_name: Annotated[str, Field(min_length=1, max_length=80, pattern=r'^[A-Za-z0-9 ()-]+$')] | None = None
     league_slug: Annotated[str, Field(pattern=r'^[a-z0-9-]{1,48}$')]
     source: Literal['poe.ninja'] = 'poe.ninja'
 

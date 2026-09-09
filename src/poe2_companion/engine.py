@@ -17,6 +17,25 @@ from .engine_protocol import WorkerRequest, WorkerResult, private_trade_item
 from .trade import TradeError, CATEGORY_SLOTS
 from .equipment import EquipmentService
 from .diagnostics import CalculationReceipts
+from .scout import ScoutError
+
+
+async def verify_character_league(origin, requested, declared, scout):
+    if origin is None:
+        if declared != requested:
+            raise EngineError('character_league_unverified')
+        return
+    if scout is None:
+        raise EngineError('character_league_unverified')
+    try:
+        league = await scout.league(requested)
+    except ScoutError:
+        raise EngineError('character_league_unverified') from None
+    # Use the catalog's explicit name/slug pair. Slug spelling cannot safely
+    # be guessed: historical leagues and hardcore variants use abbreviations.
+    if (league.value != requested or origin.league_slug != league.short_name
+            or origin.league_name not in (None, league.value, league.short_name)):
+        raise EngineError('character_league_mismatch')
 
 
 def deltas(before,after):
@@ -278,11 +297,7 @@ class EngineClient:
             configuration=request.configuration,combat_scenario=request.combat_scenario))
         snapshots=[result.baseline,*result.results]
         origin=result.baseline.origin
-        if origin is not None:
-            if origin.league_name != request.league:
-                raise EngineError('character_league_mismatch')
-        elif request.declared_character_league != request.league:
-            raise EngineError('character_league_unverified')
+        await verify_character_league(origin, request.league, request.declared_character_league, scout)
         need={w.stat for w in request.weights}|{c.stat for c in request.constraints}
         def values(snapshot):
             return {s.name:s.value for s in snapshot.stats}

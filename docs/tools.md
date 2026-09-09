@@ -78,7 +78,10 @@ IDs, use exact name/base/level and AND/count groups as needed, and inspect listi
 details. `proxy_optimization_eligible` concerns the item-stat proxy only. PoB
 eligibility separately checks equipment, each requested metric, assumptions and
 league. For attachments, explicitly declare `declared_character_league`; Ninja
-origins are verified. Use `mode=restore_validity` for minimum-cost repair.
+origins are verified using the catalog's explicit league name/slug pair, including
+hardcore variants and historical abbreviations. Both the model league identifier
+and origin URL slug must agree with that pair. Use `mode=restore_validity` for
+minimum-cost repair.
 
 `get_build_diagnostics` sections include `issues`, `mechanics`, `stats`,
 `metric_coverage`, `deltas`, `inputs`, `combat_scenario`, and `candidates`.

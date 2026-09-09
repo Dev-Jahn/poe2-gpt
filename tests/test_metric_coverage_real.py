@@ -13,6 +13,8 @@ from poe2_companion.engine_protocol import WorkerRequest
 from poe2_companion.engine_worker import worker_app
 from poe2_companion.trade import TradeClient, TradeSearchRequest, parse_listing
 from test_engine_real import real_engine, FIXTURE, BID, item, change
+from poe2_companion.scout import Scout
+from test_scout import Backend
 
 
 def save(engine, *, ring_mods=(), helmet=None):
@@ -49,6 +51,7 @@ async def test_repair_workflow_and_league_provenance(real_engine):
     save(real_engine,helmet=[])
     client=EngineClient('/unused',http=httpx.AsyncClient(transport=httpx.ASGITransport(app=worker_app(real_engine)),base_url='http://pob-worker'))
     trade=TradeClient('test')
+    scout=Scout(user_agent='test',transport=httpx.MockTransport(Backend()),interval=0)
     sid='ts_'+'2'*32
     rows={};private={}
     for ref,strength,cost in [('a',10,2),('b',20,5)]:
@@ -65,8 +68,11 @@ async def test_repair_workflow_and_league_provenance(real_engine):
         assert not result.calculation.deltas and result.score_gain==0
         with pytest.raises(EngineError,match='character_league_unverified'):
             await client.recommend(request.model_copy(update={'declared_character_league':None}),trade,None)
-        (real_engine.private_dir/(BID+'.origin.json')).write_text('{"league_name":"Standard","league_slug":"standard","source":"poe.ninja"}')
+        (real_engine.private_dir/(BID+'.origin.json')).write_text('{"league_slug":"forbiddenrites","source":"poe.ninja"}')
+        verified=await client.recommend(request.model_copy(update={'declared_character_league':None}),trade,scout)
+        assert verified.feasible and verified.calculation.character_league_verified
+        (real_engine.private_dir/(BID+'.origin.json')).write_text('{"league_slug":"forbiddenriteshc","source":"poe.ninja"}')
         with pytest.raises(EngineError,match='character_league_mismatch'):
-            await client.recommend(request,trade,None)
+            await client.recommend(request,trade,scout)
     finally:
-        await client.close();await trade.close()
+        await client.close();await trade.close();await scout.close()
