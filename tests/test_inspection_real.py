@@ -9,6 +9,11 @@ from test_engine_real import real_engine, FIXTURE, BID, MARKER
 
 async def test_interpreted_saved_equipment_skills_and_config(real_engine):
     root = ET.fromstring(FIXTURE.read_bytes())
+    # A saved immunity estimate must not block native equipment inspection.
+    saved_hit = root.find('./Build/PlayerStat[@stat="ChaosMaximumHitTaken"]')
+    if saved_hit is None:
+        saved_hit = ET.SubElement(root.find('Build'), 'PlayerStat', {'stat':'ChaosMaximumHitTaken'})
+    saved_hit.set('value', 'inf')
     ET.SubElement(root, 'Notes').text = MARKER
     items = root.find('Items')
     for identifier, mod in ((1, '+30% to Cold Resistance'), (2, '+100 to maximum Life')):

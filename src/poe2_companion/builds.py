@@ -30,6 +30,13 @@ StatName = Literal["Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergySh
                    "Str", "Dex", "Int", "TotalDPS", "CombinedDPS", "FullDPS", "Speed", "CritChance", "CritMultiplier",
                    "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed", "DeflectionRating"]
 STAT_NAMES = set(get_args(StatName))
+OPTIONAL_DERIVED_STAT_NAMES = {
+    'FireResistTotal', 'ColdResistTotal', 'LightningResistTotal', 'ChaosResistTotal',
+    'FireResistOverCap', 'ColdResistOverCap', 'LightningResistOverCap', 'ChaosResistOverCap',
+    'PhysicalMaximumHitTaken', 'FireMaximumHitTaken', 'ColdMaximumHitTaken',
+    'LightningMaximumHitTaken', 'ChaosMaximumHitTaken', 'TotalEHP',
+    'LifeRegen', 'ManaRegen', 'EnergyShieldRegen', 'LifeLeechRate', 'ManaLeechRate', 'EnergyShieldLeechRate',
+}
 EquipmentSlot = Literal["helmet", "body_armour", "gloves", "boots", "belt", "amulet",
     "ring_left", "ring_right", "ring_third", "weapon_main", "weapon_off",
     "flask_1", "flask_2", "charm_1", "charm_2", "charm_3",
@@ -48,6 +55,11 @@ class DTO(BaseModel):
 class PlayerStat(DTO):
     name: StatName
     value: Annotated[float, Field(ge=-1e15, le=1e15, allow_inf_nan=False)]
+
+
+class UnavailableSavedStat(DTO):
+    name: StatName
+    reason: Literal['non_finite', 'outside_numeric_range']
 
 
 class Counts(DTO):
@@ -72,6 +84,7 @@ class BuildSummary(DTO):
     level: Annotated[int, Field(ge=1, le=100)]
     target_version: Annotated[list[Annotated[int, Field(ge=0, le=999)]], Field(min_length=1, max_length=4)] | None
     stats: Annotated[list[PlayerStat], Field(max_length=64)]
+    unavailable_stats: Annotated[list[UnavailableSavedStat], Field(max_length=64)] = Field(default_factory=list)
     counts: Counts
     stats_origin: Literal["saved_pob_export_not_recalculated"] = "saved_pob_export_not_recalculated"
     counts_scope: Literal["all_saved_loadouts_not_active_only"] = "all_saved_loadouts_not_active_only"

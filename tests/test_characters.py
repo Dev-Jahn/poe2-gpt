@@ -466,3 +466,25 @@ async def test_beast_dedup_integrity_and_user_isolation(tmp_path):
     assert owner.store(original)[1]
     await owner.close()
     await guest.close()
+@pytest.mark.parametrize('value,reason', [('inf','non_finite'), ('Infinity','non_finite'),
+    ('-inf','non_finite'), ('nan','non_finite'), ('1e100','outside_numeric_range')])
+async def test_unavailable_derived_stat_preserves_import_and_bounded_mcp_summary(tmp_path, value, reason):
+    from poe2_companion.builds import BuildSummary
+    original = code(xml().replace(b'</Build>',
+        f'<PlayerStat stat="ChaosMaximumHitTaken" value="{value}"/></Build>'.encode()))
+    backend = NinjaBackend()
+    backend.model['pathOfBuildingExport'] = original.decode()
+    p = provider(tmp_path, backend)
+    try:
+        result = await p.get_character(REQUEST)
+        assert (p.private/(result.build.build_id+'.pob')).read_bytes() == original
+        assert next(s.value for s in result.build.stats if s.name == 'Life') == 2100
+        assert 'ChaosMaximumHitTaken' not in {s.name for s in result.build.stats}
+        assert [s.model_dump() for s in result.build.unavailable_stats] == [
+            {'name':'ChaosMaximumHitTaken', 'reason':reason}]
+        encoded = result.model_dump_json()
+        assert len(encoded.encode()) <= 8192 and original.decode() not in encoded and MARKER not in encoded
+        BuildSummary.model_validate_json(result.build.model_dump_json())
+        assert (await p.get_character(REQUEST)).reused
+    finally:
+        await p.close()

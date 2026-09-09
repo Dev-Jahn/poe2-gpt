@@ -188,6 +188,9 @@ def test_xml_entities_wrong_game_and_numeric_blobs_are_rejected():
         project_pob(b'<PathOfBuilding><Build level="1"/></PathOfBuilding>', "bld_"+"0"*32)
     with pytest.raises(BuildError, match="invalid_numeric_field"):
         project_pob(xml().replace(b'value="2100"', b'value="'+code()+b'"'), "bld_"+"0"*32)
+    for value in (b'NaN', b'Infinity', b'1e100'):
+        with pytest.raises(BuildError, match='invalid_numeric_field'):
+            project_pob(xml().replace(b'value="2100"', b'value="'+value+b'"'), 'bld_'+'0'*32)
 
 
 def test_raw_and_projection_roots_cannot_overlap(tmp_path):

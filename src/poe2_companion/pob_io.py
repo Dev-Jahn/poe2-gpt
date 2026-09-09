@@ -23,7 +23,7 @@ from defusedxml.common import DefusedXmlException
 from pydantic import ValidationError
 from xml.etree.ElementTree import ParseError
 
-from .builds import (BASE_CLASSES, STAT_NAMES, MAX_PROJECTION_BYTES, BuildError, BuildSummary,
+from .builds import (BASE_CLASSES, STAT_NAMES, OPTIONAL_DERIVED_STAT_NAMES, UnavailableSavedStat, MAX_PROJECTION_BYTES, BuildError, BuildSummary,
                      Counts, PlayerStat, Projection, TreeSpec, ProjectedEquipmentItem,
                      EquipmentProperty, EquipmentModifier, bounded_dto, check_id, read_regular_file)
 
@@ -239,7 +239,7 @@ def project_pob(xml: bytes, build_id: str, *, equipment_source=None) -> Projecti
         class_name = "Unknown"
     version = build.get("targetVersion", "")
     version = [int(v) for v in re.split(r"[._]", version)] if re.fullmatch(r"\d{1,3}(?:[._]\d{1,3}){0,3}", version) else None
-    stats, seen = [], set()
+    stats, unavailable, seen = [], [], set()
     for stat_node in build.findall("PlayerStat"):
         name = stat_node.get("stat")
         if name not in STAT_NAMES:
@@ -255,6 +255,13 @@ def project_pob(xml: bytes, build_id: str, *, equipment_source=None) -> Projecti
         except ValueError:
             raise BuildError("invalid_numeric_field") from None
         if not math.isfinite(value) or abs(value) > 1e15:
+            if name in OPTIONAL_DERIVED_STAT_NAMES:
+                # Immunity can produce an infinite maximum-hit estimate. Keep
+                # the original and the rest of the build; never invent a finite
+                # substitute or put nonstandard NaN/Infinity tokens into JSON.
+                unavailable.append(UnavailableSavedStat(name=name,
+                    reason='non_finite' if not math.isfinite(value) else 'outside_numeric_range'))
+                continue
             raise BuildError("invalid_numeric_field")
         stats.append(PlayerStat(name=name, value=value))
     tree_nodes = root.findall("./Tree/Spec")
@@ -270,7 +277,7 @@ def project_pob(xml: bytes, build_id: str, *, equipment_source=None) -> Projecti
     try:
         summary = bounded_dto(BuildSummary(build_id=build_id, imported_at_epoch=int(time.time()),
             class_name=class_name, level=int_field(build.get("level", ""), 1, 100), target_version=version,
-            stats=stats, counts=Counts(saved_items=len(root.findall("./Items/Item")),
+            stats=stats, unavailable_stats=unavailable, counts=Counts(saved_items=len(root.findall("./Items/Item")),
             saved_skill_groups=len(root.findall("./Skills/Skill"))+len(root.findall("./Skills/SkillSet/Skill")),
             saved_gems=len(root.findall("./Skills/Skill/Gem"))+len(root.findall("./Skills/SkillSet/Skill/Gem")),
             saved_tree_specs=len(trees))))

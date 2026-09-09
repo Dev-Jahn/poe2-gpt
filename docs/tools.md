@@ -67,8 +67,11 @@ Trade handles expire after ten minutes. Engine trade optimization accepts up to 
 Call `get_character` for the latest published Ninja model at request time. Read
 `upstream_checked_at_epoch` and `source_model_version`; identical build-ID reuse
 is content deduplication, not a stale fallback. Use `get_build_equipment` with a
-slot (for example `ring_left`) or saved ID; omit both to discover IDs. Use
-`inspect_build` with `section=sets` to discover alternate sets, `skills` for groups
+slot (for example `ring_left`) or saved ID; omit both to discover IDs. Saved derived
+metrics that are non-finite or exceed the bounded numeric schema are listed in
+`build.unavailable_stats`, never replaced with zero or an invented finite cap.
+Other saved stats and the original export remain intact. Use `inspect_build` with
+`section=sets` to discover alternate sets, `skills` for groups
 and supports, `configuration` for saved/default/override/effective values, and
 `passives` for allocated effects. `configuration_key` narrows a setting. Follow
 `next_offset`; item details include all placements, active variants and flags.
