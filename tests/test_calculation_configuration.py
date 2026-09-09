@@ -37,6 +37,28 @@ def test_configuration_is_closed_and_coherent(data):
     assert MARKER not in str(err.value)
 
 
+@pytest.mark.parametrize('config,missing', [
+    ({'refutation_active': True}, ['configuration.refutation_ward_spent']),
+    ({'refutation_ward_spent': 0}, ['configuration.refutation_active']),
+    ({'hollow_form_channel_uses_per_second': 1}, [
+        'configuration.hollow_form_attack_skill_id', 'configuration.hollow_form_power_charge_use_fraction']),
+])
+async def test_incomplete_configuration_has_safe_actionable_error(config, missing):
+    from poe2_companion.scout import Scout
+    from poe2_companion.server import build_server
+    scout = Scout(user_agent='test')
+    try:
+        result = await build_server(scout).call_tool('recalculate_build', {
+            'request': {'build_id': BID, 'configuration': config}})
+        assert result.isError
+        error = json.loads(result.content[0].text)
+        assert error['code'] == 'incomplete_configuration'
+        assert error['missing_fields'] == missing
+        assert 'dataset_id' not in result.content[0].text
+    finally:
+        await scout.close()
+
+
 @pytest.mark.parametrize('compare',[False,True])
 async def test_configuration_false_zero_and_combat_schedule_reach_worker(compare):
     seen=[]
@@ -74,7 +96,7 @@ async def test_unknown_baseline_cannot_turn_into_verified_trade_upgrade():
     trade.searches[sid]={'request':TradeSearchRequest(category='accessory.ring'),'created':int(time.time()),
         'ids':[ref],'rows':{ref:row},'engine_items':{ref:raw}}
     try:
-        result=await client.recommend(EngineTradeRequest(build_id=BID,search_ids=[sid],
+        result=await client.recommend(EngineTradeRequest(build_id=BID,search_ids=[sid],declared_character_league='Forbidden Rites',
             budget={'amount':1,'currency':'divine'},weights=[{'stat':'Life','weight':1}],
             configuration={'onslaught_active':False},
             combat_scenario={'horizon_seconds':2,'gain_roll_model':'independent_nonrecursive_per_event','events':[]}),trade,None)
@@ -109,5 +131,7 @@ def test_dense_scenarios_bound_output_without_claiming_missing_results():
     assert any(v.combat_scenario_truncated for v in (result.baseline,result.result))
     for row in (result.baseline,result.result):
         assert row.validation=='indeterminate' and row.combat_scenario_status=='calculated'
-        assert row.stats==s.stats
+        assert all(stat in s.stats for stat in row.stats)
+        assert row.stat_count == len(s.stats) and row.stats_truncated
+        assert {'Life', 'Mana', 'EnergyShield', 'FullDPS'} <= {stat.name for stat in row.stats}
     assert value.baseline.combat_scenario is not None

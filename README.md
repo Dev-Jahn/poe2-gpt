@@ -4,9 +4,14 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.10.0, experimental.** The code includes up to 26 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.11.0, experimental.** The code includes up to 31 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
 ## Features
+
+Version 0.11 adds complete equipment/skill/configuration inspection, paged
+diagnostics, request-time Ninja provenance, descriptive trade results, scoped
+resource comparisons and minimum-cost equipment repair. See the
+[review resolution and acceptance scenarios](docs/review-followup.md).
 
 | Area | Available now |
 |---|---|
@@ -54,7 +59,7 @@ The repository includes `.codex-plugin/plugin.json`, `.mcp.json`, and a Git-back
 
 ## Character connection
 
-Provide a PoE account tag and character name, or attach the original PoB export as a UTF-8 `.txt` file in ChatGPT. `get_character` resolves the league and imports Ninja's snapshot; `import_pob_attachment` consumes the host file reference without asking the model to read or rewrite the file. Both return a build ID for calculation and upgrade tools. No file transfer to the physical server or PoB import command is provided.
+Provide a PoE account tag and character name, or attach the original PoB export as a UTF-8 `.txt` file in ChatGPT. Every `get_character` call resolves the league and checks Ninja's currently published model before importing it; an identical export can safely reuse the immutable build ID. The response includes the upstream check time and model version so reuse is not mistaken for a local-cache hit. `import_pob_attachment` consumes the host file reference without asking the model to read or rewrite the file. Both return a build ID for calculation and upgrade tools. For Ninja-imported builds, `get_build_equipment` lists the active equipped slots and returns detailed properties/modifiers for one requested slot without exposing the PoB/XML or saved-but-unequipped items. No file transfer to the physical server or PoB import command is provided.
 
 Link the public profile through [poe.ninja Connect](https://poe.ninja/account). Kakao users first click **English** on [Kakao account connections](https://poe.kakaogames.com/my-account/connections) to transfer their signed-in GGG session, then authorize Ninja. Public lookup needs no server-side login; explicit refresh requires a separately configured per-user Ninja session. See [character integration and file boundaries](docs/characters.md).
 

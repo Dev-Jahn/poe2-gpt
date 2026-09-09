@@ -25,6 +25,7 @@ The table lists every field in
 | Hollow Form | `hollow_form_channel_uses_per_second` | Number from 0 to 30; hypothetical channel uses per second |
 | Hollow Form | `hollow_form_power_charge_use_fraction` | Number from 0 to 1; fraction of those uses that use a Power Charge |
 | Damage | `impale_magnitude` | Number from 0 to 1,000,000,000; strongest existing target Impale for extraction by the selected eligible player attack |
+| Recovery | `leech_recovery_uptime` | Number from 0 to 1; hypothetical fraction of time an instance actively recovers. Returns uptime-scaled active rates, not measured recovery or revised snapshot DPS |
 | Recovery | `leech_resistance_percent` | Number from 0 to 100; assumed target resistance for damage-based leech |
 | Hit buff | `onslaught_active` | Boolean; explicit Onslaught state, separate from chance to gain it |
 | Hit buff | `thrill_of_the_kill_active` | Boolean; explicit compatible Thrill of the Kill buff state |

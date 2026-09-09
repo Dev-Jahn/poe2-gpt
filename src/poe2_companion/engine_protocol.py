@@ -1,10 +1,11 @@
 """Internal socket protocol. Never registered as MCP arguments."""
 import json
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Any
 from pydantic import Field, model_validator
 from .builds import DTO
 from .calculation_config import CalculationConfiguration
 from .combat_models import CombatScenario
+from .inspection import InspectionRequest, InspectionPage
 from .engine_models import (EngineError, EngineSlot, BuildID, EngineSnapshot,
     ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY)
 
@@ -67,7 +68,7 @@ def private_trade_item(item: dict) -> dict:
     if result.get('socketedItems'):
         # Rune/Soul Core effects are resolved by exact base name against the
         # pinned worker data. Socketed jewels remain unsupported replacements.
-        runes=[]
+        runes: list[dict[str, Any]]=[]
         seen=set()
         sockets=result.get('sockets')
         if not isinstance(sockets,list) or not 1<=len(sockets)<=10:
@@ -103,12 +104,15 @@ class WorkerChange(DTO):
 
 class WorkerRequest(DTO):
     build_id: BuildID
+    inspection: InspectionRequest | None = None
     configuration: CalculationConfiguration | None = None
     combat_scenario: CombatScenario | None = None
     scenarios: Annotated[list[Annotated[list[WorkerChange],Field(max_length=3)]],Field(max_length=64)] = Field(default_factory=list)
 
     @model_validator(mode='after')
     def distinct(self):
+        if self.inspection is not None and (self.inspection.build_id!=self.build_id or self.inspection.configuration!=self.configuration):
+            raise ValueError('inspection_context_mismatch')
         for changes in self.scenarios:
             if len({c.slot for c in changes})!=len(changes):
                 raise ValueError('duplicate_slot')
@@ -122,8 +126,10 @@ class WorkerRequest(DTO):
 class WorkerResult(DTO):
     # Added by the checked worker after reading its private Lua projection.
     # These internal pins must match exactly; they are not public MCP schemas.
-    engine_commit: Literal[ENGINE_COMMIT] = ENGINE_COMMIT
-    engine_data_commit: Literal[ENGINE_DATA_COMMIT] = ENGINE_DATA_COMMIT
-    engine_compatibility: Literal[ENGINE_COMPATIBILITY] = ENGINE_COMPATIBILITY
+    # Pydantic deliberately binds private protocol enums to centralized pins.
+    engine_commit: Literal[ENGINE_COMMIT] = ENGINE_COMMIT  # type: ignore[valid-type]
+    engine_data_commit: Literal[ENGINE_DATA_COMMIT] = ENGINE_DATA_COMMIT  # type: ignore[valid-type]
+    engine_compatibility: Literal[ENGINE_COMPATIBILITY] = ENGINE_COMPATIBILITY  # type: ignore[valid-type]
     baseline: EngineSnapshot
     results: Annotated[list[EngineSnapshot],Field(max_length=64)]
+    inspection: InspectionPage | None = None

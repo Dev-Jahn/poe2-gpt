@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poe2-gpt"
-version = "0.10.0"
+version = "0.11.0"
 description = "PoE2 prices, trade search and private Path of Building analysis via MCP"
 readme = "README.md"
 license = "MIT"
@@ -16,6 +16,7 @@ dependencies = ["mcp==1.29.1", "httpx[socks]==0.28.1", "defusedxml==0.7.1", "PyJ
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "pytest-asyncio>=1,<2"]
+quality = ["ruff==0.15.1", "mypy==1.19.1", "pytest-cov==7.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/Dev-Jahn/poe2-gpt"
@@ -39,3 +40,18 @@ testpaths = ["tests"]
 
 [tool.setuptools.package-data]
 poe2_companion = ["lua/*.lua", "data/*.json"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+files = ["src/poe2_companion"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+source = ["poe2_companion"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true

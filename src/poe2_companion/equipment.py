@@ -12,7 +12,7 @@ import time
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args, cast
 from urllib.parse import unquote
 
 from pydantic import Field, ValidationError, model_validator
@@ -25,7 +25,7 @@ Slot = Literal["helmet", "body_armour", "gloves", "boots", "belt", "amulet", "ri
 Metric = Literal["flat_life", "flat_mana", "fire_resistance", "cold_resistance", "lightning_resistance",
                  "chaos_resistance", "strength", "dexterity", "intelligence", "item_armour",
                  "item_evasion", "item_energy_shield", "movement_speed"]
-METRICS = set(Metric.__args__)
+METRICS = set(get_args(Metric))
 Key = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,31}$", max_length=32)]
 DatasetID = Annotated[str, Field(pattern=r"^gear_[0-9a-f]{32}$", max_length=37)]
 LeagueName = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 '\-]{0,79}$", max_length=80)]
@@ -125,17 +125,24 @@ class EquipmentInput(DTO):
 
 
 class Dataset(EquipmentInput):
-    origin: Literal["user_snapshot", "synthetic_example", "trade_snapshot"]
+    # A private retained Dataset additionally supports server-fetched listings;
+    # the public file import must keep EquipmentInput's narrower origin enum.
+    origin: Literal["user_snapshot", "synthetic_example", "trade_snapshot"]  # type: ignore[assignment]
     dataset_id: DatasetID
     imported_at_epoch: Annotated[int, Field(ge=0, le=100000000000)]
 
 
 class ProviderStatus(DTO):
     direct_equipment_api: bool = False
+    request_state: Literal['disabled', 'ready', 'cooldown', 'operator_action_required'] = 'disabled'
+    blocked_code: Annotated[str, Field(pattern=r'^trade_[a-z_]+$')] | None = None
+    korean_metadata_blocked_code: Annotated[str, Field(pattern=r'^trade_[a-z_]+$')] | None = None
+    retry_after_seconds: Annotated[int, Field(ge=0)] | None = None
+    next_action: Literal['enable_adapter', 'query', 'wait', 'resolve_authentication_or_challenge_and_restart'] = 'enable_adapter'
     adapter_implemented: Literal[True] = True
     acquisition: Literal["experimental_trade2_web_api_with_snapshot_fallback"] = "experimental_trade2_web_api_with_snapshot_fallback"
-    browser_url: Literal["https://www.pathofexile.com/trade2"] = TRADE_URL
-    policy_url: Literal["https://www.pathofexile.com/developer/docs#resources"] = POLICY_URL
+    browser_url: Literal["https://www.pathofexile.com/trade2"] = "https://www.pathofexile.com/trade2"
+    policy_url: Literal["https://www.pathofexile.com/developer/docs#resources"] = "https://www.pathofexile.com/developer/docs#resources"
     checked_on: Literal["2026-09-06"] = "2026-09-06"
     documented_developer_api: Literal[False] = False
     oauth_registration_needed_for_this_client: Literal[False] = False
@@ -346,9 +353,9 @@ class EquipmentService:
         data = self.load(request.dataset_id)
         return bounded_dto(DatasetSummary(dataset_id=data.dataset_id, build_id=data.build_id, league=data.league,
             origin=data.origin, imported_at_epoch=data.imported_at_epoch, current_slots=[v.slot for v in data.current],
-            candidate_count=len(data.candidates), available_metrics=sorted({s.metric for c in [*data.current,*data.candidates] for s in c.stats})))
+            candidate_count=len(data.candidates), available_metrics=sorted({s.metric for c in data.current for s in c.stats}|{s.metric for c in data.candidates for s in c.stats})))
 
-    async def fx(self, league: str, currencies: set[str], reference: Currency) -> FX:
+    async def fx(self, league: str, currencies: set[Currency], reference: Currency) -> FX:
         if currencies <= {reference}:
             return FX(reference_currency=reference, rates={reference:1.0}, source="same_currency_no_conversion", retrieved_at=None)
         catalog = await self.scout.catalog(league, allow_stale=False)
@@ -358,8 +365,9 @@ class EquipmentService:
         return FX(reference_currency=reference, rates={c:float(dec(refs[c])/dec(refs[reference])) for c in currencies | {reference}},
             source="poe2scout_reference_currencies", retrieved_at=catalog["retrieved_at"])
 
-    def eligible(self, data: Dataset, age: int, required: set[str]):
-        rows, excluded = [], Counter()
+    def eligible(self, data: Dataset, age: int, required: set[Metric]):
+        rows=[]
+        excluded: Counter[str] = Counter()
         for c in data.candidates:
             if self.clock() - c.observed_at_epoch > age:
                 excluded["stale"] += 1
@@ -407,7 +415,7 @@ class EquipmentService:
     async def optimize_data(self, data: Dataset, request: OptimizeRequest) -> UpgradeResult:
         if data.dataset_id != request.dataset_id:
             raise BuildError("invalid_equipment_reference")
-        metrics = sorted({v.metric for v in [*request.weights,*request.constraints]})
+        metrics = sorted({v.metric for v in request.weights}|{v.metric for v in request.constraints})
         required = set(metrics)
         if any(not required <= {s.metric for s in c.stats} for c in data.current):
             raise BuildError("current_equipment_metrics_incomplete")

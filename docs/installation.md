@@ -28,7 +28,7 @@ Keep the existing connection and its member-specific URL. Redeploying the server
 
 Do not delete and recreate a developer-mode connection as the normal update procedure. Opening a new conversation before refreshing may still expose the previous tool inventory. The server cannot make a tool callable if it is absent from the host's discovered metadata. This follows the [official metadata refresh workflow](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 
-For a deployment with character ingestion enabled, verify that `get_character`, `list_account_characters`, `refresh_character`, and `import_pob_attachment` appear and are enabled in ChatGPT. Release 0.8 also adds `search_game_terms`. If the server's `tools/list` includes them but ChatGPT does not, refresh that connection. If the live server omits them, check its deployment configuration first. Check each separately created guest connection after a metadata update.
+For a deployment with character ingestion enabled, verify that `get_character`, `list_account_characters`, `refresh_character`, and `import_pob_attachment` appear and are enabled in ChatGPT. With build projections enabled, 0.11 also exposes `get_build_equipment`; omit its `slot` first to identify an item and call it again with the returned slot for details. Release 0.8 also adds `search_game_terms`. If the server's `tools/list` includes them but ChatGPT does not, refresh that connection. If the live server omits them, check its deployment configuration first. Check each separately created guest connection after a metadata update.
 
 ## Version labels
 

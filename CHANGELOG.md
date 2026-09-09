@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.0 (unreleased)
+
+- Inspect equipped and saved items, effective modifier variants, requirements,
+  rune flags, skills/supports, saved sets and passive effects through the private
+  pinned interpreter. Both Ninja and attached builds work.
+- Show saved, overridden, default and effective configuration. Immutable receipts
+  page full issues, mechanics, metrics, deltas, scenarios and candidate diagnostics.
+- Expose request-time Ninja check/model version separately from content reuse;
+  retain origin league and reject cross-league purchase comparisons.
+- Preserve known trade stats and describe unknown modifiers independently of
+  calculation eligibility. Add exact name/base, item level, AND/count and sorting.
+- Separate equipment validity and metric coverage. Narrow dependency proofs allow
+  resource comparisons with unrelated combat uncertainty; `restore_validity`
+  minimizes repair cost without claiming a valid-baseline score delta.
+- Integrate per-hit leech caps: analytic single-type uniform/lucky and exact
+  independent minimum/maximum enumeration. Mixed continuous damage and upstream
+  averaged mitigation remain explicitly approximate.
+- Search sequential replacements retaining other old gear. Add uncapped
+  resistance, overcap, maximum-hit and recovery metrics.
+- Add typed currency outputs, compact validation, actionable safe errors, trace
+  IDs, latency/error counters and trade blocking/cooldown state.
+- Gate CI on locked dependencies, lint, all-module type checks and 85% Python
+  coverage; retain real x64/ARM engine tests with no skipped tests.
+
 ## 0.10.0
 
 - Implement Spirit Vessel copied attacks, supports and defences; bounded charge,

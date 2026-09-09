@@ -22,13 +22,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from .builds import DTO, read_regular_file
+from .builds import DTO, read_regular_file, BuildOrigin
 from .pob_io import MAX_CODE_BYTES, decode_pob, project_pob
 from .beast_metadata import MAX_BEAST_METADATA_BYTES, validate_beast_metadata
 from .engine_models import ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError, EngineSlot, BuildID, EngineSnapshot, SAFE_ENGINE_ERRORS
 
 MAX_REQUEST = 2 * 1024 * 1024
-MAX_RESULT = 512 * 1024
+MAX_RESULT = 16 * 1024 * 1024
 from .engine_protocol import WorkerRequest, WorkerResult
 
 
@@ -96,8 +96,12 @@ class PrivateEngine:
             active=int(tree.get('activeSpec','1')) if tree is not None else 1
             trees=projection.trees
             node_ids=next((t.node_ids for t in trees if t.index==active-1),[])
-            job={'xml':xml.decode('utf-8-sig'),'expected_node_ids':node_ids,
+            job: dict={'xml':xml.decode('utf-8-sig'),'expected_node_ids':node_ids,
                  'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
+            if request.inspection is not None:
+                if request.inspection.build_id != request.build_id:
+                    raise EngineError('engine_invalid_request')
+                job['inspection'] = request.inspection.model_dump(exclude_none=True)
             metadata_path=self.private_dir/(request.build_id+'.beasts.json')
             try:
                 metadata_path.lstat()
@@ -134,6 +138,11 @@ class PrivateEngine:
                 if process.returncode:
                     raise EngineError('engine_calculation_failed')
                 result=WorkerResult.model_validate_json(read_regular_file(out,MAX_RESULT))
+                origin_path=self.private_dir/(request.build_id+'.origin.json')
+                if origin_path.exists() or origin_path.is_symlink():
+                    origin=BuildOrigin.model_validate_json(read_regular_file(origin_path,2048))
+                    for snapshot in [result.baseline,*result.results]:
+                        snapshot.origin=origin
                 if len(result.results)!=len(request.scenarios):
                     raise EngineError('engine_protocol_error')
                 return result

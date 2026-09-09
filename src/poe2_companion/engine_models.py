@@ -4,7 +4,7 @@ No model-facing code/XML/path/text input or output fields exist here.
 """
 from typing import Annotated, Literal
 from pydantic import Field, model_serializer, model_validator
-from .builds import DTO, StatName, PlayerStat
+from .builds import DTO, StatName, PlayerStat, BuildOrigin
 from .equipment import Price, LeagueName, unique
 from . import __version__
 from .calculation_config import CalculationConfiguration, ConfigurationField
@@ -12,7 +12,7 @@ from .combat_models import CombatScenario, CombatScenarioResult
 
 ENGINE_COMMIT = "fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15"
 ENGINE_DATA_COMMIT = "b3282b7a9111ed6c4ec6be643edf0806d7beb675"
-ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v3"
+ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v4"
 # Public output metadata has a stable schema across engine/data updates.
 # Exact pin equality remains enforced by worker health and EngineClient.status.
 EngineCommit = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$", min_length=40, max_length=40)]
@@ -68,6 +68,7 @@ class RequirementIssue(DTO):
 
 class MechanicMetric(DTO):
     name: Literal[
+        "leech_recovery_uptime", "life_leech_uptime_scaled_active_rate", "mana_leech_uptime_scaled_active_rate", "energy_shield_leech_uptime_scaled_active_rate",
         "glove_attribute_exemption", "already_transformed",
         "power_extra_charge_chance", "frenzy_extra_charge_chance", "endurance_extra_charge_chance",
         "power_grant_chance_per_hit", "frenzy_grant_chance_per_hit", "endurance_grant_chance_per_hit",
@@ -140,8 +141,10 @@ class MechanicResult(DTO):
         "ally_charges", "deflected_recoup", "offering_life", "companion_composition", "natural_order", "economy_effects", "tamed_beast_modifiers", "spirit_vessel", "companion_pack_size",
         "ghost_dance", "hollow_focus", "hollow_form", "hollow_form_simulation", "tempest_bell", "wind_dancer", "refutation", "companion_hit_effects", "spirit_vessel_copied_attack", "spirit_vessel_defences", "impale_generation", "impale_extraction", "leech_recovery", "mountain_teachings", "tempest_bell_shockwave",
         "hit_effects", "thrill_of_the_kill", "culling_strike_buff", "behead", "onslaught",
-        "curse_application", "charged_mark", "rite_of_passage", "companion_ally_auras", "companion_chill"]
+        "curse_application", "charged_mark", "rite_of_passage", "companion_ally_auras", "companion_chill", "leech_uptime_scenario"]
     status: Literal["calculated", "partial", "unsupported", "requires_configuration", "inactive"]
+    numerical_method: Literal["per_hit_distribution_integration"] | None = None
+    numerical_accuracy: Literal["exact_for_supplied_hit_model", "quadrature_or_upstream_damage_approximation"] | None = None
     skill_id: CanonicalSkillID | None = None
     metrics: Annotated[list[MechanicMetric], Field(max_length=8)] = Field(default_factory=list)
     required_inputs: Annotated[list[Literal["transformed_glove_data", "stonefist_passive", "charge_gain_events",
@@ -170,20 +173,32 @@ class SelectedSkill(DTO):
     actor: Literal["player", "minion"]
 
 
+class MetricCoverage(DTO):
+    stat: StatName
+    status: Literal['pass', 'indeterminate']
+    reason: Literal['all_rules_validated', 'unconditional_resource_dependency_verified', 'unresolved_dependency']
+
+
 class EngineSnapshot(DTO):
-    stats: Annotated[list[PlayerStat], Field(max_length=26)]
+    origin: BuildOrigin | None = None
+    stats: Annotated[list[PlayerStat], Field(max_length=64)]
+    stat_count: int | None = None
+    stats_truncated: bool = False
     equipped: Annotated[list[EquippedItem], Field(max_length=10)]
-    issues: Annotated[list[RequirementIssue], Field(max_length=16)]
+    issues: Annotated[list[RequirementIssue], Field(max_length=10000)]
     issue_count: Annotated[int, Field(ge=0, le=1000000)]
     issues_truncated: bool = False
     validation: Literal["pass", "fail", "indeterminate"]
+    equipment_validity: Literal['pass', 'fail', 'indeterminate'] | None = None
+    metric_coverage: list[MetricCoverage] = Field(default_factory=list)
+    metric_coverage_truncated: bool = False
     equip_order: Annotated[list[EngineSlot], Field(max_length=3)] = Field(default_factory=list)
     active_weapon_set: Literal[1, 2]
     main_skill_group: Annotated[int, Field(ge=0, le=10000)]
     selected_skill: SelectedSkill | None = None
     selected_skill_labels_truncated: bool = False
     full_dps_enabled: bool = False
-    mechanics: Annotated[list[MechanicResult], Field(max_length=16)] = Field(default_factory=list)
+    mechanics: Annotated[list[MechanicResult], Field(max_length=10000)] = Field(default_factory=list)
     mechanic_count: Annotated[int, Field(ge=0, le=1000000)] = 0
     mechanics_truncated: bool = False
     combat_scenario: CombatScenarioResult | None = None
@@ -193,19 +208,24 @@ class EngineSnapshot(DTO):
 
 class EngineCalculation(DTO):
     build_id: BuildID
+    calculation_id: Annotated[str, Field(pattern=r"^calc_[0-9a-f]{32}$")] | None = None
+    diagnostics_expires_at_epoch: int | None = None
     engine_commit: EngineCommit = Field(default_factory=lambda: ENGINE_COMMIT, validate_default=True)
     engine_data_commit: EngineCommit = Field(default_factory=lambda: ENGINE_DATA_COMMIT, validate_default=True)
     engine_compatibility: EngineCompatibility = Field(default_factory=lambda: ENGINE_COMPATIBILITY, validate_default=True)
     calculated_at_epoch: int
     baseline: EngineSnapshot
     result: EngineSnapshot | None = None
-    deltas: Annotated[list[PlayerStat], Field(max_length=26)] = Field(default_factory=list)
+    deltas: Annotated[list[PlayerStat], Field(max_length=64)] = Field(default_factory=list)
+    deltas_truncated: bool = False
+    requested_metrics: Annotated[list[StatName], Field(max_length=16)] = Field(default_factory=list)
     character_recalculated: Literal[True] = True
     scope: Literal["saved_configuration_active_weapon_set", "explicit_configuration_active_weapon_set"] = "saved_configuration_active_weapon_set"
     configuration_fields: Annotated[list[ConfigurationField], Field(max_length=32)] = Field(default_factory=list)
     live_character: Literal[False] = False
     baseline_source: Literal["privately_imported_pob"] = "privately_imported_pob"
-    character_league_verified: Literal[False] = False
+    character_league_verified: bool = False
+    league_match: Literal['verified', 'user_declared', 'unknown'] = 'unknown'
 
     @model_serializer(mode="wrap", when_used="json")
     def compact_optional_metadata(self, handler):
@@ -223,6 +243,12 @@ class EngineCalculation(DTO):
                 if ("slot" in result and "level_required" in result
                         and result.get("origin") == "saved_build"):
                     result.pop("origin")
+                defaults = {"stats_truncated": False, "metric_coverage_truncated": False,
+                    "metric_coverage": [], "requested_metrics": [], "deltas_truncated": False,
+                    "league_match": "unknown"}
+                for key, default in defaults.items():
+                    if key in result and result[key] == default:
+                        result.pop(key)
                 return result
             # JSON numbers have no separate integer/float type. Removing a
             # redundant .0 is exact; fractional floats retain every digit.
@@ -243,6 +269,21 @@ class EngineStatus(DTO):
     raw_payload_tools: Literal[False] = False
 
 
+class EquipmentValidation(DTO):
+    build_id: BuildID
+    calculation_id: Annotated[str, Field(pattern=r'^calc_[0-9a-f]{32}$')] | None
+    equipment_validity: Literal['pass','fail','indeterminate']
+    overall_validation: Literal['pass','fail','indeterminate']
+    issue_count: int
+    issues: Annotated[list[RequirementIssue], Field(max_length=10)]
+    issues_truncated: bool
+    covered_metric_count: int
+    unresolved_metric_count: int
+    active_weapon_set: int
+    configuration_fields: list[ConfigurationField]
+    detail_tool: Literal['get_build_diagnostics'] = 'get_build_diagnostics'
+
+
 class CharacterWeight(DTO):
     stat: StatName
     weight: Annotated[float, Field(gt=0, le=1e6, allow_inf_nan=False)]
@@ -255,10 +296,11 @@ class CharacterConstraint(DTO):
 
 
 class EngineTradeRequest(EngineRequest):
+    declared_character_league: LeagueName | None = None
     league: LeagueName = "Forbidden Rites"
     search_ids: Annotated[list[SearchID], Field(min_length=1, max_length=4)]
     budget: Price
-    mode: Literal["maximize_score", "minimize_cost"] = "maximize_score"
+    mode: Literal["maximize_score", "minimize_cost", "restore_validity"] = "maximize_score"
     weights: Annotated[list[CharacterWeight], Field(max_length=8)] = Field(default_factory=list)
     constraints: Annotated[list[CharacterConstraint], Field(max_length=8)] = Field(default_factory=list)
     max_changes: Annotated[int, Field(ge=1, le=3)] = 1
@@ -291,6 +333,9 @@ class EngineTradeResult(DTO):
     remaining_budget: Number
     score_gain: Number
     feasible: bool
+    objective: Literal['maximize_score', 'minimize_cost', 'restore_validity'] = 'maximize_score'
+    baseline_comparison_valid: bool = True
+    recommendation_scope: Literal['retained_candidates_with_requested_metric_coverage'] = 'retained_candidates_with_requested_metric_coverage'
     evaluated_combinations: int
     failed_requirements: int
     indeterminate_combinations: int
@@ -305,5 +350,7 @@ class EngineError(Exception):
 
 
 SAFE_ENGINE_ERRORS = {"engine_unavailable", "engine_timeout", "engine_busy", "engine_invalid_request", "engine_invalid_build",
+    "character_league_unverified", "character_league_mismatch",
+    "calculation_expired_or_unavailable", "calculation_target_unavailable",
     "engine_calculation_failed", "engine_protocol_error", "engine_candidate_space_too_large", "engine_missing_metric",
     "engine_no_candidates", "engine_unknown_candidate", "engine_currency_unavailable", "engine_version_mismatch"}

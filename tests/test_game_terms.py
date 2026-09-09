@@ -142,14 +142,17 @@ async def test_fully_configured_dense_result_fits_actual_mcp_schema_and_roundtri
     assert bounded.calculation.configuration_fields == original.calculation.configuration_fields
     for side in ('baseline', 'result'):
         prior, after = getattr(original.calculation, side), getattr(bounded.calculation, side)
-        assert after.stats == prior.stats and after.equipped == prior.equipped
+        assert all(stat in prior.stats for stat in after.stats)
+        assert after.stat_count == len(prior.stats) and after.stats_truncated
+        assert after.equipped == prior.equipped
         assert after.issue_count == prior.issue_count and after.mechanic_count == prior.mechanic_count
         assert after.validation == prior.validation and after.equip_order == prior.equip_order
         assert after.selected_skill.skill_id == prior.selected_skill.skill_id
         assert after.selected_skill.actor == prior.selected_skill.actor
         if after.selected_skill.name is None:
             assert after.selected_skill_labels_truncated
-    assert bounded.calculation.deltas == original.calculation.deltas
+    assert all(stat in original.calculation.deltas for stat in bounded.calculation.deltas)
+    assert bounded.calculation.deltas_truncated
     assert EngineTradeResult.model_validate_json(bounded.model_dump_json()) == bounded
 
     monkeypatch.setattr(game_terms, 'name_fields', lambda _: {

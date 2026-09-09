@@ -1,7 +1,7 @@
 # Forbidden Rites calculation coverage
 
 The 0.10 integration targets PoE2 0.5.5 with compatibility revision
-`forbidden-rites-0.5.5-v3`. Game data, parsed text, calculation coverage, and
+`forbidden-rites-0.5.5-v4`. Game data, parsed text, calculation coverage, and
 complete character input are separate requirements. An imported character can
 have current data while still lacking enough information for a verified upgrade.
 
@@ -33,7 +33,7 @@ have current data while still lacking enough information for a verified upgrade.
 | Tempest Bell | Actual combo/limit/duration data and shockwave snapshot using valid prior hits, distinct elemental ailment types and knockback distance | Prior hits must be below the actual destruction limit. Combo, hit sequence and uptime require events |
 | Wind Dancer | Actual generation interval and explicit current-stage Evasion multiplier | A full-refill bound does not identify the live timer phase |
 | Refutation | Explicit buff and Ward expenditure, Light Stun threshold/immunity, block restrictions and duration/cooldown cycle | Heavy Stun can end the buff; active state requires incoming-hit assumptions and does not imply that an enemy was Parried |
-| PoE2 damage leech | Total post-mitigation hit capped at 40,000 before type-specific leech; proportional damage types, amount modifiers, one-instance recovery and speed modifiers | Current numerical monster resistance is not verified. Supply resistance explicitly; recovery uptime remains a separate assumption |
+| PoE2 damage leech | Total post-mitigation hit capped at 40,000 before type-specific leech; proportional damage types, amount modifiers, one-instance recovery and speed modifiers | Per-hit expectation is analytic for one continuous type or exact for independent minimum/maximum draws; mixed continuous types and upstream averaged mitigation remain approximate. Supply resistance and hypothetical recovery uptime separately |
 | Mana Drain and leech transfers | Flat Mana Drain with its own recovery speed; supported instant recovery, Life-to-ES conversion and Mana recovery copied to ES | Flat Mana Drain is not damage-based leech. Recovery needs resource deficits and applicable conditions |
 | Impale | Current physical-hit magnitude and infliction chance; explicit existing strongest Impale added once to the selected eligible player attack before target mitigation | No inferred repeated-stack DPS. Extraction cannot affect spells, minions, unrelated Full DPS groups or skills prohibited from extracting; sustain is unresolved |
 | Maim, Blind and conditional hit buffs | Hit chances and explicit target states; compatible Thrill of the Kill, Culling Strike and Onslaught buff snapshots | Chance to trigger does not prove the buff is active. Behead's unknown stolen rare modifiers remain partial |
@@ -120,10 +120,10 @@ stat mappings, but a mapped stat may still have incomplete upstream behavior.
 `granted_skill_source_unresolved` means an imported item/passive skill cannot be
 matched to one current active source; its saved level cannot verify an upgrade.
 
-Details are limited to 16 issues and 16 mechanics and may be shortened further
-to preserve the 8 KiB public response limit. `issue_count`, `mechanic_count`,
-`issues_truncated`, and `mechanics_truncated` preserve that distinction. Validation
-and numeric character results are not upgraded when details are shortened.
+Complete issues and mechanics remain in immutable calculation receipts. Summaries
+may be shortened to 8 KiB; counts and truncation flags direct callers to
+`get_build_diagnostics`. Additional metrics, deltas and scenarios are also
+recoverable by calculation ID. Truncation never upgrades validation.
 
 Captured beast exports can omit individual rolled modifiers. Canonical imported
 metadata or a bounded `captured_beast_mods` assumption can supply a known roll
@@ -134,11 +134,12 @@ and attached `.txt` import workflows remain the only character entry points.
 
 ## Recommendation eligibility
 
-Equipment optimization requires a passing baseline and passing candidate
-calculations with all requested metrics. The same supplied configuration is used
-for the baseline and every candidate. Missing data, unresolved combat
-assumptions, unsupported effects and uncertain equip sequences remain excluded.
-These checks do not claim universal coverage of every current upstream mechanic.
+Equipment must be valid and all requested metrics must have verified coverage.
+Narrow dependency proofs permit unconditional resource comparisons despite
+unrelated leech/charge assumptions; unknown dependencies remain excluded.
+`restore_validity` separately minimizes repair cost without baseline score deltas.
+The same explicit configuration applies to all candidates; origin league is
+checked. These checks do not claim universal mechanic coverage.
 
 The regression suite uses synthetic public game data only. Add a numerical
 differential test and a counterexample for each new source patch; preserve the

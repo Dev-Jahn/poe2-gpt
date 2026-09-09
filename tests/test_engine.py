@@ -247,5 +247,8 @@ def test_engine_comparison_bounds_diagnostics_without_losing_status_or_counts():
     assert len(result.model_dump_json().encode())<=8192
     for s in (result.baseline,result.result):
         assert s.issue_count==1000 and s.validation=='fail' and s.issues_truncated
-        assert s.stats==stats and s.equipped==equipped and s.selected_skill==skill
+        assert all(stat in stats for stat in s.stats)
+        assert s.stat_count == len(stats) and s.stats_truncated
+        assert {'Life', 'Mana', 'EnergyShield', 'FullDPS'} <= {stat.name for stat in s.stats}
+        assert s.equipped==equipped and s.selected_skill==skill
     assert len(value.baseline.issues)==16  # Don't mutate the private calculation.

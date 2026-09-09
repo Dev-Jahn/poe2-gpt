@@ -2,6 +2,8 @@ FROM python:3.14-slim AS engine-build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY scripts/install_lua_runtime.py scripts/install_pob_engine.py scripts/patch_stonefist.py scripts/patch_companions.py scripts/patch_skill_coverage.py scripts/patch_weapon_context.py scripts/patch_spirit_vessel.py scripts/patch_granted_skills.py scripts/patch_companion_states.py scripts/patch_martial_mechanics.py scripts/patch_damage_rules.py scripts/patch_upstream_fixes.py scripts/patch_hit_buffs.py scripts/patch_curse_mechanics.py scripts/patch_beast_auras.py /install/
 COPY scripts/data /install/data
+COPY scripts/patch_leech_distribution.py /install/
+COPY src/poe2_companion/lua/leech_distribution.lua /install/
 RUN python /install/install_lua_runtime.py && python /install/install_pob_engine.py /opt/pob
 
 FROM python:3.14-slim AS runtime
@@ -9,8 +11,9 @@ WORKDIR /app
 COPY --from=engine-build /opt/pob /opt/pob
 COPY --from=engine-build /opt/lua /opt/lua
 COPY pyproject.toml README.md LICENSE NOTICE ./
+COPY requirements.lock.txt ./
 COPY src ./src
-RUN pip install --no-cache-dir . && useradd --create-home --uid 10001 companion \
+RUN pip install --no-cache-dir -r requirements.lock.txt && pip install --no-cache-dir --no-deps . && useradd --create-home --uid 10001 companion \
     && mkdir /engine-socket /private-builds /engine-coordination \
     && chown companion:companion /engine-socket /private-builds /engine-coordination \
     && chmod 700 /engine-socket /private-builds /engine-coordination
@@ -21,7 +24,8 @@ ENTRYPOINT ["poe2-pob-worker"]
 
 FROM runtime AS test
 USER root
-RUN pip install --no-cache-dir '.[test]'
+COPY requirements-dev.lock.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.lock.txt && pip install --no-cache-dir --no-deps '.[test]'
 COPY tests ./tests
 COPY scripts/run_engine_tests.py scripts/mac.py scripts/update_localization.py ./scripts/
 ENV POE2_TEST_ENGINE_DIR=/opt/pob POE2_TEST_LUAJIT=/opt/lua/bin/luajit

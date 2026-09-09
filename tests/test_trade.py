@@ -192,7 +192,9 @@ def test_item_parser_recognizes_basic_sums_but_excludes_unknown_effects():
     assert row.optimization_eligible
     raw["item"]["explicitMods"].append("PRIVATE_UNSUPPORTED_EFFECT_DO_NOT_FORWARD")
     row=parse_listing(raw,NOW)
-    assert not row.optimization_eligible and row.unknown_modifier_count==1 and row.item_stats==[]
+    assert not row.optimization_eligible and row.unknown_modifier_count==1
+    assert not row.proxy_optimization_eligible and not row.item_stats_complete
+    assert row.item_stats  # Known contributions survive an unrelated unknown mod.
     assert "PRIVATE_" not in row.model_dump_json()
     raw["gone"]=True
     assert parse_listing(raw,NOW) is None

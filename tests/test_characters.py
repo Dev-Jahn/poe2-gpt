@@ -13,7 +13,7 @@ from poe2_companion.characters import (CharacterClient, CharacterRequest, Accoun
 from poe2_companion.pob_io import atomic_write
 from poe2_companion.server import build_server
 from poe2_companion.scout import Scout
-from test_build_boundary import code, MARKER
+from test_build_boundary import code, xml, MARKER
 from test_scout import Backend
 
 TAG = "Example_#7513"
@@ -57,9 +57,16 @@ async def test_account_resolution_import_dedup_and_private_projection(tmp_path):
     result = await p.get_character(CharacterRequest(account_tag=TAG, character_name=REQUEST.character_name))
     text = result.model_dump_json()
     assert result.build.level == 91 and result.build.build_id.startswith("bld_")
+    assert result.character.upstream_checked_at_epoch == result.character.retrieved_at_epoch
+    assert result.character.source_model_version == 15 and result.character.source_fetch == "request_time"
+    assert result.upstream_revalidated and result.new_snapshot_stored and result.reused_reason is None
     assert MARKER not in text and code().decode() not in text and "pathOfBuildingExport" not in text
     assert (p.private/(result.build.build_id+".pob")).read_bytes() == code()
-    assert (await p.get_character(REQUEST)).reused
+    second = await p.get_character(REQUEST)
+    assert second.reused and not second.new_snapshot_stored
+    assert second.reused_reason == "identical_export_and_import_metadata" and second.upstream_revalidated
+    assert sum("/model/" in r.url.path for r in backend.calls) == 2
+    assert sum("/events/character/" in r.url.path for r in backend.calls) == 2
     assert len(list(p.private.glob("*.pob"))) == 1
     backend.rows += [{**backend.rows[0], "leagueUrl": "standard"}]
     with pytest.raises(CharacterError, match="ambiguous_league"):
@@ -87,6 +94,28 @@ async def test_refresh_auth_binding_cooldown_persistence_and_redaction(tmp_path)
     assert sum(r.method == "POST" for r in backend.calls) == 1
     await p.close()
     await second.close()
+
+
+async def test_request_time_updates_and_return_to_previous_snapshot(tmp_path):
+    backend = NinjaBackend()
+    p = provider(tmp_path, backend)
+    try:
+        first = await p.get_character(REQUEST)
+        backend.model['pathOfBuildingExport'] = code(xml().replace(b'value="2100"', b'value="2300"')).decode()
+        changed = await p.get_character(REQUEST)
+        assert changed.new_snapshot_stored and changed.build.build_id != first.build.build_id
+        assert next(s.value for s in changed.build.stats if s.name == 'Life') == 2300
+        backend.model['pathOfBuildingExport'] = code().decode()
+        restored = await p.get_character(REQUEST)
+        assert restored.build.build_id == first.build.build_id
+        assert restored.reused and not restored.new_snapshot_stored
+        assert sum('/model/' in r.url.path for r in backend.calls) == 3
+        backend.status = 503
+        # An upstream failure must not silently return a previously stored build.
+        with pytest.raises(CharacterError):
+            await p.get_character(REQUEST)
+    finally:
+        await p.close()
 
 
 async def test_attachment_preserves_bytes_and_blocks_ssrf_redirects_and_payloads(tmp_path, monkeypatch):

@@ -16,7 +16,7 @@ import unicodedata
 from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args, Any, cast
 from urllib.parse import quote
 
 import httpx
@@ -25,7 +25,7 @@ from pydantic import Field, field_validator, model_validator
 from .builds import DTO, BuildError, bounded_dto
 from .game_terms import name_fields
 from .equipment import (Currency, DatasetID, LeagueName, Number, OptimizeRequest, Price, Stat,
-                        Candidate, Dataset, EquipmentService, UpgradeResult, unique)
+                        Candidate, Dataset, EquipmentService, UpgradeResult, unique, Slot, Metric)
 
 BASE = "https://www.pathofexile.com"
 TRADE_API = BASE+"/api/trade2"
@@ -76,9 +76,31 @@ class PropertyFilter(Range):
     property: Property
 
 
+class TradeStatGroup(DTO):
+    type: Literal['and', 'count'] = 'and'
+    filters: Annotated[list[TradeStatFilter], Field(min_length=1, max_length=12)]
+    minimum_match: Annotated[int, Field(ge=1, le=12)] | None = None
+
+    @model_validator(mode='after')
+    def coherent(self):
+        unique(self.filters, 'stat_id')
+        if self.type == 'count' and (self.minimum_match is None or self.minimum_match > len(self.filters)):
+            raise ValueError('invalid_stat_group_count')
+        if self.type == 'and' and self.minimum_match is not None:
+            raise ValueError('count_requires_count_group')
+        return self
+
+
 class TradeSearchRequest(DTO):
     league: LeagueName = "Forbidden Rites"
     category: Category
+    exact_name: Annotated[str, Field(min_length=1, max_length=120, pattern=r'^[^\x00-\x1f\x7f]+$')] | None = None
+    base_type: Annotated[str, Field(min_length=1, max_length=120, pattern=r'^[^\x00-\x1f\x7f]+$')] | None = None
+    item_level_min: Annotated[int, Field(ge=0, le=100)] | None = None
+    item_level_max: Annotated[int, Field(ge=0, le=100)] | None = None
+    stat_groups: Annotated[list[TradeStatGroup], Field(max_length=4)] = Field(default_factory=list)
+    sort_by: Literal['price', 'ar', 'ev', 'es', 'dps', 'pdps', 'edps', 'aps', 'crit', 'ilvl'] = 'price'
+    sort_direction: Literal['asc', 'desc'] = 'asc'
     status: Literal["online", "available", "securable", "any"] = "online"
     rarity: Literal["any", "normal", "magic", "rare", "unique", "nonunique"] = "any"
     corrupted: bool | None = None
@@ -90,6 +112,10 @@ class TradeSearchRequest(DTO):
 
     @model_validator(mode="after")
     def consistent(self):
+        if self.item_level_min is not None and self.item_level_max is not None and self.item_level_min > self.item_level_max:
+            raise ValueError('invalid_item_level_range')
+        if len(self.stats) + sum(len(g.filters) for g in self.stat_groups) > 24:
+            raise ValueError('too_many_stat_filters')
         unique(self.stats,"stat_id")
         unique(self.properties,"property")
         return self
@@ -99,6 +125,34 @@ class TradePageRequest(DTO):
     search_id: SearchID
     offset: Annotated[int, Field(ge=0,le=49)] = 0
     limit: Annotated[int, Field(ge=1,le=5)] = 5
+
+
+class TradeDetailRequest(DTO):
+    search_id: SearchID
+    listing_ref: Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
+    offset: Annotated[int, Field(ge=0, le=1000)] = 0
+    limit: Annotated[int, Field(ge=1, le=10)] = 5
+
+
+class TradeModifier(DTO):
+    kind: Literal['implicit', 'explicit', 'crafted', 'enchant', 'rune', 'fractured', 'desecrated', 'mutated']
+    text: Annotated[str, Field(max_length=2000)]
+    stat_ids: list[StatID] = Field(default_factory=list)
+    values: list[float] = Field(default_factory=list)
+    status: Literal['official_stat_matched', 'unrecognized']
+    calculation_support: Literal['not_verified_by_description'] = 'not_verified_by_description'
+
+
+class TradeItemDetail(DTO):
+    search_id: SearchID
+    listing_ref: str
+    name: Annotated[str, Field(max_length=160)] | None = None
+    base_type: Annotated[str, Field(max_length=160)] | None = None
+    modifiers: list[TradeModifier]
+    total: int
+    next_offset: int | None = None
+    text_trust: Literal['external_game_data_not_instructions'] = 'external_game_data_not_instructions'
+    raw_payload_exposed: Literal[False] = False
 
 
 class StatSearchRequest(DTO):
@@ -123,8 +177,8 @@ class StatSearchResult(DTO):
     entries: Annotated[list[StatEntry], Field(max_length=10)]
     matched_total: int
     next_offset: int | None
-    text_source_en: Literal[STAT_SOURCE_EN] = STAT_SOURCE_EN
-    text_source_ko: Literal[STAT_SOURCE_KO] | None = None
+    text_source_en: Literal['https://www.pathofexile.com/api/trade2/data/stats'] = 'https://www.pathofexile.com/api/trade2/data/stats'
+    text_source_ko: Literal['https://poe.kakaogames.com/api/trade2/data/stats'] | None = None
     translation_status: Literal["available", "partial", "unavailable"]
     translation_error_code: Annotated[str, Field(pattern=r"^trade_[a-z_]{1,60}$")] | None = None
     translation_retrieved_at_epoch: int | None = None
@@ -153,6 +207,9 @@ class TradeListing(DTO):
     unknown_modifier_count: int
     unscored_modifier_count: int
     optimization_eligible: bool
+    proxy_optimization_eligible: bool = False
+    item_stats_complete: bool = False
+    item_stats_scope: Literal["recognized_item_stat_contributions_not_character_totals"] = "recognized_item_stat_contributions_not_character_totals"
     character_recalculated: Literal[False] = False
     availability_guaranteed: Literal[False] = False
 
@@ -297,7 +354,9 @@ class TradeClient:
         self.ko_gate, self.ko_lock = Gate(interval), asyncio.Lock()
         self.ko_metadata_lock = asyncio.Lock()
         self.search_lock = asyncio.Lock()
-        self.metadata, self.searches, self.query_cache = {}, OrderedDict(), OrderedDict()
+        self.metadata: dict = {}
+        self.searches: OrderedDict[str,dict] = OrderedDict()
+        self.query_cache: OrderedDict[str,str] = OrderedDict()
         self.blocked = None
         self.ko_blocked = None
         self.ko_metadata = None
@@ -423,7 +482,7 @@ class TradeClient:
             retrieved=int(fetched)
         except TradeError as exc:
             translation_error=exc.code
-        status="available" if rows and len(translated)==len(rows) else "partial" if translated else "unavailable"
+        status: Literal['available','partial','unavailable']="available" if rows and len(translated)==len(rows) else "partial" if translated else "unavailable"
         tokens = request.query.casefold().split()
         matches = sorted((i,t) for i,t in rows.items() if all(s in (t+" "+translated.get(i,"")).casefold() for s in tokens)
                          and (request.group=="any" or i.startswith(request.group+".")))
@@ -433,7 +492,7 @@ class TradeClient:
         while True:
             result=StatSearchResult(entries=entries,matched_total=len(matches),
                 next_offset=request.offset+len(entries) if request.offset+len(entries)<len(matches) else None,
-                text_source_ko=STAT_SOURCE_KO if retrieved is not None else None,
+                text_source_ko='https://poe.kakaogames.com/api/trade2/data/stats' if retrieved is not None else None,
                 translation_status=status,translation_error_code=translation_error,
                 translation_retrieved_at_epoch=retrieved)
             try:
@@ -456,7 +515,7 @@ class TradeClient:
                 raise TradeError("trade_unknown_filter")
         option("type_filters","category",request.category)
         option("status_filters","status",request.status)
-        filters = {"type_filters":{"filters":{"category":{"option":request.category}}},
+        filters: dict[str,Any] = {"type_filters":{"filters":{"category":{"option":request.category}}},
                    "req_filters":{"filters":{"lvl":{"max":request.required_level_max}}}}
         if "lvl" not in definitions.get("req_filters",{}):
             raise TradeError("trade_unknown_filter")
@@ -467,6 +526,12 @@ class TradeClient:
             value=str(request.corrupted).lower()
             option("misc_filters","corrupted",value)
             filters["misc_filters"]={"filters":{"corrupted":{"option":value}}}
+        if request.item_level_min is not None or request.item_level_max is not None:
+            item_level_group=next((group for group in ('misc_filters','type_filters','req_filters') if 'ilvl' in definitions.get(group,{})),None)
+            if item_level_group is None:
+                raise TradeError('trade_unknown_filter')
+            filters.setdefault(item_level_group, {'filters': {}})['filters']['ilvl'] = {
+                key:value for key,value in (('min',request.item_level_min),('max',request.item_level_max)) if value is not None}
         if request.price_max:
             option("trade_filters","price",request.price_max.currency)
             filters["trade_filters"]={"filters":{"price":{"option":request.price_max.currency,"max":request.price_max.amount}}}
@@ -474,10 +539,20 @@ class TradeClient:
             if any(p.property not in definitions.get("equipment_filters",{}) for p in request.properties):
                 raise TradeError("trade_unknown_filter")
             filters["equipment_filters"]={"filters":{p.property:p.upstream() for p in request.properties}}
-        known = await self.stats() if request.stats else {}
-        if any(s.stat_id not in known for s in request.stats):
+        all_stats = list(request.stats) + [s for group in request.stat_groups for s in group.filters]
+        known = await self.stats() if all_stats else {}
+        if any(s.stat_id not in known for s in all_stats):
             raise TradeError("trade_unknown_stat")
-        return {"query":{"status":{"option":request.status},"stats":[{"type":"and","filters":[{"id":s.stat_id,"value":s.upstream()} for s in request.stats]}],"filters":filters},"sort":{"price":"asc"}}
+        groups=[{'type':'and','filters':[{'id':s.stat_id,'value':s.upstream()} for s in request.stats]}]
+        for group in request.stat_groups:
+            row: dict[str,Any]={'type':group.type,'filters':[{'id':s.stat_id,'value':s.upstream()} for s in group.filters]}
+            if group.type=='count':
+                row['value']={'min':group.minimum_match}
+            groups.append(row)
+        query={'status':{'option':request.status},'stats':groups,'filters':filters}
+        if request.exact_name is not None: query['name']=request.exact_name
+        if request.base_type is not None: query['type']=request.base_type
+        return {'query':query,'sort':{request.sort_by:request.sort_direction}}
 
     async def search(self, request: TradeSearchRequest):
         async with self.search_lock:
@@ -527,6 +602,13 @@ class TradeClient:
                 if not isinstance(row,dict) or row.get("id") not in group or row["id"] in parsed:
                     raise TradeError("trade_schema_changed")
                 parsed[row["id"]]=parse_listing(row,int(self.clock()))
+                # Description access must not depend on complete PoB import.
+                description={k:v for k,v in row.get('item',{}).items() if k in {
+                    'name','baseType','typeLine','implicitMods','explicitMods','craftedMods',
+                    'enchantMods','runeMods','fracturedMods','desecratedMods','mutatedMods'}}
+                if len(json.dumps(description,allow_nan=False).encode())>32768:
+                    raise TradeError('trade_schema_changed')
+                entry.setdefault('description_items',{})[row['id']]=description
                 # A separate private cache feeds the PoB worker. This data is
                 # never part of TradeListing or an MCP response.
                 from .engine_protocol import private_trade_item
@@ -555,6 +637,47 @@ class TradeClient:
                 if count<=1:
                     raise
         raise TradeError("trade_schema_changed")
+
+    async def detail(self, request: TradeDetailRequest):
+        entry=self.retained(request.search_id)
+        if request.listing_ref not in entry['ids']:
+            raise TradeError('trade_search_not_found')
+        await self.fetch(entry,[request.listing_ref])
+        item=entry.get('description_items',{}).get(request.listing_ref)
+        if not item:
+            raise TradeError('trade_unavailable')
+        known=await self.stats()
+        patterns=[]
+        for identifier,template in known.items():
+            if identifier.startswith('pseudo.'):
+                continue
+            pattern=re.escape(plain_mod(template)).replace(r'\#',r'([+-]?\d+(?:\.\d+)?)')
+            patterns.append((identifier,re.compile(pattern)))
+        mods=[]
+        for kind in ('implicit','explicit','crafted','enchant','rune','fractured','desecrated','mutated'):
+            for mod in item.get(kind+'Mods',[]):
+                text=mod.get('description') if isinstance(mod,dict) else mod
+                if not isinstance(text,str) or len(text)>2000 or any(ord(c)<32 and c not in '\n\r\t' for c in text):
+                    raise TradeError('trade_schema_changed')
+                text=plain_mod(text)
+                ids=[]
+                for identifier,pattern in patterns:
+                    if identifier.startswith(kind+'.') and pattern.fullmatch(text): ids.append(identifier)
+                mods.append(TradeModifier(kind=kind,text=text,stat_ids=ids,status='official_stat_matched' if ids else 'unrecognized',
+                    values=[float(n) for n in re.findall(r'[+-]?\d+(?:\.\d+)?',text)]))
+        selected=mods[request.offset:request.offset+request.limit]
+        name=item.get('name');base=item.get('baseType',item.get('typeLine'))
+        for value in (name,base):
+            if value is not None and (not isinstance(value,str) or len(value)>160 or any(ord(c)<32 for c in value)):
+                raise TradeError('trade_schema_changed')
+        while True:
+            end=request.offset+len(selected)
+            result=TradeItemDetail(search_id=request.search_id,listing_ref=request.listing_ref,name=name,base_type=base,
+                modifiers=selected,total=len(mods),next_offset=end if end<len(mods) else None)
+            try: return bounded_dto(result)
+            except BuildError:
+                if len(selected)<=1: raise
+                selected.pop()
 
     async def recommend(self, request: TradeUpgradeRequest, equipment: EquipmentService):
         baseline=equipment.load(request.optimization.dataset_id)
@@ -591,7 +714,7 @@ class TradeClient:
         return bounded_dto(TradeUpgradeResult(search_ids=request.search_ids,baseline_origin=baseline.origin,listings_considered=considered,rejected_for_missing_or_unsupported_data=rejected,optimization=result))
 
 
-CATEGORY_SLOTS={"armour.helmet":["helmet"],"armour.chest":["body_armour"],"armour.gloves":["gloves"],"armour.boots":["boots"],
+CATEGORY_SLOTS: dict[str,list[Slot]]={"armour.helmet":["helmet"],"armour.chest":["body_armour"],"armour.gloves":["gloves"],"armour.boots":["boots"],
     "accessory.belt":["belt"],"accessory.amulet":["amulet"],"accessory.ring":["ring_left","ring_right"]}
 
 
@@ -636,7 +759,7 @@ def parse_listing(row: dict, observed: int) -> TradeListing | None:
             rarity={0:"normal",1:"magic",2:"rare",3:"unique"}.get(frame) if type(frame) is int else None
         else:
             # Current official item schema uses rarity; retain legacy support.
-            rarity={"Normal":"normal","Magic":"magic","Rare":"rare","Unique":"unique"}.get(item.get("rarity"))
+            rarity={"Normal":"normal","Magic":"magic","Rare":"rare","Unique":"unique"}.get(item.get("rarity",''))
         if rarity is None:
             return None
         base=item.get("baseType",item.get("typeLine",""))
@@ -705,7 +828,7 @@ def parse_listing(row: dict, observed: int) -> TradeListing | None:
         extended=item.get("extended") or {}
         if not isinstance(extended,dict):
             return None
-        for key in Property.__args__:
+        for key in get_args(Property):
             if valid_number(extended.get(key)):
                 props.append(EquipmentValue(property=key,value=float(extended[key])))
         for key,metric in (("ar","item_armour"),("ev","item_evasion"),("es","item_energy_shield")):
@@ -714,9 +837,11 @@ def parse_listing(row: dict, observed: int) -> TradeListing | None:
         # Non-identified items and alternate effect-bearing components require a
         # broader semantic evaluator even if the few visible lines look simple.
         complete=item.get("identified") is True and not unknown and rarity!="unique" and not any(item.get(k) for k in ("grantedSkills","socketedItems","veiledMods","sanctified","mirrored"))
-        return TradeListing(key="i_"+hashlib.sha256(ref.encode()).hexdigest()[:24],listing_ref=ref,base_type=base,**name_fields(base, "base_type"),rarity=rarity,corrupted=item.get("corrupted",False),required_level=level,
+        return TradeListing(key="i_"+hashlib.sha256(ref.encode()).hexdigest()[:24],listing_ref=ref,base_type=base,**name_fields(base, "base_type"),rarity=cast(Literal['normal','magic','rare','unique'],rarity),corrupted=item.get("corrupted",False),required_level=level,
             price=price,price_status="available" if price else "missing_or_unsupported_currency",observed_at_epoch=observed,listing_indexed_at=indexed,
-            item_stats=[Stat(metric=k,value=v) for k,v in values.items()] if complete else [],equipment_values=props,unknown_modifier_count=unknown,unscored_modifier_count=unscored,
+            item_stats=[Stat(metric=cast(Metric,k),value=v) for k,v in values.items() if complete or v != 0],equipment_values=props,unknown_modifier_count=unknown,unscored_modifier_count=unscored,
+            item_stats_complete=complete,
+            proxy_optimization_eligible=complete and price is not None and level is not None,
             optimization_eligible=complete and price is not None and level is not None)
     except (KeyError,TypeError,ValueError,IndexError,AttributeError):
         return None
