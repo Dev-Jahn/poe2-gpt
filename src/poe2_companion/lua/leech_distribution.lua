@@ -16,6 +16,22 @@ function M.integrate(types,cap)
  local active={}
  for _,v in ipairs(types) do if v.maximum>0 then active[#active+1]=v end end
  if #active==0 then return 0,0,0,true end
+ local hasLeech,totalMaximum=false,0
+ for _,v in ipairs(active) do
+  hasLeech=hasLeech or v.life~=0 or v.mana~=0 or v.es~=0
+  totalMaximum=totalMaximum+v.maximum
+ end
+ if not hasLeech then return 0,0,0,true end
+ if totalMaximum<=cap then
+  -- No possible hit reaches the nonlinear cap: linear expectation is exact,
+  -- irrespective of cross-type correlation, without numerical quadrature.
+  local life,mana,es=0,0,0
+  for _,v in ipairs(active) do
+   local mean=M.capped_mean(v.minimum,v.maximum,cap,v.lucky,v.endpoints)
+   life,mana,es=life+mean*v.life,mana+mean*v.mana,es+mean*v.es
+  end
+  return life,mana,es,true
+ end
  if #active==1 then
   local v=active[1]
   local mean=M.capped_mean(v.minimum,v.maximum,cap,v.lucky,v.endpoints)
