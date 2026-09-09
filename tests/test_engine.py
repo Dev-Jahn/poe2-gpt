@@ -247,5 +247,28 @@ def test_engine_comparison_bounds_diagnostics_without_losing_status_or_counts():
     assert len(result.model_dump_json().encode())<=8192
     for s in (result.baseline,result.result):
         assert s.issue_count==1000 and s.validation=='fail' and s.issues_truncated
-        assert s.stats==stats and s.equipped==equipped and s.selected_skill==skill
+        assert all(stat in stats for stat in s.stats)
+        assert s.stat_count == len(stats) and s.stats_truncated
+        assert {'Life', 'Mana', 'EnergyShield', 'FullDPS'} <= {stat.name for stat in s.stats}
+        assert s.equipped==equipped and s.selected_skill==skill
     assert len(value.baseline.issues)==16  # Don't mutate the private calculation.
+async def test_origin_league_uses_catalog_pairs_and_never_guesses_slugs():
+    from poe2_companion.builds import BuildOrigin
+    from poe2_companion.engine import verify_character_league
+    from poe2_companion.scout import Scout
+    from test_scout import Backend
+    scout = Scout(user_agent='test', transport=httpx.MockTransport(Backend()), interval=0)
+    try:
+        for slug, name in [('forbiddenrites','Forbidden Rites'), ('hunt','Dawn of the Hunt'),
+                           ('forbiddenriteshc','HC Forbidden Rites')]:
+            await verify_character_league(BuildOrigin(league_slug=slug), name, None, scout)
+        with pytest.raises(EngineError, match='character_league_mismatch'):
+            await verify_character_league(BuildOrigin(league_slug='forbiddenriteshc'), 'Forbidden Rites', None, scout)
+        with pytest.raises(EngineError, match='character_league_mismatch'):
+            await verify_character_league(BuildOrigin(league_slug='forbiddenrites', league_name='Standard'), 'Forbidden Rites', None, scout)
+        with pytest.raises(EngineError, match='character_league_unverified'):
+            await verify_character_league(BuildOrigin(league_slug='forbiddenrites'), 'Forbidden Rites', None, None)
+        with pytest.raises(EngineError, match='character_league_unverified'):
+            await verify_character_league(BuildOrigin(league_slug='missing'), 'Not a real league', None, scout)
+    finally:
+        await scout.close()

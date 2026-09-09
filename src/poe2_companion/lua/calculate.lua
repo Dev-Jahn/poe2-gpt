@@ -36,12 +36,14 @@ modLib.parseModCache['Equipment has no Attribute Requirements']={{
 local slots = {helmet='Helmet',body_armour='Body Armour',gloves='Gloves',boots='Boots',belt='Belt',amulet='Amulet',ring_left='Ring 1',ring_right='Ring 2',weapon_main='Weapon 1',weapon_off='Weapon 2'}
 local slotKeys = {'helmet','body_armour','gloves','boots','belt','amulet','ring_left','ring_right','weapon_main','weapon_off'}
 local statKeys = {'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
+for _,key in ipairs({'FireResistTotal','ColdResistTotal','LightningResistTotal','ChaosResistTotal','FireResistOverCap','ColdResistOverCap','LightningResistOverCap','ChaosResistOverCap','PhysicalMaximumHitTaken','FireMaximumHitTaken','ColdMaximumHitTaken','LightningMaximumHitTaken','ChaosMaximumHitTaken','LifeRegen','ManaRegen','EnergyShieldRegen','LifeLeechRate','ManaLeechRate','EnergyShieldLeechRate','TotalEHP'}) do statKeys[#statKeys+1]=key end
 local function array(t) return setmetatable(t or {}, {__jsontype='array'}) end
 local function refresh()
  build.buildFlag = true
  runCallback('OnFrame')
  assert(build.calcsTab.mainOutput and not __mainObject__.promptMsg)
 end
+local savedConfig,configurationAliases
 local function load()
  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
  loadBuildFromXML(job.xml, '')
@@ -51,8 +53,13 @@ local function load()
   refresh()
  end
  if weaponContext.activate(build) then refresh() end
+ if job.inspection and job.inspection.section=='configuration' and job.inspection.set_id then
+  assert(build.configTab.configSets[job.inspection.set_id])
+  build.configTab:SetActiveConfigSet(job.inspection.set_id)
+  refresh()
+ end
+ savedConfig={};for key,value in pairs(build.configTab.input) do savedConfig[key]=value end
  local configuration=job.configuration
- if configuration then
   local aliases={ghost_shroud_lost_recently='conditionLostGhostShroudRecently',
    refutation_active='conditionRefutationActive',refutation_ward_spent='refutationWardSpent',
    tempest_bell_prior_hits='tempestBellPriorHits',tempest_bell_knockback_metres='tempestBellKnockbackMetres',
@@ -61,6 +68,8 @@ local function load()
    leech_resistance_percent='companionLeechResistance',onslaught_active='buffOnslaught',
    thrill_of_the_kill_active='companionThrillOfTheKillActive',
    culling_strike_recent_cull='companionCullingStrikeRecentCull'}
+ configurationAliases=aliases
+ if configuration then
   if configuration.tempest_bell_ailment_types then
    local selected={}
    for _,element in ipairs(configuration.tempest_bell_ailment_types) do selected[element]=true end
@@ -274,12 +283,11 @@ local function inspect(expected, order, sequenceOk)
   local key=json.encode(v)
   if not seenIssues[key] then seenIssues[key]=true;uniqueIssues[#uniqueIssues+1]=v end
  end
- local truncated=#uniqueIssues>16
- while #uniqueIssues>16 do table.remove(uniqueIssues) end
+ local truncated=false
  local mechanicCount=#mechanics
- while #mechanics>16 do table.remove(mechanics) end
  local combat=job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
- return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
+ local equipmentValidity,coverage=dofile(companionRoot..'metric_coverage.lua').inspect(env,out,stats,uniqueIssues,mechanics,status)
+ return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
 end
 local function scenario(changes)
  load()
@@ -316,13 +324,13 @@ local function scenario(changes)
   end
  end
  for _,k in ipairs(slotKeys) do selectItem(slotName(k),originals[k]) end
- -- Try all insertion orders, removing all replaced gear first. This proves a
- -- conservative equip path without crediting a new item its own attributes.
+ -- Try sequential replacements, retaining other original items until their turn.
+ -- Remove the current slot before checking, never crediting its own attributes.
  local function tryOrder(order)
   for _,k in ipairs(slotKeys) do selectItem(slotName(k),originals[k]) end
-  for _,c in ipairs(changes) do selectItem(slotName(c.slot),0) end
   refresh()
   for _,c in ipairs(order) do
+   selectItem(slotName(c.slot),0);refresh()
    local id=imported[c.slot]
    if id~=0 then
     local item=build.itemsTab.items[id];local issues={}
@@ -356,10 +364,11 @@ local function scenario(changes)
 end
 load()
 local baseline=inspect()
+local inspection=job.inspection and dofile(companionRoot..'inspection.lua').project(build,job.inspection,savedConfig,configurationAliases) or nil
 local results=array()
 for _,changes in ipairs(job.scenarios) do
  local ok,value=pcall(scenario,changes)
  if ok then results[#results+1]=value
  else results[#results+1]={stats=array(),equipped=array(),issues=array({{code='scenario_calculation_failed'}}),issue_count=1,validation='indeterminate',equip_order=array(),active_weapon_set=baseline.active_weapon_set,main_skill_group=baseline.main_skill_group} end
 end
-io.stdout:write(json.encode({baseline=baseline,results=results}))
+io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection}))

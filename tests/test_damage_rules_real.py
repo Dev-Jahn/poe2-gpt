@@ -49,6 +49,7 @@ for _,case in ipairs(input.cases) do
  build.configTab.input.customMods=case.mods or ''
  if case.main_group then build.mainSocketGroup=case.main_group end
  build.configTab.input.enemyLevel=case.enemy_level or 83
+ if case.enemy_armour~=nil then build.configTab.input.enemyArmour=case.enemy_armour end
  if case.full_life then build.configTab.input.conditionFullLife=true end
  if case.resistance~=nil then build.configTab.input.companionLeechResistance=case.resistance end
  if case.impale~=nil then build.configTab.input.companionImpaleMagnitude=case.impale end
@@ -74,6 +75,8 @@ io.write(json.encode(result))
         env = {**os.environ, "LUA_PATH": str(Path(source) / "runtime/lua/?.lua") + ";" + str(Path(source) / "runtime/lua/?/init.lua") + ";;"}
         fields = ["Life", "Mana", "EnergyShield", "CombinedDPS", "TotalDPS", "TotalDotDPS", "Speed", "HitChance", "CritChance",
                   "PhysicalStoredHitAvg", "PhysicalStoredCritAvg", "PhysicalHitAverage", "PhysicalCritAverage",
+                  "PhysicalStoredHitMin", "PhysicalStoredHitMax",
+                  "PhysicalMin", "PhysicalMax", "FireMin", "FireMax", "LeechDistributionApproximation",
                   "FireHitAverage", "ColdHitAverage", "LightningHitAverage", "ChaosHitAverage",
                   "FireCritAverage", "ColdCritAverage", "LightningCritAverage", "ChaosCritAverage",
                   "EnemyLeechResistance", "LifeLeech", "LifeLeechPerHit", "LifeLeechRate", "LifeLeechDuration",
@@ -91,6 +94,16 @@ io.write(json.encode(result))
 
 
 BASE = "Your Hits can't be Evaded\nNever deal Critical Hits\nAdds 10000 to 10000 Physical Damage to Attacks\nLeech 10% of Physical Attack Damage as Life"
+
+
+def test_crossing_leech_cap_integrates_per_hit_in_real_engine(run_damage):
+    mods=BASE.replace('10000 to 10000','20000 to 60000')
+    row=run_damage([{'mods':mods,'resistance':0,'enemy_armour':0}])[0]['stats']
+    low,high=row['MH_PhysicalStoredHitMin'],row['MH_PhysicalStoredHitMax']
+    assert low<40000<high
+    expected=.1*((40000**2-low**2)/2+40000*(high-40000))/(high-low)
+    assert row['LifeLeechPerHit']==pytest.approx(expected)
+    assert row['LifeLeechPerHit']<.1*min((low+high)/2,40000)
 
 
 def test_leech_total_hit_cap_and_resistance(run_damage):
@@ -283,6 +296,10 @@ def test_leech_resistance_table_provenance_and_override_diagnostic(run_damage):
     verified = next(m for m in explicit["mechanics"] if m["mechanic"] == "leech_recovery")
     assert "leech_resistance_percent" in provisional["required_inputs"]
     assert "leech_resistance_percent" not in verified["required_inputs"]
+    # Providing resistance does not fix the independent hit-distribution approximation.
+    for mechanic in (provisional, verified):
+        assert mechanic["numerical_method"] == "per_hit_distribution_integration"
+        assert mechanic["numerical_accuracy"] in {"exact_for_supplied_hit_model", "quadrature_or_upstream_damage_approximation"}
 
 
 def test_current_vaal_pact_amount_and_duration(run_damage):

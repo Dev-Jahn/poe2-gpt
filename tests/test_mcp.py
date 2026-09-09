@@ -47,7 +47,7 @@ async def test_real_streamable_http_protocol(tmp_path, authenticated):
                     assert initialized.serverInfo.version == __version__
                     assert initialized.serverInfo.websiteUrl == "https://github.com/Dev-Jahn/poe2-gpt"
                     tool_list = await session.list_tools()
-                    assert len(tool_list.tools) == 15
+                    assert len(tool_list.tools) == 17
                     assert all(t.annotations.readOnlyHint for t in tool_list.tools)
                     found = await session.call_tool("search_currency_prices", {"query":"디바인", "category":"currency"})
                     assert not found.isError

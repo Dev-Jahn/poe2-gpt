@@ -87,11 +87,11 @@ async def test_real_trade_budget_optimizer_and_private_http_boundary(real_engine
     try:
         assert (await client.status()).reachable
         assert (await client.calculate(EngineRequest(build_id=BID))).character_recalculated
-        request=EngineTradeRequest(build_id=BID,search_ids=[sid],budget={'amount':5.0,'currency':'divine'},weights=[{'stat':'Life','weight':1.0}])
+        request=EngineTradeRequest(build_id=BID,search_ids=[sid],declared_character_league='Forbidden Rites',budget={'amount':5.0,'currency':'divine'},weights=[{'stat':'Life','weight':1.0}])
         maximum=await client.recommend(request,trade,None)
         assert maximum.feasible and maximum.cost==5 and maximum.score_gain==210
         assert maximum.evaluated_combinations==5 and len(maximum.changes)==1
-        minimum=await client.recommend(EngineTradeRequest(build_id=BID,search_ids=[sid],budget={'amount':5.0,'currency':'divine'},mode='minimize_cost',constraints=[{'stat':'Life','minimum':1300.0}]),trade,None)
+        minimum=await client.recommend(EngineTradeRequest(build_id=BID,search_ids=[sid],declared_character_league='Forbidden Rites',budget={'amount':5.0,'currency':'divine'},mode='minimize_cost',constraints=[{'stat':'Life','minimum':1300.0}]),trade,None)
         assert minimum.feasible and minimum.cost==2
         assert len(maximum.model_dump_json().encode())<=8192
     finally:
@@ -107,6 +107,36 @@ async def test_real_removing_strength_item_invalidates_unchanged_helmet(real_eng
     assert result.results[1].validation=='fail' and any(i.code=='duplicate_physical_item' for i in result.results[1].issues)
     assert result.results[0].validation=='fail'
     assert any(i.slot=='helmet' and i.stat=='Str' and i.required==19 and i.available==15 for i in result.results[0].issues)
+
+async def test_real_sequential_replacement_retains_other_original_items(real_engine):
+    """Old A supplies the attributes to equip B; B then enables new A."""
+    root = ET.fromstring(FIXTURE.read_bytes())
+    items = root.find('Items')
+    # Use actual engine base requirements: new helmet 19, new boots 17.
+    # Base Strength 15, old helmet +2, new helmet +3, new boots +4.
+    for identifier, base, strength in ((1, 'Rusted Greathelm', 2), (2, 'Rusted Greaves', 0)):
+        ET.SubElement(items, 'Item', {'id': str(identifier)}).text = (
+            f'Rarity: RARE\nSynthetic Test\n{base}\nItem Level: 80\nImplicits: 0\n'
+            + (f'+{strength} to Strength\n' if strength else '')
+        )
+    slots = {'Helmet': '1', 'Boots': '2'}
+    item_set = items.find('ItemSet')
+    for name, identifier in slots.items():
+        slot = next((s for s in item_set.findall('Slot') if s.get('name') == name), None)
+        if slot is None:
+            slot = ET.SubElement(item_set, 'Slot', {'name': name})
+        slot.set('itemId', identifier)
+    (real_engine.private_dir / (BID + '.pob')).write_bytes(
+        base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))))
+    a = change('helmet', 'Soldier Greathelm', mods=['+3 to Strength'])
+    b = change('boots', 'Iron Greaves', mods=['+4 to Strength'], ref='b')
+    result = await real_engine.calculate(WorkerRequest(build_id=BID, scenarios=[[a, b]]))
+    assert result.baseline.validation == 'pass'
+    assert val(result.baseline, 'Str') == 17
+    assert result.results[0].validation == 'pass'
+    assert result.results[0].equip_order == ['boots', 'helmet']
+    assert val(result.results[0], 'Str') == 22
+
 
 async def test_real_gem_and_class_requirements(real_engine):
     engine=real_engine

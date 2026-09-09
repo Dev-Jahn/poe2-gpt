@@ -47,6 +47,32 @@ def imported(tmp_path):
     return build_id, private, projections, source
 
 
+def equipment_xml():
+    return f'''<PathOfBuilding2>
+<Build level="86" className="Monk" targetVersion="0_5"><PlayerStat stat="Life" value="1254"/></Build>
+<Notes>{MARKER}</Notes>
+<Items activeItemSet="1" useSecondWeaponSet="false">
+  <Item id="7">Rarity: Rare
+Synthetic Sapphire
+Sapphire Ring
+Item Level: 82
+Quality: 20
+LevelReq: 65
+Implicits: 1
++30% to Cold Resistance
++42 to maximum Energy Shield
++17% to Fire Resistance
+Sockets: S
+Rune: Glacial Rune
+Corrupted</Item>
+  <Item id="8">Rarity: Rare
+{MARKER}
+Iron Ring
++999 to maximum Life</Item>
+  <ItemSet id="1" useSecondWeaponSet="false"><Slot name="Ring 1" itemId="7"/><Slot name="Ring 2" itemId="0"/></ItemSet>
+</Items><Skills/><Tree/></PathOfBuilding2>'''.encode()
+
+
 def test_projection_is_allowlist_only_and_bounded(tmp_path):
     build_id, private, projections, source = imported(tmp_path)
     reader = BuildReader(projections)
@@ -61,6 +87,8 @@ def test_projection_is_allowlist_only_and_bounded(tmp_path):
     for forbidden in [MARKER, code().decode(), xml().decode(), "ascendClassName", "skillId", "nameSpec", "importLink"]:
         assert forbidden not in body and forbidden not in projected
     assert (private/(build_id+".pob")).read_bytes() == source.read_bytes()
+    with pytest.raises(BuildError, match="equipment_projection_unavailable"):
+        reader.equipment(build_id)
 
 
 def test_export_copies_exact_original_bytes_no_reencoding(tmp_path):
@@ -81,6 +109,60 @@ def test_node_paging_returns_only_numeric_subset(tmp_path):
     assert page.node_ids == [2,3] and page.next_offset == 3 and page.total == 5
     with pytest.raises(BuildError): reader.nodes(build_id, 0, 0, 101)
     with pytest.raises(BuildError): reader.summary("../../private/input.pob")
+
+
+def test_equipped_item_projection_lists_then_returns_bounded_details(tmp_path):
+    source = tmp_path / "equipment.pob"
+    source.write_bytes(code(equipment_xml()))
+    private, projections = tmp_path / "private", tmp_path / "projections"
+    build_id = import_file(source, private, projections, equipment_source="poe.ninja")
+    reader = BuildReader(projections)
+    listing = reader.equipment(build_id)
+    assert listing.total == 1 and not listing.detail
+    assert listing.items[0].slot == "ring_left" and listing.items[0].base_type == "Sapphire Ring"
+    assert listing.items[0].modifier_count == 4 and listing.items[0].modifiers == []
+    assert listing.items[0].modifiers_omitted
+    detail = reader.equipment(build_id, "ring_left")
+    item = detail.items[0]
+    assert detail.detail and item.item_level == 82 and item.quality == 20 and item.level_requirement == 65
+    assert item.corrupted and item.socket_count == 1
+    assert [(m.kind, m.text) for m in item.modifiers] == [
+        ("implicit", "+30% to Cold Resistance"),
+        ("explicit", "+42 to maximum Energy Shield"),
+        ("explicit", "+17% to Fire Resistance"),
+        ("rune", "Rune: Glacial Rune"),
+    ]
+    body = detail.model_dump_json()
+    assert MARKER not in body and code(equipment_xml()).decode() not in body
+    assert len(body.encode()) <= MAX_TOOL_JSON_BYTES
+    with pytest.raises(BuildError, match="equipped_item_unavailable"):
+        reader.equipment(build_id, "ring_right")
+    first = reader.equipment(build_id, "ring_left", limit=2)
+    second = reader.equipment(build_id, "ring_left", offset=first.next_offset, limit=2)
+    assert first.page_scope == "properties_then_modifiers" and first.page_total == 4
+    assert second.next_offset is None
+    assert first.items[0].modifiers + second.items[0].modifiers == item.modifiers
+
+
+def test_equipment_pages_shrink_to_preserve_unicode_details(tmp_path):
+    source = tmp_path / "equipment.pob"
+    source.write_bytes(code(equipment_xml()))
+    projections = tmp_path / "projections"
+    build_id = import_file(source, tmp_path / "private", projections, equipment_source="poe.ninja")
+    path = projections / (build_id + '.json')
+    data = json.loads(path.read_text())
+    mods = [{"text": "장" * 240, "kind": "explicit"} for _ in range(32)]
+    data['equipment'][0]['modifiers'] = mods
+    data['equipment'][0]['modifier_count'] = len(mods)
+    path.write_text(json.dumps(data))
+    reader, offset, recovered = BuildReader(projections), 0, []
+    while offset is not None:
+        page = reader.equipment(build_id, 'ring_left', offset=offset, limit=10)
+        assert len(page.model_dump_json().encode()) <= MAX_TOOL_JSON_BYTES
+        recovered.extend(m.text for m in page.items[0].modifiers)
+        assert page.next_offset is None or page.next_offset > offset
+        offset = page.next_offset
+    assert recovered == [m['text'] for m in mods]
 
 
 @pytest.mark.parametrize("body", [b"not-a-code", b"https://somewhere.example/pob/abc", b"<PathOfBuilding2/>", b"AAAA"])
@@ -106,6 +188,9 @@ def test_xml_entities_wrong_game_and_numeric_blobs_are_rejected():
         project_pob(b'<PathOfBuilding><Build level="1"/></PathOfBuilding>', "bld_"+"0"*32)
     with pytest.raises(BuildError, match="invalid_numeric_field"):
         project_pob(xml().replace(b'value="2100"', b'value="'+code()+b'"'), "bld_"+"0"*32)
+    for value in (b'NaN', b'Infinity', b'1e100'):
+        with pytest.raises(BuildError, match='invalid_numeric_field'):
+            project_pob(xml().replace(b'value="2100"', b'value="'+value+b'"'), 'bld_'+'0'*32)
 
 
 def test_raw_and_projection_roots_cannot_overlap(tmp_path):
@@ -139,10 +224,14 @@ async def test_mcp_never_exposes_raw_tools_resources_or_payload_errors(tmp_path,
         async with create_connected_server_and_client_session(server) as session:
             tools = (await session.list_tools()).tools
             private = [v for v in tools if v.name.startswith("get_build_")]
-            assert len(tools) == 10 and len(private) == 2
+            assert len(tools) == 12 and len(private) == 3
             for tool in private:
-                assert set(tool.inputSchema["properties"]) <= {"build_id","spec_index","offset","limit"}
-                assert tool.outputSchema and tool.outputSchema["additionalProperties"] is False
+                assert set(tool.inputSchema["properties"]) <= {"build_id","spec_index","offset","limit","slot","saved_item_id"}
+                assert tool.outputSchema
+                from jsonschema import Draft202012Validator
+                Draft202012Validator.check_schema(tool.outputSchema)
+                definitions=tool.outputSchema.get('$defs', {})
+                assert all(v.get('additionalProperties') is False for v in definitions.values() if v.get('type')=='object')
             assert not (await session.list_resources()).resources
             assert not (await session.list_resource_templates()).resourceTemplates
             result = await session.call_tool("get_build_summary", {"build_id":build_id})

@@ -51,6 +51,7 @@ class CalculationConfiguration(DTO):
     hollow_form_power_charge_use_fraction: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
     impale_magnitude: Annotated[float, Field(ge=0, le=1e9, allow_inf_nan=False)] | None = None
     leech_resistance_percent: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] | None = None
+    leech_recovery_uptime: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
     onslaught_active: bool | None = None
     thrill_of_the_kill_active: bool | None = None
     culling_strike_recent_cull: bool | None = None
@@ -90,6 +91,7 @@ class CalculationConfiguration(DTO):
 
 
 ConfigurationField = Literal[
+    "leech_recovery_uptime",
     "ghost_shroud_lost_recently", "natural_order_spirit", "captured_beast_mods",
     "spirit_vessel_skill_id", "hollow_form_attack_skill_id", "hollow_form_channel_uses_per_second",
     "hollow_form_power_charge_use_fraction", "impale_magnitude", "leech_resistance_percent",

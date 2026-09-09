@@ -97,6 +97,9 @@ class CharacterOverview(DTO):
     stats: Annotated[list[PlayerStat], Field(max_length=26)] = []
     pob_available: bool
     retrieved_at_epoch: int
+    upstream_checked_at_epoch: int
+    source_model_version: Annotated[int, Field(ge=0, le=2147483647)]
+    source_fetch: Literal["request_time"] = "request_time"
     source_updated_at: Annotated[str, Field(max_length=40)] | None = None
     source: Literal["poe.ninja"] = "poe.ninja"
     live_game_state: Literal[False] = False
@@ -106,6 +109,9 @@ class CharacterImport(DTO):
     character: CharacterOverview
     build: BuildSummary
     reused: bool = False
+    new_snapshot_stored: bool
+    reused_reason: Literal["identical_export_and_import_metadata"] | None = None
+    upstream_revalidated: Literal[True] = True
     raw_payload_exposed: Literal[False] = False
 
 
@@ -138,7 +144,7 @@ class CharacterRefresh(DTO):
     game_fetch_confirmed: Literal[False] = False
 
 
-CHARACTER_INPUTS = {"list_account_characters": AccountRequest,
+CHARACTER_INPUTS: dict[str,type[DTO]] = {"list_account_characters": AccountRequest,
                     "get_character": CharacterRequest,
                     "refresh_character": CharacterRequest,
                     "import_pob_attachment": AttachmentRequest}

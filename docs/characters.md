@@ -2,7 +2,7 @@
 
 Character entry has two user flows:
 
-1. Supply a PoE account tag and character name. `get_character` discovers an unambiguous league, downloads the public poe.ninja snapshot and privately imports its PoB export. A league slug is needed only to resolve ambiguity.
+1. Supply a PoE account tag and character name. On every call, `get_character` discovers an unambiguous league, requests poe.ninja's current model version and model, and privately imports its PoB export. A league slug is needed only to resolve ambiguity. Content-addressed reuse of an identical export is reported separately from the request-time upstream check.
 2. Attach an original PoB export as a UTF-8 `.txt` file in ChatGPT and ask to import it. `import_pob_attachment` takes a top-level `file` object supplied by ChatGPT, not file contents or a filesystem path. The private service downloads the bytes directly.
 
 Both return an opaque build ID and bounded summary. Continue with `recalculate_build`, `validate_build_equipment` or `recommend_pob_trade_upgrades`. Re-fetch or reattach when the character changes; existing snapshots and calculations are not live game state. Identical original bytes and supplemental metadata reuse an existing import within the same user store.
@@ -39,7 +39,7 @@ The plugin does not send the file contents to the model. ChatGPT may independent
 
 ## Explicit refresh
 
-`refresh_character` sends the website's empty-body POST, then reads a bounded overview. It is a write operation and should be called only when the user requests a refresh. It never retries the POST automatically. A persistent minimum five-minute cooldown survives provider restarts and honors longer upstream wait times. Success means Ninja accepted the request, not that a new GGG fetch has been proven. Call `get_character` afterwards to import the resulting snapshot.
+`refresh_character` is not required to read the latest model already published by Ninja. It sends the website's authenticated empty-body POST to ask Ninja to fetch again from the game account, then reads a bounded overview. It is a write operation and should be called only when the user explicitly requests that upstream refresh. It never retries the POST automatically. A persistent minimum five-minute cooldown survives provider restarts and honors longer upstream wait times. Success means Ninja accepted the request, not that a new GGG fetch has been proven. Call `get_character` afterwards to import the resulting published snapshot.
 
 Public lookup and PoB import require no Ninja cookie. Refresh returned HTTP 401 without authentication during verification. A browser's GGG→Ninja account link does not give this server a Ninja session; ChatGPT/Cloudflare OAuth is also unrelated.
 

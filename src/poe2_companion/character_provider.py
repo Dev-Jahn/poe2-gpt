@@ -136,6 +136,8 @@ class CharacterProvider:
             if not isinstance(row, dict):
                 raise CharacterError("character_schema_changed")
             league = row.get("leagueUrl")
+            if not isinstance(league,str):
+                raise CharacterError('character_schema_changed')
             if request.league is None or league == request.league:
                 items.append(CharacterIdentity(name=row["name"], league=league,
                     level=row.get("level"), class_name=row.get("className")))
@@ -176,9 +178,9 @@ class CharacterProvider:
         # Refuse mismatched identities before importing any code.
         if account_slug(model.get("account", "")) != account_slug(request.account_tag) or model.get("name") != request.character_name:
             raise CharacterError("character_schema_changed")
-        return model
+        return model, version
 
-    def overview(self, request, model):
+    def overview(self, request, model, version):
         stats = []
         defensive = model.get("defensiveStats", {})
         if not isinstance(defensive, dict):
@@ -187,16 +189,22 @@ class CharacterProvider:
             value = defensive.get(source)
             if type(value) in (int, float) and math.isfinite(value) and abs(value) <= 1e15:
                 stats.append(PlayerStat(name=name, value=float(value)))
+        checked = int(time.time())
         return CharacterOverview(account_slug=account_slug(request.account_tag),
             character=CharacterIdentity(name=request.character_name, league=request.league,
                 level=model.get("level"), class_name=model.get("class")), stats=stats,
             pob_available=isinstance(model.get("pathOfBuildingExport"), str) and bool(model["pathOfBuildingExport"]),
-            retrieved_at_epoch=int(time.time()), source_updated_at=timestamp(model.get("updatedUtc")))
+            retrieved_at_epoch=checked, upstream_checked_at_epoch=checked,
+            source_model_version=version, source_updated_at=timestamp(model.get("updatedUtc")))
 
-    def store(self, code, *, beast_metadata=None):
+    def store(self, code, *, beast_metadata=None, equipment_source=None, origin=None):
         if len(code) > MAX_CODE_BYTES:
             raise CharacterError("attachment_too_large")
         digest = hashlib.sha256(code).hexdigest()
+        if origin is not None:
+            digest = hashlib.sha256(digest.encode('ascii') + origin.model_dump_json().encode()).hexdigest()
+        if equipment_source == "poe.ninja":
+            digest = hashlib.sha256(digest.encode("ascii") + b"\0poe.ninja-equipment-v1").hexdigest()
         if beast_metadata is not None:
             try:
                 validate_beast_metadata(beast_metadata, code)
@@ -209,38 +217,50 @@ class CharacterProvider:
         if index.exists():
             try:
                 saved = json.loads(read_regular_file(index, 1024))
-                summary = BuildReader(self.projections).summary(saved["build_id"])
+                reader = BuildReader(self.projections)
+                projection = reader.load(saved["build_id"])
+                if equipment_source == "poe.ninja" and projection.equipment_projection_version != 1:
+                    raise ValueError("obsolete_projection")
+                summary = reader.summary(saved["build_id"])
                 raw = read_regular_file(self.private / (summary.build_id + ".pob"), MAX_CODE_BYTES)
                 sidecar = self.private / (summary.build_id + ".beasts.json")
                 same_metadata = (read_regular_file(sidecar, MAX_BEAST_METADATA_BYTES) == beast_metadata
                     if beast_metadata is not None else not sidecar.exists() and not sidecar.is_symlink())
-                if raw == code and same_metadata:
+                origin_path=self.private/(summary.build_id+'.origin.json')
+                same_origin=(read_regular_file(origin_path,2048)==origin.model_dump_json().encode()
+                    if origin is not None else not origin_path.exists() and not origin_path.is_symlink())
+                if raw == code and same_metadata and same_origin:
                     return summary, True
             except Exception:
                 pass
         paths = list(self.private.glob("bld_*.pob"))
-        sidecars = list(self.private.glob("bld_*.beasts.json"))
-        if len(paths) >= 500 or sum(p.stat().st_size for p in paths + sidecars) + len(code) + len(beast_metadata or b"") > 128 * 1024 * 1024:
+        sidecars = list(self.private.glob("bld_*.beasts.json"))+list(self.private.glob('bld_*.origin.json'))
+        origin_size=len(origin.model_dump_json().encode()) if origin is not None else 0
+        if len(paths) >= 500 or sum(p.stat().st_size for p in paths + sidecars) + len(code) + len(beast_metadata or b"") + origin_size > 128 * 1024 * 1024:
             raise CharacterError("character_storage_full")
         build_id = None
         try:
-            build_id = import_stream(BytesIO(code), self.private, self.projections)
+            build_id = import_stream(BytesIO(code), self.private, self.projections,
+                equipment_source=equipment_source)
             if beast_metadata is not None:
                 atomic_write(self.private / (build_id + ".beasts.json"), beast_metadata)
+            if origin is not None:
+                atomic_write(self.private / (build_id + '.origin.json'), origin.model_dump_json().encode())
             summary = BuildReader(self.projections).summary(build_id)
             atomic_write(index, json.dumps({"build_id": build_id}).encode())
             return summary, False
         except Exception:
             if build_id is not None:
                 for path in (self.private / (build_id + ".pob"), self.private / (build_id + ".beasts.json"),
+                             self.private / (build_id + '.origin.json'),
                              self.projections / (build_id + ".json")):
                     path.unlink(missing_ok=True)
             raise CharacterError("character_import_unavailable") from None
 
     async def get_character(self, request: CharacterRequest):
         request = await self.resolve(request)
-        model = await self.model(request)
-        overview = self.overview(request, model)
+        model, version = await self.model(request)
+        overview = self.overview(request, model, version)
         if not overview.pob_available:
             raise CharacterError("character_import_unavailable")
         try:
@@ -248,8 +268,17 @@ class CharacterProvider:
             metadata = build_beast_metadata(model, original)
         except (UnicodeEncodeError, BeastMetadataError):
             raise CharacterError("character_schema_changed") from None
-        summary, reused = self.store(original, beast_metadata=metadata)
-        return CharacterImport(character=overview, build=summary, reused=reused)
+        from .builds import BuildOrigin
+        if request.league is None:
+            raise CharacterError('character_schema_changed')
+        # Preserve the model identifier as well as the requested URL slug.
+        # Recommendation verifies both against an explicit catalog name/slug pair.
+        origin = BuildOrigin(league_name=model['league'] if model['league'] != request.league else None,
+            league_slug=request.league)
+        summary, reused = self.store(original, beast_metadata=metadata, equipment_source="poe.ninja", origin=origin)
+        return CharacterImport(character=overview, build=summary, reused=reused,
+            new_snapshot_stored=not reused,
+            reused_reason="identical_export_and_import_metadata" if reused else None)
 
     def session(self):
         path = self.state / "session.json"
@@ -284,7 +313,7 @@ class CharacterProvider:
         atomic_write(deadline_path, json.dumps({"after": time.time()+300}).encode())
         try:
             data = await self.ninja("/poe2/api/account/refresh-character/" +
-                quote(request.league, safe="") + "/" + quote(request.character_name, safe=""),
+                quote(request.league or '', safe="") + "/" + quote(request.character_name, safe=""),
                 method="POST", cookie=session["cookie"])
         except CharacterError as error:
             if str(error) == "character_authentication_required":
@@ -293,13 +322,14 @@ class CharacterProvider:
         if not isinstance(data, dict) or type(data.get("success")) is not bool:
             raise CharacterError("character_schema_changed")
         wait = data.get("waitSeconds")
-        wait = min(86400, max(0, math.ceil(wait))) if type(wait) in (int, float) and math.isfinite(wait) else None
+        wait = min(86400, max(0, math.ceil(wait))) if isinstance(wait,(int,float)) and not isinstance(wait,bool) and math.isfinite(wait) else None
         atomic_write(deadline_path, json.dumps({"after": time.time()+max(300, wait or 0)}).encode())
         result = CharacterRefresh(status="requested" if data["success"] else "cooldown" if wait else "unavailable",
             success=data["success"], wait_seconds=wait)
         if data["success"]:
             try:
-                result.snapshot = self.overview(request, await self.model(request))
+                model, version = await self.model(request)
+                result.snapshot = self.overview(request, model, version)
             except Exception:
                 result.snapshot_error = "character_unavailable"
         return result

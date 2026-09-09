@@ -11,7 +11,7 @@ from pathlib import Path
 COMMIT='fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15'
 ARCHIVE_SHA256='1f34fb7a0b35d6916e9e5d1dea79a16b57cc282225abf3a2f1fc0ed3deb80630'
 DATA_COMMIT='b3282b7a9111ed6c4ec6be643edf0806d7beb675'
-COMPATIBILITY='forbidden-rites-0.5.5-v3'
+COMPATIBILITY='forbidden-rites-0.5.5-v4'
 # Reviewed data-only subset of open upstream PR2505; no UI or executable
 # module changes are imported from the PR. Every file is immutable and hashed.
 DATA_FILES={
@@ -155,6 +155,8 @@ def main():
         from patch_upstream_fixes import patch_upstream_fixes
         patch_martial_mechanics(args.destination)
         patch_damage_rules(args.destination)
+        from patch_leech_distribution import patch_leech_distribution
+        patch_leech_distribution(args.destination)
         patch_upstream_fixes(args.destination)
         from patch_hit_buffs import patch_hit_buffs
         from patch_curse_mechanics import patch_curse_mechanics

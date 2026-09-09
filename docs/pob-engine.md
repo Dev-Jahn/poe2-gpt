@@ -8,7 +8,7 @@ The optional Linux worker uses the upstream headless PoE2 Path of Building engin
 |---|---|
 | PathOfBuilding-PoE2 | `fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15` |
 | PoE2 0.5.5 data | `b3282b7a9111ed6c4ec6be643edf0806d7beb675` (37 reviewed data files from open PR #2505) |
-| Companion compatibility | `forbidden-rites-0.5.5-v3` |
+| Companion compatibility | `forbidden-rites-0.5.5-v4` |
 | LuaJIT | `24c20c94e7db195b640854619577441f9b4bc6be` |
 | luautf8 | `0.2.0` |
 
@@ -42,28 +42,30 @@ See the [coverage matrix](league-coverage.md) for exact source-backed calculatio
 
 ## Validation
 
-The worker detects active modern custom-modifier blocks, legacy custom modifiers, and disabled item-limit enforcement. Diagnostic details are deduplicated and limited to 16 entries, with fewer details when needed to keep a comparison or recommendation under 8 KiB. `issue_count` retains the original count and `issues_truncated` reports omitted details; statistics, equipped items, and validation status are preserved. Unknown passive diagnostics include numeric node IDs. The worker checks supported level and attribute requirements, global requirement modifiers, slot/weapon restrictions, class restrictions, gem levels and attributes, support requirements, resource warnings, and unchanged equipment affected by a replacement. One physical item cannot occupy two slots.
+The worker detects active custom-modifier blocks and disabled limits. Complete diagnostics stay in immutable per-user calculation receipts; Lua does not truncate them. Public summaries stay within 8 KiB and expose counts, truncation flags and `calculation_id`. Use `get_build_diagnostics` to recover all issues, mechanics, stats, deltas, inputs, combat results and candidate details. Unknown passive diagnostics include numeric node IDs. Level, attribute, slot, weapon, class, gem, support, reservation and unchanged-equipment checks remain enforced.
 
 Calculation JSON can omit optional `null` fields and the default
 `origin="saved_build"`. Schema defaults restore their meaning. Integral numbers
 may use integer JSON notation without changing their value; fractional values
 are not rounded. If optional skill display labels must be removed to fit the
 response limit, `selected_skill_labels_truncated` is true; canonical skill IDs
-and actor identity remain present. Numeric results, equipment identities,
-configuration field names, validation status and original diagnostic counts
-are preserved.
+and actor identity remain present. Core and requested numeric metrics, equipment identities, configuration field
+names, validation status and diagnostic counts are preserved. Additional metrics
+and deltas may move to receipt pages, with explicit truncation flags.
 
 Active Chakra rune slots are also checked for unknown selected rune names, rune level requirements, and unparsed applied modifier lines. This closes a separate upstream import path that does not use ordinary equipped-item modifier validation.
 
-For up to three replacements, it removes changed gear first and searches equip orders without crediting a new item's own attribute bonus in advance. This is a conservative sufficient condition. Temporary gear or retaining old gear longer may make other transitions possible; those are not exhaustively searched. Validating a current build checks its final state, not its historical equip sequence.
+For up to three replacements, it searches sequential replacement orders. Each step removes only that slot's old item before checking the new item, retaining other old items until their turn and never crediting the new item's own attributes in advance. Temporary gear and more general remove/re-equip transitions are not exhaustively searched. Validating a current build checks its final state, not its historical equip sequence.
+
+Hit-based leech integrates the per-hit total cap before applying leech coefficients and resistance. Single-type uniform/lucky distributions use analytic expectations; independent minimum/maximum damage types use exact enumeration. Continuous mixed-type damage uses bounded quadrature. Upstream averaged double/triple/exerted damage and physical mitigation retain an approximation label. The 20,000/60,000 equal-probability case at 10% leech yields 3,000, not 4,000. `leech_recovery_uptime` supplies a separate hypothetical active-rate scaling; it never resolves numerical approximation.
 
 | Status | Meaning | Recommendation eligibility |
 |---|---|---|
 | `pass` | Supported checks passed in the selected configuration | Eligible |
 | `fail` | A definite requirement or slot violation | Excluded |
-| `indeterminate` | Unknown modifiers, custom mods, engine warnings, or unproven transition | Excluded |
+| `indeterminate` | Unresolved mechanics or transition | Requested metrics need individual dependency proofs and equipment must be valid |
 
-Unsupported mechanics are not replaced with zeroes. A failed candidate scenario is excluded with a reason; an uncalculable baseline fails the request. The engine exposes selected numeric metrics and statuses only. Synthetic tests do not establish compatibility with every real build or game mechanic.
+Recommendation eligibility separates equipment validity, requested metric coverage, required assumptions and origin-league match. A narrowly verified unconditional resource graph can permit Life/Mana/ES comparisons despite unrelated combat assumptions; condition tags, unknown effects and unproved conversions block the affected scope. Other metrics retain full-coverage requirements. `restore_validity` minimizes the cost of restoring valid equipment without a baseline score/delta claim. Inspect excluded candidates through receipt pages. Synthetic tests do not establish universal game compatibility.
 
 ## Damage scope
 
