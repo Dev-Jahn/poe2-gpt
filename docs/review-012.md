@@ -23,7 +23,9 @@ including removal. By default every occupied supported slot may be removed.
 from removal choices. Planning first reads the baseline to identify occupied slots.
 
 The existing sequential validator tries action permutations with unchanged items
-retained. It must prove shield removal before a two-handed replacement when the
+retained. Both weapon slots are checked after every transition: a main-hand
+item's own slot check does not validate a shield still in the other hand.
+It must prove shield removal before a two-handed replacement when the
 opposite order is invalid. Removing useful attributes still invalidates dependent
 equipment. Searches over 64 affordable plans fail explicitly; narrow
 `candidate_refs`, `unequip_slots`, or `max_changes` instead of proxy pruning.
@@ -57,6 +59,17 @@ page during this work. We do not synthesize travel URLs, expose session tokens,
 automate gold expenditure or substitute a normal search link for teleportation.
 The [official asynchronous-trade FAQ](https://www.pathofexile.com/forum/view-thread/3828185)
 describes merchant trading and buyer gold costs.
+
+A separate UI investigation supplied this
+[official frontend bundle](https://web.poecdn.com/dist/legacy/trade.d17c272e9c6a43635ff3d9779e4f14924da8fcf5.js).
+Its reported `requestItem` path passes `listing.hideout_token` to
+`whisperAccount`, which POSTs JSON to `apiUrl("whisper")`; direct whisper uses
+`whisper_token` instead. This is source-level evidence supplied by another
+session, not a successful action test here. The runtime base path, account
+authentication, token binding and game-session routing were not verified.
+A normal Markdown hyperlink cannot reproduce an authenticated JSON POST on the
+official site's origin. An additional authorized integration would be needed;
+this server does not collect official account cookies or issue that action.
 
 ## Static checks and validation scope
 

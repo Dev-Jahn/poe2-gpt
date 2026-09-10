@@ -369,7 +369,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
     if engine is not None:
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def get_build_diagnostics(request: DiagnosticRequest) -> DiagnosticPage:
-            """Recover complete issues, mechanics, stats, metric coverage, deltas, supplied inputs, combat results or candidate evaluations from a calculation_id returned by recalculation/comparison/recommendation. Choose baseline or result (or candidate_index for any evaluated candidate) and follow next_offset. Receipts are immutable, isolated per user instance, retained up to one hour / 64 calculations, and lost on restart. On calculation_expired_or_unavailable, recalculate; never guess omitted diagnostics."""
+            """Recover complete issues, mechanics, stats, metric coverage, deltas, supplied inputs, combat results or candidate evaluations from a calculation_id. section=candidates maps each index to slot/actions/listing_ref, cost, violations and rank; excluded_listings explains prefilter rejection; inputs retains objective/constraints/FX. Choose baseline/result or candidate_index for snapshot sections, and follow next_offset. Receipts are immutable, isolated per user instance, retained up to one hour / 64 calculations, and lost on restart. On calculation_expired_or_unavailable, recalculate; never guess omitted diagnostics."""
             return engine.receipts.page(request)
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
