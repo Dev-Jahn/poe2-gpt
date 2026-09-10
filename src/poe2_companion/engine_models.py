@@ -303,7 +303,8 @@ class EngineTradeRequest(EngineRequest):
     mode: Literal["maximize_score", "minimize_cost", "restore_validity"] = "maximize_score"
     weights: Annotated[list[CharacterWeight], Field(max_length=8)] = Field(default_factory=list)
     constraints: Annotated[list[CharacterConstraint], Field(max_length=8)] = Field(default_factory=list)
-    max_changes: Annotated[int, Field(ge=1, le=3)] = 1
+    max_changes: Annotated[int, Field(ge=1, le=3, description='Maximum changed slots, counting both equip and unequip actions.')] = 1
+    unequip_slots: Annotated[list[EngineSlot], Field(max_length=10, description='Slots allowed to become empty. Omit to consider all occupied slots; [] disables removal.')] | None = None
     reserve_percent: Annotated[float, Field(ge=0, le=99, allow_inf_nan=False)] = 0
     max_listing_age_seconds: Annotated[int, Field(ge=1, le=600)] = 300
     # Explicit selection prevents silently pruning a combinatorial search.
@@ -315,6 +316,8 @@ class EngineTradeRequest(EngineRequest):
             raise ValueError("duplicate_search")
         unique(self.weights, "stat")
         unique(self.constraints, "stat")
+        if self.unequip_slots is not None and len(set(self.unequip_slots)) != len(self.unequip_slots):
+            raise ValueError('duplicate_unequip_slot')
         if self.mode == "maximize_score" and not self.weights or self.mode == "minimize_cost" and not self.constraints:
             raise ValueError("explicit_objective_required")
         return self
@@ -322,7 +325,18 @@ class EngineTradeRequest(EngineRequest):
 
 class TradeChange(DTO):
     slot: EngineSlot
-    listing_ref: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    action: Literal['equip', 'unequip'] = 'equip'
+    listing_ref: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    normalized_cost: Annotated[float, Field(ge=0, le=1e15, allow_inf_nan=False)] = 0
+    original_price: Price | None = None
+
+    @model_validator(mode='after')
+    def coherent(self):
+        if self.action == 'equip' and self.listing_ref is None:
+            raise ValueError('equip_requires_listing')
+        if self.action == 'unequip' and (self.listing_ref is not None or self.normalized_cost != 0 or self.original_price is not None):
+            raise ValueError('unequip_has_no_listing_or_cost')
+        return self
 
 
 class EngineTradeResult(DTO):

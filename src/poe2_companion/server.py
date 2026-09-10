@@ -369,7 +369,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
     if engine is not None:
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def get_build_diagnostics(request: DiagnosticRequest) -> DiagnosticPage:
-            """Recover complete issues, mechanics, stats, metric coverage, deltas, supplied inputs, combat results or candidate evaluations from a calculation_id returned by recalculation/comparison/recommendation. Choose baseline or result (or candidate_index for any evaluated candidate) and follow next_offset. Receipts are immutable, isolated per user instance, retained up to one hour / 64 calculations, and lost on restart. On calculation_expired_or_unavailable, recalculate; never guess omitted diagnostics."""
+            """Recover complete issues, mechanics, stats, metric coverage, deltas, supplied inputs, combat results or candidate evaluations from a calculation_id. section=candidates maps each index to slot/actions/listing_ref, cost, violations and rank; excluded_listings explains prefilter rejection; inputs retains objective/constraints/FX. Choose baseline/result or candidate_index for snapshot sections, and follow next_offset. Receipts are immutable, isolated per user instance, retained up to one hour / 64 calculations, and lost on restart. On calculation_expired_or_unavailable, recalculate; never guess omitted diagnostics."""
             return engine.receipts.page(request)
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
@@ -393,7 +393,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             calculation=await run(engine.calculate(request))
             snapshot=calculation.baseline
             # Read the complete retained coverage, before summary compression.
-            full=engine.receipts.rows[calculation.calculation_id][0].baseline
+            full=engine.receipts.rows[calculation.calculation_id].calculation.baseline
             return EquipmentValidation(build_id=request.build_id,calculation_id=calculation.calculation_id,
                 equipment_validity=snapshot.equipment_validity or snapshot.validation,overall_validation=snapshot.validation,
                 issue_count=snapshot.issue_count,issues=snapshot.issues[:10],
@@ -410,7 +410,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
         if trade is not None:
             @server.tool(annotations=READ_ONLY, structured_output=True)
             async def recommend_pob_trade_upgrades(request: EngineTradeRequest) -> EngineTradeResult:
-                """Optimize retained official trade candidates with real PoE2 PoB and equip validation. Uses build_id as the baseline; no manual equipment dataset required. Supports armour, accessories and weapons recognized by PoB. Supply character-stat weights or minimum targets, budget and up to 3 changes. At most 32 selected listings and 64 affordable combinations; oversized searches must be narrowed explicitly. All candidates stay server-side. Equipment must be valid and every requested metric covered; scoped resource dependency proofs can permit unrelated combat uncertainty. mode=restore_validity minimizes repair cost without baseline score deltas. Ninja origin must match league; attachment builds need declared_character_league. Unsupported socketed item imports are excluded. Returns the best plan and numeric deltas, never PoB or raw item text."""
+                """Optimize retained official trade candidates with real PoE2 PoB and equip validation. Uses build_id as the baseline; no manual equipment dataset required. Supports armour, accessories and weapons recognized by PoB. Supply character-stat weights or minimum targets and budget. max_changes counts up to 3 changed slots, including zero-cost unequips from occupied slots; unequip_slots=[] disables removal. Retrieve candidate listing references, constraint violations, ranks, exclusions and objective/FX inputs via get_build_diagnostics. At most 32 selected listings and 64 affordable combinations; oversized searches must be narrowed explicitly. All candidates stay server-side. Equipment must be valid and every requested metric covered; scoped resource dependency proofs can permit unrelated combat uncertainty. mode=restore_validity minimizes repair cost without baseline score deltas. Ninja origin must match league; attachment builds need declared_character_league. Unsupported socketed item imports are excluded. Returns the best plan and numeric deltas, never PoB or raw item text."""
                 return localize_engine_result(await run(engine.recommend(request,trade,scout)))
 
     if trade is not None:
@@ -426,7 +426,7 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
 
         @server.tool(annotations=READ_ONLY, structured_output=True)
         async def search_trade_equipment(request: TradeSearchRequest) -> TradeSearchResult:
-            """Run a read-only official trade2 WEBSITE search and fetch the first 5 listings. Supports weapons, armour, accessories, numeric stat IDs, DPS/defence properties, level, rarity, corruption and price currency/cap. Experimental undocumented web API, not OAuth. max_results limits retained candidates, default 20; use returned search_id for paging/recommendations. Search handles expire after 10 minutes. No seller contacts, raw item text, cookies or PoB codes are returned. Failed/challenged requests are not bypassed."""
+            """Run a read-only official trade2 WEBSITE search and fetch the first 5 listings. Default status=securable searches Instant Buyout only; change status only if the user requests in-person/offline results. Show website_url as an official trade search link. It does not teleport the player; use the official Travel to Hideout button where available. Never invent a direct travel URL. Supports weapons, armour, accessories, numeric stat IDs, DPS/defence properties, level, rarity, corruption and price currency/cap. Experimental undocumented web API, not OAuth. max_results limits retained candidates, default 20; use returned search_id for paging/recommendations. Search handles expire after 10 minutes. No seller contacts, raw item text, cookies or PoB codes are returned. Failed/challenged requests are not bypassed."""
             return await run(trade.search(request))
 
         @server.tool(annotations=READ_ONLY, structured_output=True)

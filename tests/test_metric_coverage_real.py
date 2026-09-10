@@ -63,9 +63,12 @@ async def test_repair_workflow_and_league_provenance(real_engine):
     try:
         result=await client.recommend(request,trade,None)
         assert result.calculation.baseline.equipment_validity=='fail'
-        assert result.feasible and result.cost==2 and not result.baseline_comparison_valid
+        assert result.feasible and result.cost==0 and not result.baseline_comparison_valid
+        assert [(c.slot,c.action) for c in result.changes]==[('helmet','unequip')]
         assert result.calculation.result.equipment_validity=='pass'
         assert not result.calculation.deltas and result.score_gain==0
+        equipped_repair=await client.recommend(request.model_copy(update={'unequip_slots':[]}),trade,None)
+        assert equipped_repair.feasible and equipped_repair.cost==2
         with pytest.raises(EngineError,match='character_league_unverified'):
             await client.recommend(request.model_copy(update={'declared_character_league':None}),trade,None)
         (real_engine.private_dir/(BID+'.origin.json')).write_text('{"league_slug":"forbiddenrites","source":"poe.ninja"}')

@@ -4,9 +4,15 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.11.0, experimental.** The code includes up to 31 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.12.0, experimental.** The code includes up to 31 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
 ## Features
+
+Version 0.12 fixes empty inspection pages, adds zero-cost equipment removal to
+recommendations, and retains candidate listing identities and exclusion reasons.
+Trade searches default to Instant Buyout (`securable`). Returned official-site
+links open the search; direct in-game travel links are not verified. See the
+[0.12 follow-up](docs/review-012.md).
 
 Version 0.11 adds complete equipment/skill/configuration inspection, paged
 diagnostics, request-time Ninja provenance, descriptive trade results, scoped

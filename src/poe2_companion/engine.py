@@ -1,7 +1,6 @@
 """MCP-side numeric client. No PoB file decoding or filesystem import here."""
 from __future__ import annotations
 import asyncio
-import itertools
 import json
 import time
 from typing import cast
@@ -16,7 +15,9 @@ from .engine_models import (ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBIL
 from .engine_protocol import WorkerRequest, WorkerResult, private_trade_item
 from .trade import TradeError, CATEGORY_SLOTS
 from .equipment import EquipmentService
-from .diagnostics import CalculationReceipts
+from .diagnostics import CalculationReceipts, CandidateEvaluation, ConstraintViolation, ExcludedListing, ExclusionReason
+from .recommendation import Option, enumerate_plans
+from .engine_protocol import WorkerChange
 from .scout import ScoutError
 
 
@@ -155,24 +156,8 @@ class EngineClient:
 
     async def equipment(self, build_id, slot=None, saved_item_id=None, offset=0, limit=5):
         from .inspection import InspectionRequest
-        SLOT_MAP = {'Helmet':'helmet','Body Armour':'body_armour','Gloves':'gloves','Boots':'boots',
-            'Belt':'belt','Amulet':'amulet','Ring 1':'ring_left','Ring 2':'ring_right',
-            'Ring 3':'ring_third','Weapon 1':'weapon_main','Weapon 2':'weapon_off','Weapon 3':'weapon_off',
-            'Flask 1':'flask_1','Flask 2':'flask_2','Charm 1':'charm_1','Charm 2':'charm_2','Charm 3':'charm_3',
-            'Arm 1':'arm_1','Arm 2':'arm_2','Leg 1':'leg_1','Leg 2':'leg_2'}
-        if slot is not None:
-            cursor=0
-            while cursor is not None:
-                page=await self.inspect(InspectionRequest(build_id=build_id,section='equipment',offset=cursor,limit=20))
-                for record in page.records:
-                    if any(p.active_set and p.active_weapon_set and SLOT_MAP.get(p.slot.removesuffix(' Swap'))==slot for p in record.placements):
-                        saved_item_id=record.saved_item_id
-                        break
-                if saved_item_id is not None: break
-                cursor=page.next_offset
-            if saved_item_id is None:
-                raise EngineError('engine_unknown_candidate')
-        return await self.inspect(InspectionRequest(build_id=build_id,section='equipment',saved_item_id=saved_item_id,offset=offset,limit=limit))
+        return await self.inspect(InspectionRequest(build_id=build_id,section='equipment',
+            slot=slot,saved_item_id=saved_item_id,offset=offset,limit=limit))
 
     async def status(self):
         try:
@@ -237,7 +222,14 @@ class EngineClient:
             raise EngineError('engine_unknown_candidate')
         if len(refs)>32:
             raise EngineError('engine_candidate_space_too_large')
-        candidates=[];seen=set();excluded=0
+        # Resolve occupied slots from the same immutable build/configuration.
+        # Empty-slot removals are no-ops and must not consume the plan budget.
+        initial=await self.batch(WorkerRequest(build_id=request.build_id,
+            configuration=request.configuration,combat_scenario=request.combat_scenario))
+        await verify_character_league(initial.baseline.origin, request.league, request.declared_character_league, scout)
+        occupied={item.slot for item in initial.baseline.equipped}
+        removable=occupied if request.unequip_slots is None else occupied & set(request.unequip_slots)
+        candidates=[];seen=set();exclusions=[]
         for entry in entries:
             ids=[i for i in entry['ids'] if i in refs]
             await trade.fetch(entry,ids)
@@ -253,15 +245,20 @@ class EngineClient:
                 seen.add(ref)
                 row=entry['rows'].get(ref)
                 raw=entry.get('engine_items',{}).get(ref)
-                if not row or not raw or not slots or not row.price or time.time()-row.observed_at_epoch>request.max_listing_age_seconds:
-                    excluded+=1;continue
+                reason: ExclusionReason | None = ('unavailable_or_unparsed' if not row else
+                    'private_item_unavailable' if not raw else 'unsupported_slot' if not slots else
+                    'missing_price' if not row.price else
+                    'stale' if time.time()-row.observed_at_epoch>request.max_listing_age_seconds else None)
+                if reason is not None:
+                    exclusions.append(ExcludedListing(listing_ref=ref,reason=reason,
+                        original_price=row.price if row else None))
+                    continue
                 try:
                     raw=private_trade_item(raw)
                 except EngineError:
-                    excluded+=1;continue
+                    exclusions.append(ExcludedListing(listing_ref=ref,reason='private_import_rejected',original_price=row.price))
+                    continue
                 candidates.append((ref,slots,raw,row.price))
-        if not candidates:
-            raise EngineError('engine_no_candidates')
         fxservice=EquipmentService(Path('/unused'),scout)
         try:
             fx=await fxservice.fx(request.league,{c[3].currency for c in candidates},request.budget.currency)
@@ -269,32 +266,18 @@ class EngineClient:
             raise EngineError('engine_currency_unavailable') from None
         budget=Decimal(str(request.budget.amount))
         spend=budget*(Decimal(100)-Decimal(str(request.reserve_percent)))/Decimal(100)
-        pool: dict={}
+        pool: dict[EngineSlot,list[Option]]={}
         for ref,slots,raw,price in candidates:
             cost=Decimal(str(price.amount))*Decimal(str(fx.rates[price.currency]))
             if cost>spend:
-                excluded+=1;continue
+                exclusions.append(ExcludedListing(listing_ref=ref,reason='over_budget',original_price=price,normalized_cost=float(cost)))
+                continue
             for slot in slots:
-                pool.setdefault(slot,[]).append((ref,raw,cost))
-        # Enumerate the complete retained candidate set; include keeping gear.
-        # Reject excess work before any PoB run, with no silent proxy pruning.
-        plans: list[tuple[list,Decimal,list[TradeChange]]]=[([],Decimal(0),[])]
-        for n in range(1,min(request.max_changes,len(pool))+1):
-            for chosen in itertools.combinations(sorted(pool),n):
-                for combination in itertools.product(*(pool[s] for s in chosen)):
-                    ids=[c[0] for c in combination]
-                    if len(ids)!=len(set(ids)):
-                        continue
-                    cost=sum((c[2] for c in combination),Decimal(0))
-                    if cost>spend:
-                        continue
-                    changes=[{'slot':slot,'item':v[1]} for slot,v in zip(chosen,combination)]
-                    public=[TradeChange(slot=slot,listing_ref=v[0]) for slot,v in zip(chosen,combination)]
-                    plans.append((changes,cost,public))
-                    if len(plans)>64:
-                        raise EngineError('engine_candidate_space_too_large')
-        result=await self.batch(WorkerRequest(build_id=request.build_id,scenarios=[p[0] for p in plans[1:]],
-            configuration=request.configuration,combat_scenario=request.combat_scenario))
+                pool.setdefault(slot,[]).append(Option(WorkerChange(slot=slot,item=raw),
+                    TradeChange(slot=slot,listing_ref=ref,normalized_cost=float(cost),original_price=price),cost))
+        plans=enumerate_plans(pool,removable,request.max_changes,spend)
+        result=(await self.batch(WorkerRequest(build_id=request.build_id,scenarios=[p.changes for p in plans[1:]],
+            configuration=request.configuration,combat_scenario=request.combat_scenario))) if len(plans)>1 else initial
         snapshots=[result.baseline,*result.results]
         origin=result.baseline.origin
         await verify_character_league(origin, request.league, request.declared_character_league, scout)
@@ -313,11 +296,12 @@ class EngineClient:
                 return need <= verified
             return snapshot.validation=='pass'
         repair=request.mode=='restore_validity'
-        from .diagnostics import CandidateEvaluation
         eligible=[];failed=unknown=0;evaluations=[]
         for i,(snapshot,plan) in enumerate(zip(snapshots,plans)):
             v=values(snapshot)
-            evaluation=CandidateEvaluation(index=i,status='eligible',cost=float(plan[1]))
+            evaluation=CandidateEvaluation(index=i,status='eligible',cost=float(plan.cost),changes=plan.public,
+                constraint_violations=[ConstraintViolation(stat=c.stat,minimum=c.minimum,actual=v[c.stat])
+                    for c in request.constraints if c.stat in v and v[c.stat]<c.minimum])
             evaluations.append(evaluation)
             if (snapshot.equipment_validity or snapshot.validation)=='fail':
                 evaluation.status='invalid_equipment'
@@ -328,20 +312,25 @@ class EngineClient:
                 evaluation.status='constraints_not_met'
                 continue
             gain=0.0 if repair else score(v)-base_score
+            evaluation.score_gain=gain
             eligible.append((i,gain))
         if eligible:
-            best,gain=min(eligible,key=lambda v:(-v[1],plans[v[0]][1],len(plans[v[0]][2]),v[0]) if request.mode=='maximize_score'
-                          else (plans[v[0]][1],-v[1],len(plans[v[0]][2]),v[0]))
+            ranked=sorted(eligible,key=lambda v:(-v[1],plans[v[0]].cost,len(plans[v[0]].public),v[0]) if request.mode=='maximize_score'
+                          else (plans[v[0]].cost,-v[1],len(plans[v[0]].public),v[0]))
+            best,gain=ranked[0]
+            for rank,(index,_) in enumerate(ranked,1):
+                evaluations[index].rank=rank
+                evaluations[index].selected=index==best
         else:
             best,gain=0,0.0
-        snapshot,cost,best_changes=snapshots[best],plans[best][1],plans[best][2]
+        snapshot,cost,best_changes=snapshots[best],plans[best].cost,plans[best].public
         calc=EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
             result=snapshot if best else None,deltas=deltas(result.baseline,snapshot) if best and not repair else [],
             character_league_verified=origin is not None,league_match='verified' if origin else 'user_declared',requested_metrics=sorted(need),**calculation_context(request))
-        self.receipts.retain(calc, request, snapshots, evaluations)
+        self.receipts.retain(calc, request, snapshots, evaluations, exclusions, fx)
         # Return just the best plan; all bounded combinations were still evaluated.
         return bounded_engine_dto(EngineTradeResult(calculation=calc,changes=best_changes,cost=float(cost),currency=request.budget.currency,
             objective=request.mode,baseline_comparison_valid=not repair,
             remaining_budget=float(budget-cost),score_gain=float(gain),feasible=bool(eligible),evaluated_combinations=len(plans),
-            failed_requirements=failed,indeterminate_combinations=unknown,excluded_listings=excluded,
+            failed_requirements=failed,indeterminate_combinations=unknown,excluded_listings=len(exclusions),
             fx_retrieved_at_epoch=int(datetime.fromisoformat(fx.retrieved_at.replace('Z','+00:00')).timestamp()) if fx.retrieved_at else None))

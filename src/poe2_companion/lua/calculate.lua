@@ -338,6 +338,13 @@ local function scenario(changes)
     if #issues>0 or not build.itemsTab:IsItemValidForSlot(item,slotName(c.slot)) then return false end
     selectItem(slotName(c.slot),id);refresh()
    end
+   -- Main-hand validity alone does not validate the retained offhand. A
+   -- two-handed item can pass its own check while the existing shield fails.
+   -- Prove compatibility after every transition, before trying the next one.
+   for _,weaponSlot in ipairs({'weapon_main','weapon_off'}) do
+    local equipped=build.itemsTab.items[selected(slotName(weaponSlot))]
+    if equipped and not build.itemsTab:IsItemValidForSlot(equipped,slotName(weaponSlot)) then return false end
+   end
   end
   return true
  end

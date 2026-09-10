@@ -75,6 +75,18 @@ async def test_interpreted_saved_equipment_skills_and_config(real_engine):
             assert result.structuredContent['records'][0]['base_type']=='Sapphire Ring'
             assert len(result.model_dump_json().encode())<16384  # MCP includes text plus structured data.
             Draft202012Validator(tool.outputSchema).validate(result.structuredContent)
+            schemas={t.name:t.outputSchema for t in (await session.list_tools()).tools}
+            for name,args in [
+                ('get_build_equipment',{'build_id':BID,'slot':'ring_right'}),
+                ('get_build_equipment',{'build_id':BID,'slot':'ring_left','offset':999}),
+                ('get_build_equipment',{'build_id':BID,'saved_item_id':999}),
+                ('inspect_build',{'request':{'build_id':BID,'section':'configuration','configuration_key':'not_a_config_key'}}),
+                ('inspect_build',{'request':{'build_id':BID,'section':'equipment','saved_item_id':999}}),
+            ]:
+                empty=await session.call_tool(name,args)
+                assert not empty.isError, empty
+                assert empty.structuredContent['records']==[]
+                Draft202012Validator(schemas[name]).validate(empty.structuredContent)
             report=await session.call_tool('validate_build_equipment',{'request':{'build_id':BID}})
             assert not report.isError and report.structuredContent['calculation_id']
             assert 'stats' not in report.structuredContent
