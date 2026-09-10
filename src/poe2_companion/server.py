@@ -12,7 +12,7 @@ from collections import deque
 from pathlib import Path
 from typing import Annotated, Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations, CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -33,7 +33,10 @@ from .inspection import InspectionRequest, InspectionPage
 from .diagnostics import DiagnosticRequest, DiagnosticPage
 from .observability import ToolCounters, RuntimeStatus, ErrorTrace, recovery
 from .currency_models import Envelope, Leagues, Categories, PriceResponse, CurrencySearch, CurrencyQuote
-from .access import AccessConfig, AccessVerifier, CloudflareAccessMiddleware
+from .access import AccessConfig, AccessVerifier, CloudflareAccessMiddleware, Principal
+from .accounts import (ACCOUNT_INPUTS, AccountClient, BrokerError, AccountPageRequest, AccountPage,
+    AccountRequest as GameAccountRequest, RegisterAccountRequest, AccountResult, AccountLinkRequest,
+    AccountLinkResult, TravelRequest, TravelResultRequest, TravelResult)
 from .characters import (CharacterClient, CharacterError, CHARACTER_ERRORS, CHARACTER_INPUTS,
     AccountRequest, CharacterRequest, CharacterPage, CharacterImport, CharacterRefresh,
     OpenAIFile, AttachmentRequest, AttachmentImport)
@@ -112,6 +115,14 @@ class ProjectionMCP(FastMCP):
             counter.calls+=1;counter.elapsed_ms+=elapsed;counter.max_elapsed_ms=max(counter.max_elapsed_ms,elapsed)
 
     async def _call_checked_tool(self, name: str, arguments: dict[str, Any]):
+        if name in ACCOUNT_INPUTS:
+            try:
+                if not isinstance(arguments, dict) or set(arguments) != {"request"}:
+                    raise ValueError()
+                ACCOUNT_INPUTS[name].model_validate(arguments["request"])
+                return await super().call_tool(name, arguments)
+            except Exception:
+                return CallToolResult(isError=True, content=[TextContent(type="text", text="invalid_account_request")])
         if name == "search_game_terms":
             try:
                 if not isinstance(arguments, dict) or set(arguments) != {"request"}:
@@ -221,7 +232,7 @@ class QuoteItem(BaseModel):
     quantity: Annotated[float, Field(gt=0, le=1e9, allow_inf_nan=False)] = 1
 
 
-def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp", characters: CharacterClient | None = None):
+def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp", characters: CharacterClient | None = None, accounts: AccountClient | None = None):
     if not re.fullmatch(r"/(?:u/[a-z][a-z0-9-]{0,23}/)?mcp", mcp_path):
         raise ValueError("MCP path must be /mcp or /u/<member-id>/mcp")
     server = ProjectionMCP("POE2 GPT", host=host, port=port, stateless_http=True, json_response=True,
@@ -230,7 +241,11 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=True,
             allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *(allowed_hosts or [])],
             allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *["https://"+h for h in (allowed_hosts or [])]]),
-        instructions=("Use these read-only tools for PoE2 market prices instead of web snippets. "
+        instructions=("Use market tools for PoE2 market prices instead of web snippets. "
+            "Account tools retain per-user account labels and connections; register_game_account never proves ownership. "
+            "Only official login can verify account ownership. Never request or submit passwords, cookies, OAuth tokens or client secrets in chat. "
+            "begin_game_account_link returns the authenticated account management page. Authentication can expire; report next_action. "
+            "prepare_hideout_travel currently returns an official-site handoff, not a game action. The website login may differ from the selected account; ask the user to verify it there. "
             "Default league is explicitly Forbidden Rites; never silently switch leagues. "
             "Present league, reference currency per item, retrieval time, source link and any stale/partial status. "
             "source_updated_at=null means unknown; retrieved_at is not the market observation time. "
@@ -495,6 +510,75 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             """Read one page of numeric passive node IDs from an imported build when specifically needed. spec_index is a saved tree index, not an assertion of the active tree. No raw tree URL, XML or PoB code is exposed."""
             return build_reader.nodes(build_id, spec_index, offset, limit)
 
+    if accounts is not None:
+        def account_principal(ctx: Context) -> Principal | None:
+            request = ctx.request_context.request
+            value = request.scope.get("state", {}).get("principal") if isinstance(request, Request) else None
+            return value if isinstance(value, Principal) else None
+
+        async def account_call(op: str, data: dict[str, Any], ctx: Context) -> dict[str, Any]:
+            try:
+                return await accounts.call(op, data, account_principal(ctx))
+            except BrokerError as error:
+                return {"status": str(error)}
+
+        account_write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_game_accounts(request: AccountPageRequest, ctx: Context) -> AccountPage:
+            """List this user's persistent game accounts, verification, session/renewal state and default selection. Empty records is a normal result. No credentials or live game status."""
+            result = await account_call("list", request.model_dump(), ctx)
+            if result.get("status") != "ok":
+                result.update(records=[], total=0)
+            return AccountPage.model_validate(result)
+
+        @server.tool(annotations=account_write, structured_output=True)
+        async def register_game_account(request: RegisterAccountRequest, ctx: Context) -> AccountResult:
+            """Save an account name for this user across restarts and conversations. This is an unverified label; it does not log in or prove ownership. Use begin_game_account_link for official verification."""
+            return AccountResult.model_validate(await account_call("register", request.model_dump(), ctx))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def begin_game_account_link(request: AccountLinkRequest, ctx: Context) -> AccountLinkResult:
+            """Return this user's authenticated account-management URL. The user logs in on the official provider site. GGG requires a configured registered app; Kakao OAuth is unsupported. Never accept passwords or cookies. No game action."""
+            return AccountLinkResult.model_validate(await account_call("link", request.model_dump(), ctx))
+
+        @server.tool(annotations=account_write, structured_output=True)
+        async def set_default_game_account(request: GameAccountRequest, ctx: Context) -> AccountResult:
+            """Select this user's default account for future handoffs. Existing requests keep their original account. The official site's logged-in account is not switched."""
+            return AccountResult.model_validate(await account_call("default", request.model_dump(), ctx))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_game_connection_status(request: GameAccountRequest, ctx: Context) -> AccountResult:
+            """Read saved account verification, session expiry, absolute renewal deadline and next_action. This does not check game login or prove travel permission."""
+            return AccountResult.model_validate(await account_call("status", request.model_dump(), ctx))
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True), structured_output=True)
+        async def prepare_hideout_travel(request: TravelRequest, ctx: Context) -> TravelResult:
+            """Create a two-minute account/listing-bound handoff receipt using a retained search_id and listing_ref. Currently mode=official_site: URL opens the official search; it does not teleport or purchase. User must verify the website account and use its Travel to Hideout button. Multiple accounts need a default or explicit account_id."""
+            if account_principal(ctx) is None:
+                return TravelResult(status="authentication_required")
+            if trade is None:
+                return TravelResult(status="search_unavailable")
+            try:
+                entry = trade.retained(request.search_id)
+                if request.listing_ref not in entry["ids"]:
+                    return TravelResult(status="listing_unavailable")
+                await trade.fetch(entry, [request.listing_ref])
+                listing = entry["rows"].get(request.listing_ref)
+                if listing is None:
+                    return TravelResult(status="listing_unavailable")
+                data = {"account_id": request.account_id, "listing_ref": request.listing_ref,
+                    "league": entry["request"].league, "query_id": entry["query_id"],
+                    "quoted_price": listing.price.model_dump() if listing.price else None}
+                return TravelResult.model_validate(await account_call("prepare", data, ctx))
+            except TradeError:
+                return TravelResult(status="search_unavailable")
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_hideout_travel_result(request: TravelResultRequest, ctx: Context) -> TravelResult:
+            """Retrieve this user's handoff receipt, selected account/listing and expiry. No game action is sent or observed. expired/cancelled requests have no action URL."""
+            return TravelResult.model_validate(await account_call("result", request.model_dump(), ctx))
+
     @server.custom_route("/healthz", methods=["GET"])
     async def health(_: Request):
         return JSONResponse({"status": "ok", "version": __version__, "upstream_checked": False})
@@ -528,7 +612,15 @@ def main():
     engine = EngineClient(engine_socket) if engine_socket else None
     character_socket = os.environ.get("POE2_CHARACTER_SOCKET")
     characters = CharacterClient(character_socket) if character_socket else None
-    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path, characters)
+    account_socket = os.environ.get("POE2_ACCOUNT_SOCKET")
+    accounts = AccountClient(account_socket) if account_socket else None
+    public_host = os.environ.get("POE2_PUBLIC_HOST", "")
+    if accounts and (not access_config or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", public_host)):
+        parser.error("Account UI requires Cloudflare Access and POE2_PUBLIC_HOST")
+    account_path = args.mcp_path.removesuffix("/mcp") + "/accounts"
+    member = args.mcp_path.split("/")[2] if args.mcp_path.startswith("/u/") else "owner"
+    account_cookie = "__Secure-poe2-account-" + member
+    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path, characters, accounts)
     async def serve():
         verifier = AccessVerifier(access_config) if access_config else None
         # Stateless HTTP opens an MCP session per request. Shared HTTP/cache resources
@@ -539,8 +631,12 @@ def main():
             else:
                 import uvicorn
                 app = server.streamable_http_app()
+                if accounts:
+                    from .account_ui import AccountUI
+                    app = AccountUI(app, accounts, "https://" + public_host, account_path, account_cookie)
                 if verifier:
-                    app = CloudflareAccessMiddleware(app, verifier)
+                    app = CloudflareAccessMiddleware(app, verifier,
+                        account_path=account_path if accounts else None, account_cookie=account_cookie if accounts else None)
                 await uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port,
                     log_level="info", access_log=False, proxy_headers=False)).serve()
         finally:
@@ -553,6 +649,8 @@ def main():
                 await engine.close()
             if characters is not None:
                 await characters.close()
+            if accounts is not None:
+                await accounts.close()
     asyncio.run(serve())
 
 

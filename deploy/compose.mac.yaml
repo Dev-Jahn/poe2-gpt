@@ -18,12 +18,18 @@ services:
       - "127.0.0.1:18080:8000"
     command: [--transport, streamable-http, --host, "0.0.0.0", --allowed-host, "${POE2_PUBLIC_HOST:?Set the public hostname}"]
     environment:
+      POE2_ACCOUNT_SOCKET: /account-socket/accounts.sock
+      POE2_PUBLIC_HOST: ${POE2_PUBLIC_HOST:?Set the public hostname}
       POE2_AUTH_MODE: cloudflare-access
       POE2_CF_TEAM_DOMAIN: ${POE2_CF_TEAM_DOMAIN:?Set the Cloudflare team hostname}
       POE2_CF_AUDIENCE: ${POE2_CF_AUDIENCE:?Set the Access application AUD tag}
       POE2_CF_OWNER_EMAIL: ${POE2_CF_OWNER_EMAIL:?Set the one allowed owner email}
     volumes:
       - prices:/home/companion/.cache/poe2-companion
+      - account-socket:/account-socket:ro
+    depends_on:
+      account-broker:
+        condition: service_healthy
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
@@ -33,5 +39,41 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+  account-broker:
+    image: poe2-gpt:local
+    build:
+      context: ..
+    entrypoint: [poe2-account-broker]
+    command: []
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 32
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    environment:
+      POE2_ACCOUNT_MEMBER: owner
+      POE2_PUBLIC_HOST: ${POE2_PUBLIC_HOST:?Set the public hostname}
+    volumes:
+      - account-socket:/account-socket
+      - account-state:/account-state
+      - account-keys:/account-keys
+      - account-config:/account-config
+    logging:
+      driver: none
+    healthcheck:
+      test: [CMD, python, -c, "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/account-socket/accounts.sock')); c.get('http://broker/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 volumes:
   prices:
+  account-socket:
+  account-state:
+  account-keys:
+  account-config:

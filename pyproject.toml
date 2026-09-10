@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poe2-gpt"
-version = "0.12.0"
+version = "0.13.0"
 description = "PoE2 prices, trade search and private Path of Building analysis via MCP"
 readme = "README.md"
 license = "MIT"
@@ -12,7 +12,7 @@ license-files = ["LICENSE", "NOTICE"]
 authors = [{name = "Jahn"}]
 keywords = ["poe2", "mcp", "chatgpt", "path-of-building"]
 requires-python = ">=3.11"
-dependencies = ["mcp==1.29.1", "httpx[socks]==0.28.1", "defusedxml==0.7.1", "PyJWT[crypto]==2.13.0"]
+dependencies = ["mcp==1.29.1", "httpx[socks]==0.28.1", "defusedxml==0.7.1", "PyJWT[crypto]==2.13.0", "cryptography>=46,<51"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "pytest-asyncio>=1,<2"]
@@ -28,6 +28,7 @@ poe2-gpt = "poe2_companion.server:main"
 poe2-companion = "poe2_companion.server:main"
 poe2-companion-check = "poe2_companion.check:main"
 poe2-character-provider = "poe2_companion.character_provider:main"
+poe2-account-broker = "poe2_companion.account_broker:main"
 poe2-pob-worker = "poe2_companion.engine_worker:main"
 poe2-equipment-import = "poe2_companion.equipment_io:main"
 
@@ -50,7 +51,7 @@ ignore_missing_imports = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["poe2_companion.inspection", "poe2_companion.diagnostics", "poe2_companion.recommendation"]
+module = ["poe2_companion.inspection", "poe2_companion.diagnostics", "poe2_companion.recommendation", "poe2_companion.accounts", "poe2_companion.account_store", "poe2_companion.account_oauth", "poe2_companion.account_broker", "poe2_companion.account_ui"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 

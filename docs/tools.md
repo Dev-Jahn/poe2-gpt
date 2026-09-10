@@ -36,7 +36,7 @@ Tools declare typed input schemas and operation-specific annotations. Inspect th
 | `import_pob_attachment` | ChatGPT `.txt` file reference → private import | Character socket + host fileParams support |
 | `refresh_character` | Explicit Ninja refresh with cooldown | Character socket + per-user Ninja session |
 
-The minimal configuration exposes 9 tools; all optional services together expose 31. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
+The minimal configuration exposes 9 tools; all optional services together expose 38. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
 
 
 
@@ -97,3 +97,15 @@ compact report at the same compute cost as recalculation.
 Errors carry safe codes, recovery categories/actions and trace IDs. Trade status
 reports cooldown or operator intervention separately from adapter enablement.
 Currency responses have explicit DTOs, including null/partial price semantics.
+
+
+## Persistent game accounts
+
+An optional per-member account broker adds `get_game_accounts`,
+`register_game_account`, `begin_game_account_link`, `set_default_game_account`,
+`get_game_connection_status`, `prepare_hideout_travel` and
+`get_hideout_travel_result`. Account labels are unverified until official OAuth
+completes. Registration/default selection write private state; handoff preparation
+writes a receipt and can fetch retained listings. Handoffs open the official site
+and never execute a game action. See [accounts](accounts.md) for authentication,
+expiry, configuration and the remaining travel-integration boundary.

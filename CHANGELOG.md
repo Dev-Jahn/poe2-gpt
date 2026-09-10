@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.0
+
+- Add per-member account brokers, encrypted persistent credentials and seven typed MCP tools.
+- Register unverified account labels and select a default independently of game authentication.
+- Add authenticated account UI and configured GGG confidential OAuth with PKCE/profile verification.
+- Preserve absolute refresh deadlines, recover ambiguous rotations safely and cancel disconnect races.
+- Retain account/listing-bound official-site handoff receipts; game travel remains unsupported.
+- Isolate broker sockets, state, keys and configuration throughout Mac member lifecycle.
+- Correct official trade search URLs to include the PoE2 realm segment.
+
+See [account setup and limits](docs/accounts.md). Live OAuth needs an existing registered app.
+
 ## 0.12.0
 
 - Preserve required empty inspection records through actual MCP output validation.

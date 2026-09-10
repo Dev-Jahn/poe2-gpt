@@ -725,7 +725,7 @@ CATEGORY_SLOTS: dict[str,list[Slot]]={"armour.helmet":["helmet"],"armour.chest":
 
 
 def search_url(entry):
-    return BASE+"/trade2/search/"+quote(entry["request"].league,safe="")+"/"+quote(entry["query_id"],safe="")
+    return BASE+"/trade2/search/poe2/"+quote(entry["request"].league,safe="")+"/"+quote(entry["query_id"],safe="")
 
 
 SIMPLE_MODS={

@@ -47,8 +47,8 @@ the existing hostname route with no path:
 
 | Hostname | Path regular expression | HTTP service |
 |---|---|---|
-| `poe2.example.com` | `^/u/alice/mcp$` | `localhost:18082` |
-| `poe2.example.com` | `^/u/bob/mcp$` | `localhost:18083` |
+| `poe2.example.com` | `^/u/alice/(mcp\|accounts(/.*)?)$` | `localhost:18082` |
+| `poe2.example.com` | `^/u/bob/(mcp\|accounts(/.*)?)$` | `localhost:18083` |
 | `poe2.example.com` | Empty, existing fallback | `localhost:18080` |
 
 Use the actual ports printed by `members`. Cloudflared matches ingress rules
@@ -127,3 +127,10 @@ client. Cloudflare account setup and these real-client checks are deployment gat
 the repository CI uses synthetic identities and synthetic builds.
 
 Each member also has a separate `character-provider`, `character-socket` and `character-state` volume. The provider reaches Ninja and approved attachment hosts; only the calculation worker has no network.
+
+
+Since 0.13, each member also has an `account-broker` with separate socket, state,
+key and configuration volumes. Account pages use `/accounts` or
+`/u/<member>/accounts`; the expanded routes above must include callbacks. Member
+removal stops the broker as well. See [accounts](accounts.md) before enabling
+GGG OAuth or restoring credential backups.
