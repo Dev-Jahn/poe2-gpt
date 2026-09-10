@@ -16,6 +16,13 @@ import httpx
 import jwt
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+from http.cookies import SimpleCookie, CookieError
+
+
+@dataclass(frozen=True)
+class Principal:
+    issuer: str
+    subject: str
 
 
 class AccessDenied(Exception):
@@ -108,7 +115,7 @@ class AccessVerifier:
                 raise AccessDenied()
             return self.keys[kid]
 
-    async def verify(self, token: str):
+    async def verify(self, token: str) -> Principal:
         try:
             if not 1 <= len(token) <= 16384:
                 raise AccessDenied()
@@ -128,11 +135,14 @@ class AccessVerifier:
                 raise AccessDenied()
         except (jwt.PyJWTError, ValueError, TypeError, KeyError):
             raise AccessDenied() from None
+        return Principal(self.config.issuer, claims["sub"])
 
 
 class CloudflareAccessMiddleware:
-    def __init__(self, app: ASGIApp, verifier: AccessVerifier):
+    def __init__(self, app: ASGIApp, verifier: AccessVerifier, *, account_path: str | None = None,
+                 account_cookie: str | None = None):
         self.app, self.verifier = app, verifier
+        self.account_path, self.account_cookie = account_path, account_cookie
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "lifespan":
@@ -144,7 +154,7 @@ class CloudflareAccessMiddleware:
             assertions = [v for k, v in scope["headers"] if k.lower() == b"cf-access-jwt-assertion"]
             if len(assertions) != 1:
                 raise AccessDenied()
-            await self.verifier.verify(assertions[0].decode("ascii"))
+            principal = await self.verifier.verify(assertions[0].decode("ascii"))
         except (AccessDenied, UnicodeError):
             response = JSONResponse({"error": "access_denied"}, status_code=403,
                                     headers={"Cache-Control": "no-store"})
@@ -154,6 +164,21 @@ class CloudflareAccessMiddleware:
         else:
             # Never expose identity assertions or browser/opaque tokens to MCP.
             clean_scope = dict(scope)
+            clean_scope["state"] = {**scope.get("state", {}), "principal": principal}
+            # Only account UI requests receive their own opaque browser binding.
+            # Original website cookies and Access credentials remain stripped.
+            if self.account_path and (scope.get("path") == self.account_path or
+                                      scope.get("path", "").startswith(self.account_path + "/")):
+                cookie = SimpleCookie()
+                try:
+                    for k, v in scope["headers"]:
+                        if k.lower() == b"cookie" and len(v) <= 8192:
+                            cookie.load(v.decode("ascii"))
+                    value = cookie[self.account_cookie].value if self.account_cookie and self.account_cookie in cookie else ""
+                    if re.fullmatch(r"[0-9a-f]{64}", value):
+                        clean_scope["state"]["account_browser"] = value
+                except (ValueError, UnicodeError, CookieError):
+                    pass
             hidden = {b"cf-access-jwt-assertion", b"authorization", b"cookie",
                       b"cf-access-authenticated-user-email", b"cf-access-client-secret"}
             clean_scope["headers"] = [(k, v) for k, v in scope["headers"] if k.lower() not in hidden]

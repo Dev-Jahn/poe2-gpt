@@ -25,6 +25,19 @@ Do not log request bodies, imported files, private paths, or arbitrary worker ou
 
 This document describes repository behavior, not a legal policy for a future public service. A public operator must publish their own actual retention, contact, and authorization practices before accepting other users' data.
 
+The optional [account broker](accounts.md) stores per-user account labels and
+verified profile identity persistently. Configured GGG OAuth sends authorization
+codes, client credentials and token requests directly from that private broker;
+MCP receives only bounded status projections. Cloudflare terminates the account
+UI's HTTPS traffic, including short-lived OAuth callback code/state parameters.
+Origin access logs are disabled; deployment operators must separately review
+Cloudflare logging and retention. OAuth grants are encrypted at rest with a
+per-member key mounted only in the broker. No GGG website cookies are collected.
+Local disconnect deletes current credentials and cancels handoffs, but historical
+backups and the upstream application's grant require separate handling. Handoff
+receipts contain account/listing IDs and quoted prices, capped at 256 / 24 hours;
+they neither execute nor observe an in-game action.
+
 The two character flows are public Ninja account/name lookup and original `.txt`
 attachments in ChatGPT. Ninja receives account/name requests and, for explicitly
 requested refresh, the matching per-user session cookie configured by the

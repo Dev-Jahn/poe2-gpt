@@ -45,6 +45,31 @@ def main():
         command = ["docker", "compose", "--project-name", "poe2-mac-ci", "-f", str(rendered)]
         run(["build"])
         run(["up", "-d", "--wait", "--wait-timeout", "120"])
+        account_ids = {}
+        for suffix in ("", "-alice", "-bob"):
+            # These are isolated CI volumes. Never bind production account stores
+            # to synthetic identities while doing deployment smoke checks.
+            result = run(["exec", "-T", "poe2-companion" + suffix, "python", "-c",
+                "import httpx,json; from pathlib import Path; "
+                "assert not list(Path('/account-state').iterdir()); "
+                "assert not list(Path('/account-keys').iterdir()); "
+                "assert not list(Path('/account-config').iterdir()); "
+                "c=httpx.Client(transport=httpx.HTTPTransport(uds='/account-socket/accounts.sock')); "
+                "r=c.post('http://broker/rpc',json={'operation':'register','principal':'a'*64,'payload':{'account_name':'Synthetic#1234'}}); "
+                "r.raise_for_status(); print(json.dumps(r.json()))"], capture_output=True, text=True)
+            account = json.loads(result.stdout)["account"]
+            assert account["verified"] is False
+            account_ids[suffix] = account["account_id"]
+            run(["exec", "-T", "account-broker" + suffix, "python", "-c",
+                "from pathlib import Path; p=Path('/account-keys/master.key'); "
+                "assert p.stat().st_uid==10001 and p.stat().st_mode & 0o777==0o600; "
+                "assert len(p.read_bytes())==32; assert not Path('/account-config/oauth.json').exists()"])
+        assert len(set(account_ids.values())) == 3
+        for suffix in ("-alice", "-bob"):
+            run(["exec", "-T", "poe2-companion" + suffix, "python", "-c",
+                "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/account-socket/accounts.sock')); "
+                "r=c.post('http://broker/rpc',json={'operation':'status','principal':'a'*64,'payload':{'account_id':'" + account_ids[""] + "'}}); "
+                "assert r.json()=={'status':'not_found'}"])
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         for port in (28080, 28082, 28083):
             try:

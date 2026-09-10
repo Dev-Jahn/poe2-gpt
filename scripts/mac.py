@@ -93,7 +93,7 @@ def add_member(settings, identity):
     validate_members([*members, candidate], resolved["services"]["poe2-companion"]["environment"]["POE2_CF_OWNER_EMAIL"])
     settings["members"] = [*members, candidate]
     save_config(settings)
-    print(f"Member added. Route ^/u/{identity}/mcp$ to localhost:{available}, then run start.")
+    print(f"Member added. Route ^/u/{identity}/(mcp|accounts(/.*)?)$ to localhost:{available}, then run start.")
 
 
 def remove_member(settings, identity):
@@ -102,7 +102,7 @@ def remove_member(settings, identity):
         raise ValueError("No active friend with that ID")
     command = compose(settings)
     # Stop access immediately, even while a previously issued JWT remains valid.
-    names = member_services(identity, settings["engine"])
+    names = member_services(identity, settings["engine"], accounts=True)
     run(command + ["stop", *names])
     run(command + ["rm", "--force", *names])
     member["enabled"] = False
@@ -215,6 +215,8 @@ def main():
         sub.add_parser(name).add_argument("--id", required=True)
     session = sub.add_parser("configure-ninja", help="Operator-only Ninja refresh session; never paste credentials in chat")
     session.add_argument("--user", default="owner")
+    oauth = sub.add_parser("configure-game-oauth", help="Configure an existing GGG confidential app privately; no secrets in chat")
+    oauth.add_argument("--user", default="owner")
     args = parser.parse_args()
     if platform.system() != "Darwin":
         parser.error("This deployment helper runs on macOS")
@@ -273,6 +275,16 @@ def main():
             payload = json.dumps({"account_tag": account, "cookie": cookie}).encode()
             run(compose(settings) + ["exec", "-T", service, "python", "-m",
                 "poe2_companion.character_provider", "--configure-session"], input=payload)
+        elif args.command == "configure-game-oauth":
+            if args.user != "owner" and not any(m["id"] == args.user and m["enabled"] for m in settings.get("members", [])):
+                raise ValueError("Select owner or an active member")
+            service = "account-broker" + ("" if args.user == "owner" else "-" + args.user)
+            client_id = input("Existing GGG confidential client ID (empty disables OAuth): ").strip()
+            values = {"client_id": client_id, "client_secret": getpass.getpass("Client secret (hidden): "),
+                      "contact": input("Registered app contact: ").strip()} if client_id else None
+            run(compose(settings) + ["exec", "-T", service, "python", "-m", "poe2_companion.account_broker", "--configure-oauth"],
+                input=json.dumps(values).encode())
+            run(compose(settings) + ["restart", service])
     except (ValueError, OSError, subprocess.CalledProcessError, urllib.error.URLError) as error:
         # Never print subprocess arguments, token contents or PoB input on failure.
         if isinstance(error, ValueError) and not isinstance(error, json.JSONDecodeError):

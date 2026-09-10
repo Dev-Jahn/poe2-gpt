@@ -8,7 +8,8 @@ import re
 
 MEMBER_ID = re.compile(r"[a-z][a-z0-9-]{0,23}")
 EMAIL = re.compile(r"[A-Za-z0-9._+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}")
-PRIVATE_VOLUMES = {"engine-socket", "private-builds", "build-projections", "character-socket", "character-state"}
+PRIVATE_VOLUMES = {"engine-socket", "private-builds", "build-projections", "character-socket", "character-state",
+                   "account-socket", "account-state", "account-keys", "account-config"}
 
 
 def validate_members(members, owner_email):
@@ -33,8 +34,8 @@ def validate_members(members, owner_email):
         raise ValueError("This deployment supports one owner and two active friends")
 
 
-def member_services(identity, engine):
-    names = ["poe2-companion"] + (["pob-engine", "character-provider"] if engine else [])
+def member_services(identity, engine, accounts=False):
+    names = ["poe2-companion"] + (["pob-engine", "character-provider"] if engine else []) + (["account-broker"] if accounts else [])
     return [name + "-" + identity for name in names]
 
 
@@ -44,6 +45,8 @@ def render_member_stack(base, members):
     stack = deepcopy(base)
     engine = "pob-engine" in base["services"]
     names = ["poe2-companion"] + (["pob-engine", "character-provider"] if engine else [])
+    if "account-broker" in base["services"]:
+        names.append("account-broker")
     for member in members:
         if not member["enabled"]:
             continue
@@ -62,6 +65,8 @@ def render_member_stack(base, members):
                 service["command"] += ["--mcp-path", f"/u/{identity}/mcp"]
                 service["ports"] = [{"target": 8000, "published": str(member["port"]),
                                      "host_ip": "127.0.0.1", "protocol": "tcp"}]
+            if name == "account-broker":
+                service["environment"]["POE2_ACCOUNT_MEMBER"] = identity
             stack["services"][name + "-" + identity] = service
         for name in PRIVATE_VOLUMES.intersection(base.get("volumes", {})):
             entry = deepcopy(base["volumes"][name] or {})
