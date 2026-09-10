@@ -73,7 +73,8 @@ a default or explicit selection. The result currently always has:
 
 The URL opens the existing GGG trade search. It does not switch the website's
 account, guarantee availability, identify the user's current game session or
-teleport. Kakao labels do not create a Kakao-authenticated execution path. Verify
+teleport. Kakao labels return `provider_not_supported` without a URL; GGG query
+IDs have not been verified as portable to Kakao. Verify
 the account on the official site before using its Travel to Hideout button.
 
 `get_hideout_travel_result` recovers the receipt for two minutes; afterward its

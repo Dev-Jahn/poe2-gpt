@@ -87,6 +87,7 @@ class TravelResultRequest(DTO):
 class TravelResult(DTO):
     status: Literal["prepared", "expired", "cancelled", "not_found", "account_selection_required",
                     "account_unavailable", "listing_unavailable", "search_unavailable",
+                    "provider_not_supported",
                     "authentication_required", "identity_mismatch", "broker_unavailable"]
     mode: Literal["official_site"] = "official_site"
     intent_id: IntentID | None = None

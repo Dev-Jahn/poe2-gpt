@@ -248,6 +248,20 @@ async def test_disconnect_during_refresh_cannot_restore_secret(tmp_path):
         assert row["status"] == "disconnected" and row["secret"] is None
 
 
+async def test_provider_cooldown_covers_other_accounts_and_login(tmp_path):
+    async with environment(tmp_path) as (store, broker, client, clock, provider, path, server):
+        store.save_grant(SUB, "First#1234", grant(expires_in=100), NOW)
+        other = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        store.save_grant(other, "Second#1234", grant(sub=other, expires_in=100), NOW)
+        provider.failure = httpx.Response(429, headers={"Retry-After": "120"})
+        clock[0] += 95
+        await broker.refresh_due()
+        assert len(provider.requests) == 1
+        with pytest.raises(OAuthError, match="rate_limited"):
+            await broker.oauth.exchange("fresh-code", "verifier")
+        assert len(provider.requests) == 1
+
+
 async def test_disconnect_during_callback_cannot_reconnect(tmp_path):
     async with environment(tmp_path) as (store, broker, client, clock, provider, path, server):
         old = store.register("ggg", "Test#1234")
@@ -283,6 +297,10 @@ async def test_handoff_uses_owned_listing_and_keeps_selected_account(tmp_path):
         store.disconnect(first["account_id"])
         assert store.intent(handoff["intent_id"]).status == "cancelled"
         assert not provider.requests
+        kakao = store.register("kakao", "Kakao#1234")
+        unsupported = await call(client, "prepare_hideout_travel", {**req, "account_id": kakao.account_id})
+        assert unsupported["structuredContent"]["status"] == "provider_not_supported"
+        assert unsupported["structuredContent"]["url"] is None
 
 
 def test_key_identity_permissions_quotas_and_config(tmp_path):

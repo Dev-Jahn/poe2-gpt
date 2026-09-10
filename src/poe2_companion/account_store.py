@@ -252,6 +252,10 @@ class AccountStore:
             return TravelResult(status="account_unavailable")
         if row["status"] == "disconnected":
             return TravelResult(status="account_unavailable")
+        if row["provider"] != "ggg":
+            # Query IDs retained by the GGG adapter are not proven portable to
+            # Kakao. Do not silently hand a Kakao account to another provider.
+            return TravelResult(status="provider_not_supported", account_id=account_id, account_name=row["name"])
         self.cleanup()
         if self.db.execute("SELECT count(*) FROM intents").fetchone()[0] >= 256:
             # Bounded journal; retain at least the currently live requests.

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import re
+import time
+import math
 from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
@@ -65,6 +67,7 @@ class OAuthConfig:
 class GGGOAuth:
     def __init__(self, config: OAuthConfig, redirect_uri: str, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.config, self.redirect_uri = config, redirect_uri
+        self.retry_at = 0.0
         self.http = httpx.AsyncClient(transport=transport, timeout=10, follow_redirects=False, trust_env=False,
             limits=httpx.Limits(max_connections=2), headers={"User-Agent":
             f"OAuth {config.client_id}/0.13.0 (contact: {config.contact}) poe2-gpt"})
@@ -80,6 +83,11 @@ class GGGOAuth:
 
     async def request(self, method: str, url: str, *, data: dict[str, str] | None = None,
                       token: str | None = None) -> dict[str, Any]:
+        # A provider/client cooldown applies to every account in this broker,
+        # including interactive login, not just the row whose refresh got 429.
+        wait = math.ceil(self.retry_at - time.monotonic())
+        if wait > 0:
+            raise OAuthError("rate_limited", wait)
         request = self.http.build_request(method, url, data=data,
             headers={"Authorization": "Bearer " + token} if token else {})
         request.headers.pop("cookie", None)
@@ -94,6 +102,7 @@ class GGGOAuth:
                 if response.status_code == 429:
                     value = response.headers.get("retry-after", "60")
                     wait = max(1, min(int(value), 86400)) if value.isdigit() else 60
+                    self.retry_at = time.monotonic() + wait
                     raise OAuthError("rate_limited", wait)
                 if response.status_code != 200:
                     # Token POST results can be ambiguous. Never replay automatically.
