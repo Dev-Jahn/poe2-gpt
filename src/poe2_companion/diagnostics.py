@@ -2,16 +2,18 @@
 import secrets
 import time
 from collections import OrderedDict
-from typing import Annotated, Literal
+from dataclasses import dataclass
+from typing import Annotated, Any, Iterable, Literal, Self
 
 from pydantic import Field, model_validator
 
-from .builds import DTO, MAX_TOOL_JSON_BYTES, PlayerStat
-from .engine_models import EngineCalculation, EngineError, RequirementIssue, MechanicResult, MetricCoverage
+from .builds import DTO, MAX_TOOL_JSON_BYTES, PlayerStat, StatName
+from .engine_models import EngineCalculation, EngineError, RequirementIssue, MechanicResult, MetricCoverage, EngineRequest, EngineTradeRequest, EngineSnapshot, TradeChange
+from .equipment import FX, Price
 from .combat_models import CombatScenarioResult
 from .calculation_config import CalculationConfiguration
 
-Section = Literal['issues', 'mechanics', 'stats', 'metric_coverage', 'deltas', 'combat_scenario', 'inputs', 'candidates']
+Section = Literal['issues', 'mechanics', 'stats', 'metric_coverage', 'deltas', 'combat_scenario', 'inputs', 'candidates', 'excluded_listings']
 
 
 class InputValue(DTO):
@@ -19,10 +21,32 @@ class InputValue(DTO):
     value: bool | float | str | None = None
 
 
+class ConstraintViolation(DTO):
+    stat: StatName
+    minimum: float
+    actual: float
+
+
+ExclusionReason = Literal['unavailable_or_unparsed', 'private_item_unavailable', 'unsupported_slot',
+    'missing_price', 'stale', 'private_import_rejected', 'over_budget']
+
+
+class ExcludedListing(DTO):
+    listing_ref: Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
+    reason: ExclusionReason
+    original_price: Price | None = None
+    normalized_cost: float | None = None
+
+
 class CandidateEvaluation(DTO):
     index: int
     status: Literal['eligible', 'invalid_equipment', 'unresolved_dependencies', 'constraints_not_met']
     cost: float
+    changes: Annotated[list[TradeChange], Field(max_length=3)] = Field(default_factory=list)
+    constraint_violations: list[ConstraintViolation] = Field(default_factory=list)
+    score_gain: float | None = None
+    rank: int | None = None
+    selected: bool = False
 
 
 class InputGuidance(DTO):
@@ -32,7 +56,7 @@ class InputGuidance(DTO):
     note: str
 
 
-def input_guidance(names):
+def input_guidance(names: Iterable[str]) -> list[InputGuidance]:
     aliases={'azmeri_spirit':['natural_order_spirit'], 'captured_beast_modifiers':['captured_beast_mods'],
         'refutation_buff_state':['refutation_active','refutation_ward_spent'],
         'hollow_form_channel_events':['hollow_form_attack_skill_id','hollow_form_channel_uses_per_second','hollow_form_power_charge_use_fraction']}
@@ -60,8 +84,8 @@ class DiagnosticRequest(DTO):
     limit: Annotated[int, Field(ge=1, le=20)] = 10
 
     @model_validator(mode='after')
-    def coherent(self):
-        if self.candidate_index is not None and self.section in {'deltas', 'inputs', 'candidates'}:
+    def coherent(self) -> Self:
+        if self.candidate_index is not None and self.section in {'deltas', 'inputs', 'candidates', 'excluded_listings'}:
             raise ValueError('candidate_selector_requires_snapshot_section')
         return self
 
@@ -82,25 +106,40 @@ class DiagnosticPage(DTO):
     combat_scenario: list[CombatScenarioResult] = Field(default_factory=list)
     inputs: list[InputValue] = Field(default_factory=list)
     candidates: list[CandidateEvaluation] = Field(default_factory=list)
+    excluded_listings: list[ExcludedListing] = Field(default_factory=list)
     input_guidance: list[InputGuidance] = Field(default_factory=list)
     expires_at_epoch: int
 
 
+@dataclass(frozen=True)
+class Receipt:
+    calculation: EngineCalculation
+    expiry: int
+    inputs: list[InputValue]
+    snapshots: list[EngineSnapshot]
+    evaluations: list[CandidateEvaluation]
+    exclusions: list[ExcludedListing]
+    size: int
+
+
 class CalculationReceipts:
     """Opaque IDs never cross instances. Bounded RAM, expiry and explicit misses."""
-    def __init__(self, capacity=64, ttl=3600):
-        self.rows = OrderedDict()
+    def __init__(self, capacity: int = 64, ttl: int = 3600) -> None:
+        self.rows: OrderedDict[str, Receipt] = OrderedDict()
         self.capacity, self.ttl = capacity, ttl
 
-    def retain(self, calculation: EngineCalculation, request=None, candidates=None, evaluations=None):
+    def retain(self, calculation: EngineCalculation, request: EngineRequest | None = None,
+               candidates: list[EngineSnapshot] | None = None,
+               evaluations: list[CandidateEvaluation] | None = None,
+               exclusions: list[ExcludedListing] | None = None, fx: FX | None = None) -> EngineCalculation:
         now = int(time.time())
         for key, row in list(self.rows.items()):
-            if row[1] <= now:
+            if row.expiry <= now:
                 self.rows.pop(key)
         calculation.calculation_id = 'calc_' + secrets.token_hex(16)
         calculation.diagnostics_expires_at_epoch = now + self.ttl
-        inputs=[]
-        def flatten(value, path):
+        inputs: list[InputValue] = []
+        def flatten(value: Any, path: str) -> None:
             if isinstance(value, dict):
                 for key, child in value.items(): flatten(child, path+'.'+key)
             elif isinstance(value, list):
@@ -109,28 +148,41 @@ class CalculationReceipts:
         for field in ('configuration', 'combat_scenario'):
             value=getattr(request, field, None)
             if value is not None: flatten(value.model_dump(exclude_none=True), field)
+        if isinstance(request, EngineTradeRequest):
+            for field in ('league', 'declared_character_league', 'budget', 'mode', 'weights',
+                          'constraints', 'max_changes', 'unequip_slots', 'reserve_percent',
+                          'max_listing_age_seconds', 'candidate_refs', 'search_ids'):
+                flatten(request.model_dump(mode='json')[field], field)
+        if fx is not None:
+            flatten(fx.model_dump(mode='json'), 'fx')
         snapshots=[s.model_copy(deep=True) for s in candidates or []]
-        size=len(calculation.model_dump_json().encode())+sum(len(s.model_dump_json().encode()) for s in snapshots)
-        self.rows[calculation.calculation_id] = (calculation.model_copy(deep=True), now + self.ttl,
-            inputs, snapshots, [e.model_copy(deep=True) for e in evaluations or []], size)
-        while len(self.rows) > self.capacity or (len(self.rows)>1 and sum(r[5] for r in self.rows.values())>32*1024*1024):
+        saved_evaluations=[e.model_copy(deep=True) for e in evaluations or []]
+        saved_exclusions=[e.model_copy(deep=True) for e in exclusions or []]
+        size=sum(len(s.model_dump_json().encode()) for s in
+            [calculation, *snapshots, *inputs, *saved_evaluations, *saved_exclusions])
+        self.rows[calculation.calculation_id] = Receipt(calculation.model_copy(deep=True), now + self.ttl,
+            inputs, snapshots, saved_evaluations, saved_exclusions, size)
+        while len(self.rows) > self.capacity or (len(self.rows)>1 and sum(r.size for r in self.rows.values())>32*1024*1024):
             self.rows.popitem(last=False)
         return calculation
 
-    def page(self, request: DiagnosticRequest):
+    def page(self, request: DiagnosticRequest) -> DiagnosticPage:
         row = self.rows.get(request.calculation_id)
-        if row is None or row[1] <= time.time():
+        if row is None or row.expiry <= time.time():
             raise EngineError('calculation_expired_or_unavailable')
-        calculation, expiry, inputs, candidates, evaluations, _ = row
+        calculation, expiry = row.calculation, row.expiry
+        inputs, candidates, evaluations = row.inputs, row.snapshots, row.evaluations
         snapshot = getattr(calculation, request.target)
         if request.candidate_index is not None:
             if request.candidate_index>=len(candidates):
                 raise EngineError('calculation_target_unavailable')
             snapshot=candidates[request.candidate_index]
-        if snapshot is None and request.section not in {'deltas', 'inputs', 'candidates'}:
+        if snapshot is None and request.section not in {'deltas', 'inputs', 'candidates', 'excluded_listings'}:
             raise EngineError('calculation_target_unavailable')
+        records: Any
         if request.section=='inputs': records=inputs
         elif request.section=='candidates': records=evaluations
+        elif request.section=='excluded_listings': records=row.exclusions
         elif request.section=='deltas': records=calculation.deltas
         elif request.section=='combat_scenario': records=[snapshot.combat_scenario] if snapshot.combat_scenario else []
         else: records=getattr(snapshot, request.section)

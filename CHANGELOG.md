@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0
+
+- Preserve required empty inspection records through actual MCP output validation.
+- Resolve active equipment slots within one private worker request per page.
+- Add zero-cost Unequip plans, explicit changed-slot budgets and removable-slot selection.
+- Retain listing provenance, constraint violations, rankings, exclusions and objective/FX inputs.
+- Default trade search to Instant Buyout (`securable`), preserving explicit overrides.
+- Expose honest official-site handoff metadata; direct in-game travel links remain unverified.
+- Require typed definitions and body checking for inspection, receipts and planning.
+- Add protocol and real-engine regressions for empty results and two-handed weapon transitions.
+
+See [0.12 review follow-up](docs/review-012.md) for scope and remaining limitations.
+
 ## 0.11.0 (unreleased)
 
 - Inspect equipped and saved items, effective modifier variants, requirements,

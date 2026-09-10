@@ -1,7 +1,7 @@
 """Typed read projections from the private, pinned PoB interpreter."""
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import Field, model_validator, model_serializer
+from pydantic import Field, SerializerFunctionWrapHandler, model_validator, model_serializer
 
 from .builds import DTO
 from .calculation_config import CalculationConfiguration
@@ -9,12 +9,16 @@ from .calculation_config import CalculationConfiguration
 Identifier = Annotated[str, Field(pattern=r"^[^\x00-\x1f\x7f]+$", max_length=240)]
 Label = Annotated[str, Field(max_length=240)]
 Scalar = bool | Annotated[float, Field(allow_inf_nan=False, ge=-1e15, le=1e15)] | Annotated[str, Field(max_length=240)]
+InspectionSlot = Literal['helmet', 'body_armour', 'gloves', 'boots', 'belt', 'amulet',
+    'ring_left', 'ring_right', 'ring_third', 'weapon_main', 'weapon_off', 'flask_1',
+    'flask_2', 'charm_1', 'charm_2', 'charm_3', 'arm_1', 'arm_2', 'leg_1', 'leg_2']
 
 
 class InspectionRequest(DTO):
     build_id: Annotated[str, Field(pattern=r"^bld_[0-9a-f]{32}$")]
     section: Literal["equipment", "skills", "configuration", "passives", "sets"]
     saved_item_id: Annotated[int, Field(ge=1, le=1000000)] | None = None
+    slot: InspectionSlot | None = None
     set_id: Annotated[int, Field(ge=1, le=10000)] | None = None
     configuration_key: Identifier | None = None
     offset: Annotated[int, Field(ge=0, le=100000)] = 0
@@ -22,9 +26,11 @@ class InspectionRequest(DTO):
     configuration: CalculationConfiguration | None = None
 
     @model_validator(mode="after")
-    def coherent(self):
-        if self.saved_item_id is not None and self.section != "equipment":
+    def coherent(self) -> Self:
+        if (self.saved_item_id is not None or self.slot is not None) and self.section != "equipment":
             raise ValueError("item_filter_requires_equipment_section")
+        if self.slot is not None and (self.saved_item_id is not None or self.set_id is not None):
+            raise ValueError('slot_selects_active_equipment_only')
         if self.configuration_key is not None and self.section != 'configuration':
             raise ValueError('configuration_filter_requires_configuration_section')
         if self.set_id is not None and self.section == 'passives':
@@ -96,11 +102,10 @@ class InspectionPage(DTO):
     calculations_verified_by_parsing: Literal[False] = False
 
     @model_serializer(mode='wrap', when_used='json')
-    def compact(self, handler):
-        def trim(value):
-            if isinstance(value, list):
-                return [trim(v) for v in value]
-            if isinstance(value, dict):
-                return {k: trim(v) for k, v in value.items() if v is not None and v != []}
-            return value
-        return trim(handler(self))
+    def compact(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Only omit fields explicitly declared optional by their own DTO.
+        # Required empty collections (notably records) are successful results.
+        result = handler(self)
+        result['records'] = [record.model_dump(mode='json', exclude_none=True,
+            exclude_defaults=True) for record in self.records]
+        return {key: value for key, value in result.items() if value is not None}

@@ -25,9 +25,28 @@ function M.project(build, query, saved, aliases)
   for _,id in ipairs(keys(build.configTab.configSets)) do add{kind='configuration_set',set_id=id,selected=id==build.configTab.activeConfigSetId} end
   for id,spec in ipairs(build.specList or {}) do add{kind='tree_set',set_id=id,selected=spec==build.spec} end
  elseif query.section=='equipment' then
+  -- Resolve the selector inside this one private request, including swap sets.
+  local slotMap={['Helmet']='helmet',['Body Armour']='body_armour',['Gloves']='gloves',
+   ['Boots']='boots',['Belt']='belt',['Amulet']='amulet',['Ring 1']='ring_left',
+   ['Ring 2']='ring_right',['Ring 3']='ring_third',['Weapon 1']='weapon_main',
+   ['Weapon 2']='weapon_off',['Weapon 3']='weapon_off',['Flask 1']='flask_1',
+   ['Flask 2']='flask_2',['Charm 1']='charm_1',['Charm 2']='charm_2',['Charm 3']='charm_3',
+   ['Arm 1']='arm_1',['Arm 2']='arm_2',['Leg 1']='leg_1',['Leg 2']='leg_2'}
+  local selectedId=query.saved_item_id
+  if query.slot then
+   selectedId=0
+   local itemSet=build.itemsTab.activeItemSet
+   for _,slot in ipairs(keys(itemSet)) do
+    local value=itemSet[slot]
+    local active=not slot:match('^Weapon ') or (not not slot:match(' Swap$'))==(not not itemSet.useSecondWeaponSet)
+    if active and slotMap[slot:gsub(' Swap$','')]==query.slot and type(value)=='table' and (value.selItemId or 0)>0 then
+     selectedId=value.selItemId;break
+    end
+   end
+  end
   for _,id in ipairs(keys(build.itemsTab.items)) do
    local item=build.itemsTab.items[id]
-   if type(id)=='number' and (not query.saved_item_id or id==query.saved_item_id) then
+   if type(id)=='number' and (not selectedId or id==selectedId) then
     local placements=array()
     for _,setId in ipairs(keys(build.itemsTab.itemSets)) do
      local itemSet=build.itemsTab.itemSets[setId]
@@ -51,7 +70,7 @@ function M.project(build, query, saved, aliases)
       placements=(function() local a=array();for _,p in ipairs(placements) do if p.active_set then a[#a+1]=p end end;return a end)(),placement_count=#placements,
       requirements={level=req.level or 0,strength=req.str or 0,dexterity=req.dex or 0,intelligence=req.int or 0},
       status=item.base and 'known' or 'unknown'}
-     if query.saved_item_id then
+     if selectedId then
       for _,p in ipairs(placements) do add{kind='placement',saved_item_id=id,placements=array{p}} end
       for _,group in ipairs{{'rune',item.runeModLines},{'enchant',item.enchantModLines},{'implicit',item.implicitModLines},{'explicit',item.explicitModLines}} do
        for _,line in ipairs(group[2] or {}) do

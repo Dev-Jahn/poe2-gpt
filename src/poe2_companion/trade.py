@@ -101,7 +101,8 @@ class TradeSearchRequest(DTO):
     stat_groups: Annotated[list[TradeStatGroup], Field(max_length=4)] = Field(default_factory=list)
     sort_by: Literal['price', 'ar', 'ev', 'es', 'dps', 'pdps', 'edps', 'aps', 'crit', 'ilvl'] = 'price'
     sort_direction: Literal['asc', 'desc'] = 'asc'
-    status: Literal["online", "available", "securable", "any"] = "online"
+    status: Annotated[Literal["online", "available", "securable", "any"], Field(
+        description='Default securable = Instant Buyout only. available includes in-person trade; online is in-person online; any includes offline listings. Override only when requested.')] = "securable"
     rarity: Literal["any", "normal", "magic", "rare", "unique", "nonunique"] = "any"
     corrupted: bool | None = None
     price_max: Price | None = None
@@ -219,6 +220,9 @@ class TradeSearchResult(DTO):
     league: LeagueName
     category: Category
     website_url: str
+    status_filter: Literal['online', 'available', 'securable', 'any'] = 'securable'
+    instant_buyout_only: bool = True
+    travel_link_supported: Literal[False] = False
     search_retrieved_at_epoch: int
     total_matches: int
     retained_ids: int
@@ -629,7 +633,9 @@ class TradeClient:
             selected_ids=ids[:count]
             rows=[entry["rows"][i] for i in selected_ids if entry["rows"][i] is not None]
             result=TradeSearchResult(search_id=request.search_id,league=entry["request"].league,category=entry["request"].category,
-                website_url=search_url(entry),search_retrieved_at_epoch=entry["created"],total_matches=entry["total"],retained_ids=len(entry["ids"]),query_results_fully_retained=entry["exhaustive"],
+                website_url=search_url(entry),status_filter=entry['request'].status,
+                instant_buyout_only=entry['request'].status=='securable',
+                search_retrieved_at_epoch=entry["created"],total_matches=entry["total"],retained_ids=len(entry["ids"]),query_results_fully_retained=entry["exhaustive"],
                 items=rows,next_offset=request.offset+count if request.offset+count<len(entry["ids"]) else None,unavailable_or_unparsed_in_page=len(selected_ids)-len(rows))
             try:
                 return bounded_dto(result)
