@@ -32,6 +32,8 @@ from .engine import EngineClient
 from .inspection import InspectionRequest, InspectionPage
 from .profiles import ProfileRequest, BuildProfile, SavedProfileFallback, saved_fallback
 from .passive_portfolio import PassivePortfolioRequest, PassivePortfolio, compare as compare_passive_portfolio
+from .passive_candidates import PassiveCandidatesRequest, PassiveCandidates
+from .plan_exports import ExportRequest,ExportReference,ExportResult,create as export_plan,download as download_plan
 from .capabilities import CapabilitiesRequest, Capabilities, SchemaRequest, SchemaPage, inventory, schema_page
 from .experiment_models import ExperimentRequest, ExperimentResult
 from .workflows import WorkflowService, PlanPageRequest, PlanPage, PlanTransition, DeleteDecisionRequest, DeletedDecision
@@ -96,6 +98,9 @@ EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'search_game_catalog': CatalogRequest,
     'plan_passive_route': PassiveRouteRequest,
     'compare_passive_paths': PassivePortfolioRequest,
+    'discover_passive_paths': PassiveCandidatesRequest,
+    'export_build_execution_plan': ExportRequest,
+    'delete_build_plan_export': ExportReference,
     'analyze_recovery_scenario': RecoveryRequest,
     'analyze_native_recovery_scenario': NativeRecoveryRequest,
     'calculate_skill_components': ComponentRequest,
@@ -197,6 +202,14 @@ class ProjectionMCP(FastMCP):
         return result
 
     async def call_tool(self, name: str, arguments: dict[str, Any]):
+        from .diagnostics import RECEIPT_OWNER
+        owner='local'
+        try:
+            request=self.get_context().request_context.request
+            principal=request.scope.get('state',{}).get('principal') if isinstance(request,Request) else None
+            if isinstance(principal,Principal):owner=principal.issuer+'\0'+principal.subject
+        except (ValueError,LookupError):pass
+        owner_token=RECEIPT_OWNER.set(owner)
         known=name if name in self._tool_manager._tools else 'unknown'
         counter=self.counters.setdefault(known,ToolCounters(tool=known))
         start=time.monotonic()
@@ -210,6 +223,7 @@ class ProjectionMCP(FastMCP):
             counter.errors+=1
             return self.record_failure(known,CallToolResult(isError=True,content=[TextContent(type='text',text='internal_tool_error')]))
         finally:
+            RECEIPT_OWNER.reset(owner_token)
             elapsed=(time.monotonic()-start)*1000
             counter.calls+=1;counter.elapsed_ms+=elapsed;counter.max_elapsed_ms=max(counter.max_elapsed_ms,elapsed)
 
@@ -333,9 +347,11 @@ class QuoteItem(BaseModel):
     quantity: Annotated[float, Field(gt=0, le=1e9, allow_inf_nan=False)] = 1
 
 
-def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp", characters: CharacterClient | None = None, accounts: AccountClient | None = None, decisions: DecisionStore | None = None):
+def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp", characters: CharacterClient | None = None, accounts: AccountClient | None = None, decisions: DecisionStore | None = None, public_base_url: str | None = None):
     if not re.fullmatch(r"/(?:u/[a-z][a-z0-9-]{0,23}/)?mcp", mcp_path):
         raise ValueError("MCP path must be /mcp or /u/<member-id>/mcp")
+    if public_base_url is not None and not re.fullmatch(r'https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?',public_base_url):
+        raise ValueError('artifact_public_origin_invalid')
     server = ProjectionMCP("POE2 GPT", host=host, port=port, stateless_http=True, json_response=True,
         website_url="https://github.com/Dev-Jahn/poe2-gpt",
         streamable_http_path=mcp_path,
@@ -430,7 +446,8 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
         """Discover the actual configured tools, engine pins, schema hash and disabled feature reasons. Optionally compare an explicitly reported host inventory. An unknown host inventory is never evidence of a stale connector. Hideout execution is deferred."""
         return await inventory(server, request, {'private_engine':engine is not None,
             'character_import':characters is not None,'account_broker':accounts is not None,
-            'trade_search':trade is not None,'saved_build_projection':build_reader is not None})
+            'trade_search':trade is not None,'saved_build_projection':build_reader is not None,
+            'artifact_downloads':engine is not None and public_base_url is not None})
 
     @server.tool(annotations=PRIVATE_READ, structured_output=True)
     async def describe_tool_schema(request: SchemaRequest) -> SchemaPage:
@@ -497,6 +514,22 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
     if engine is not None:
         workflow=WorkflowService(engine,decisions or DecisionStore(mcp_path),trade)
         telemetry=WorkflowTelemetry(workflow.store)
+        export_path=mcp_path.removesuffix('/mcp')+'/accounts/artifacts'
+
+        @server.custom_route(export_path+'/{export_id}',methods=['GET','HEAD'])
+        async def download_build_plan(request: Request):
+            return await download_plan(request,workflow.store)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False),structured_output=True)
+        async def export_build_execution_plan(request: ExportRequest,ctx: Context) -> ExportResult:
+            """Create a downloadable Markdown table or JSON from the same retained execution plan. Read back stored bytes and verify SHA-256 before returning an owner-authenticated URL. No source PoB or credentials. Ephemeral by default; persist_export is explicit opt-in. The same Cloudflare Access user must open the link before expiry."""
+            return export_plan(request,workflow.store,workflow_owner(ctx),public_base_url,export_path)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False),structured_output=True)
+        async def delete_build_plan_export(request: ExportReference,ctx: Context) -> DeletedDecision:
+            """Delete this user's downloadable plan artifact and invalidate its URL. Other users and original plans are unaffected."""
+            workflow.store.delete_artifact(workflow_owner(ctx),'plan_export',request.export_id)
+            return DeletedDecision()
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def get_build_requirements(request: RequirementsRequest) -> RequirementsPage:
             """Explain every native requirement source in a retained calculation: equipment maximum, native gem maximum and support totals. Native and effective levels are separate. Includes substitution modifiers, exact available attributes and failures. Final attributes do not prove initial equip requirements; use a validated transition order. Follow next_offset for the complete table."""
@@ -526,6 +559,11 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
         async def search_game_catalog(request: CatalogRequest) -> CatalogPage:
             """Search the full pinned passive graph, native gem levels/requirements or rune identities. Always select entity_type. Use node_ids or catalog_id for exact details; page gem levels with level_offset. Korean names are verified catalog translations with English fallback. Game data presence is not proof that every mechanic calculates correctly."""
             return await engine.static_request('/catalog',request,CatalogPage)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def discover_passive_paths(request: PassiveCandidatesRequest) -> PassiveCandidates:
+            """Enumerate every adjacent ordinary and weapon-set path within the reported point/hop budget from the full native graph. Defaults to all three allocation modes and five new nodes; text query matches names/effects. Follow all pages before claiming candidate coverage. This generates paths, not metric ranks; compare complete returned endpoints with compare_passive_paths."""
+            return await engine.static_request('/passive-candidates',request,PassiveCandidates)
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def compare_passive_paths(request: PassivePortfolioRequest, ctx: Context) -> PassivePortfolio:
@@ -1062,7 +1100,8 @@ def main():
     decision_dir=os.environ.get('POE2_DECISION_DIR')
     decision_key=os.environ.get('POE2_DECISION_KEY_FILE')
     decisions=DecisionStore(member,Path(decision_dir) if decision_dir else None,Path(decision_key) if decision_key else None)
-    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path, characters, accounts, decisions)
+    public_base='https://'+public_host if access_config and public_host else None
+    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path, characters, accounts, decisions,public_base)
     async def serve():
         verifier = AccessVerifier(access_config) if access_config else None
         # Stateless HTTP opens an MCP session per request. Shared HTTP/cache resources

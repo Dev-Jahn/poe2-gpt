@@ -37,6 +37,13 @@ def main():
                    for name, port in (("alice", 18082), ("bob", 18083))]
         rendered = Path(temporary.name) / "compose.json"
         stack = render_member_stack(base, members)
+        for suffix in ('', '-alice', '-bob'):
+            service = stack['services']['poe2-companion' + suffix]
+            assert service['environment']['POE2_DECISION_DIR'] == '/workflow-state'
+            assert service['environment']['POE2_DECISION_KEY_FILE'] == '/workflow-keys/decision.key'
+            mounts = {v['target']: v['source'] for v in service['volumes'] if v['type'] == 'volume'}
+            assert mounts['/workflow-state'] == 'workflow-state' + suffix
+            assert mounts['/workflow-keys'] == 'workflow-keys' + suffix
         for service in stack["services"].values():
             for port in service.get("ports", []):
                 if int(port["published"]) in (18082, 18083):
@@ -65,6 +72,42 @@ def main():
                 "assert p.stat().st_uid==10001 and p.stat().st_mode & 0o777==0o600; "
                 "assert len(p.read_bytes())==32; assert not Path('/account-config/oauth.json').exists()"])
         assert len(set(account_ids.values())) == 3
+        traces = {}
+        for suffix in ('', '-alice', '-bob'):
+            member = suffix.removeprefix('-') or 'owner'
+            result = run(['exec', '-T', 'poe2-companion' + suffix, 'python', '-c',
+                "import os,json; from pathlib import Path; "
+                "from poe2_companion.workflow_store import DecisionStore; "
+                "from poe2_companion.workflow_telemetry import WorkflowTelemetry,BeginTrace; "
+                "s=DecisionStore('" + member + "',Path(os.environ['POE2_DECISION_DIR']),Path(os.environ['POE2_DECISION_KEY_FILE'])); "
+                "t=WorkflowTelemetry(s).begin('synthetic-workflow-owner',BeginTrace(goal='inspect_build',persist_trace=True)); "
+                "print(json.dumps({'trace_id':t.trace_id})); s.close(); "
+                "p=Path(os.environ['POE2_DECISION_KEY_FILE']); "
+                "assert p.stat().st_uid==10001 and p.stat().st_mode & 0o777==0o600 and len(p.read_bytes())==32; "
+                "assert b'synthetic-workflow-owner' not in Path('/workflow-state/decisions.sqlite3').read_bytes()"],
+                capture_output=True, text=True)
+            traces[suffix] = json.loads(result.stdout)['trace_id']
+        run(['restart', 'poe2-companion', 'poe2-companion-alice', 'poe2-companion-bob'])
+        run(['up', '-d', '--wait', '--wait-timeout', '120'])
+        for suffix, own_trace in traces.items():
+            member = suffix.removeprefix('-') or 'owner'
+            foreign_trace = next(value for key, value in traces.items() if key != suffix)
+            # A fresh process must recover the opted-in record after restart;
+            # neither another deployment member nor a new principal can read it.
+            check = "\n".join([
+                "import os", "from pathlib import Path",
+                "from poe2_companion.workflow_store import DecisionStore,WorkflowError",
+                "from poe2_companion.workflow_telemetry import WorkflowTelemetry",
+                f"s=DecisionStore({member!r},Path(os.environ['POE2_DECISION_DIR']),Path(os.environ['POE2_DECISION_KEY_FILE']))",
+                "t=WorkflowTelemetry(s)",
+                f"assert t.get('synthetic-workflow-owner',{own_trace!r}).request.goal=='inspect_build'",
+                f"for owner,identifier in [('synthetic-workflow-owner',{foreign_trace!r}),('another-principal',{own_trace!r})]:",
+                "    try: t.get(owner,identifier)",
+                "    except WorkflowError: pass",
+                "    else: raise AssertionError('Foreign workflow was readable')",
+                "s.close()",
+            ])
+            run(['exec', '-T', 'poe2-companion' + suffix, 'python', '-c', check])
         for suffix in ("-alice", "-bob"):
             run(["exec", "-T", "poe2-companion" + suffix, "python", "-c",
                 "import httpx; c=httpx.Client(transport=httpx.HTTPTransport(uds='/account-socket/accounts.sock')); "
@@ -135,7 +178,7 @@ def main():
                  "assert r.status_code==400 and r.json()=={'code':'engine_busy'}"])
         finally:
             holder.communicate(input=b"x", timeout=10)
-        print("Three-user containers: private imports, cross-user build denial, real calculations, shared compute lease and origin auth OK")
+        print("Three-user containers: private imports, cross-user build denial, real calculations, shared compute lease, encrypted workflow restart/isolation and origin auth OK")
     finally:
         # This disposable CI project contains only generated synthetic data.
         run(["down", "--volumes"])

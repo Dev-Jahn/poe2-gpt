@@ -47,6 +47,16 @@ class AttackEvent(DTO):
     energy_shield_cost: Number = 0.0
 
 
+class CannotAttackWindow(DTO):
+    starts_at: Seconds
+    ends_at: Seconds
+
+    @model_validator(mode='after')
+    def ordered(self) -> Self:
+        if self.ends_at<=self.starts_at:raise ValueError('cannot_attack_window_invalid')
+        return self
+
+
 class RecoveryFlow(DTO):
     kind: Literal['leech','recoup','regeneration']
     resource: Resource
@@ -75,6 +85,7 @@ class RecoveryRequest(DTO):
     incoming_hits: Annotated[list[DamageEvent],Field(max_length=128)] = Field(default_factory=list)
     attacks: Annotated[list[AttackEvent],Field(max_length=128)] = Field(default_factory=list)
     flows: Annotated[list[RecoveryFlow],Field(max_length=32)] = Field(default_factory=list)
+    cannot_attack_windows: Annotated[list[CannotAttackWindow],Field(max_length=16)] = Field(default_factory=list)
     mana_leech_expires_at_full: bool | None = None
     inputs_evidence: Literal['user_supplied_hypothesis','user_observed_schedule'] = 'user_supplied_hypothesis'
 
@@ -89,6 +100,7 @@ class RecoveryRequest(DTO):
             raise ValueError('attack_outside_scenario')
         if any(f.ends_at>self.duration_seconds or f.resource not in resources for f in self.flows):
             raise ValueError('flow_outside_scenario')
+        if any(w.ends_at>self.duration_seconds for w in self.cannot_attack_windows):raise ValueError('cannot_attack_window_outside_scenario')
         if any(f.expires_with_full_mana and (f.kind!='leech' or 'mana' not in resources) for f in self.flows):
             raise ValueError('copied_leech_requires_mana_state')
         if self.scenario=='no_hit' and self.incoming_hits: raise ValueError('no_hit_scenario_has_hits')
@@ -114,6 +126,8 @@ class RecoveryCase(DTO):
     scheduled_attacks: int
     affordable_attacks: int
     attack_resource_coverage: float | None
+    attacks_blocked_by_window: int = 0
+    preexisting_flow_lifetimes_preserved: Literal[True] = True
 
 
 class RecoveryResult(DTO):
@@ -135,7 +149,7 @@ def integrate(request: RecoveryRequest, expires_at_full: bool) -> RecoveryCase:
     depleted={name:0.0 if amount==0 else None for name,amount in current.items()}
     recharge_ready={name:row.initial_recharge_delay_remaining for name,row in definitions.items()}
     ended: set[int] = set()
-    affordable=0
+    affordable=0;blocked=0
     times={0.0,request.duration_seconds}
     times.update(event.at for event in request.incoming_hits)
     times.update(event.at for event in request.attacks)
@@ -184,6 +198,8 @@ def integrate(request: RecoveryRequest, expires_at_full: bool) -> RecoveryCase:
             if event.interrupts_recharge: recharge_ready[name]=stamp+definitions[name].recharge_delay_seconds
         for attack in request.attacks:
             if attack.at!=stamp: continue
+            if any(w.starts_at<=stamp<w.ends_at for w in request.cannot_attack_windows):
+                blocked+=1;continue
             costs: dict[Resource,float] = {'mana':attack.mana_cost,'energy_shield':attack.energy_shield_cost}
             if all(cost<=current.get(name,0.0) for name,cost in costs.items()):
                 affordable+=1
@@ -198,7 +214,7 @@ def integrate(request: RecoveryRequest, expires_at_full: bool) -> RecoveryCase:
             wasted_recovery=wasted[name],damage_exceeding_available_resource=overflow[name],
             first_depleted_at=depleted[name],recharge_active_seconds=recharge_time[name]) for name in definitions],
         scheduled_attacks=len(request.attacks),affordable_attacks=affordable,
-        attack_resource_coverage=affordable/len(request.attacks) if request.attacks else None)
+        attack_resource_coverage=affordable/len(request.attacks) if request.attacks else None,attacks_blocked_by_window=blocked)
 
 
 def analyze(request: RecoveryRequest, snapshot: EngineSnapshot) -> RecoveryResult:

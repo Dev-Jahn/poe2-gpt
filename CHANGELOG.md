@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.14.0
+
+- Add calculation-free profiles, complete schema examples and explicit subject/component targeting.
+- Evaluate immutable mixed changes, full passive paths, support portfolios and requirement-safe transitions.
+- Retain candidate/price provenance, conditional frontiers, net recovery scenarios and correction bills.
+- Add revision-locked encrypted plans, observations, execution/rollback guidance and owner-authenticated Markdown/JSON exports.
+- Add staged guide analysis, progression, observed economy/currency workflows and bounded task tracing.
+- Preserve Instant Buyout defaults and defer hideout execution/browser sessions.
+- Map all 25 handoff tickets / 79 cases; add native and authenticated HTTP MCP task regressions.
+- Check untyped bodies in workflow contract modules, preserve the 85% Python coverage gate, and bump companion protocol compatibility to v5.
+
+See [workflow contracts and limits](docs/workflows.md) and [acceptance evidence](docs/workflow-014-acceptance.md). Historical private fixture replay and gameplay outcomes are separate from synthetic/native regression results.
+
 ## 0.13.0
 
 - Add per-member account brokers, encrypted persistent credentials and seven typed MCP tools.

@@ -5,6 +5,7 @@ from pydantic import Field
 from .builds import DTO
 from .catalog_models import BuildRef,NodeID,NativeCatalog
 from .engine_models import ENGINE_DATA_COMMIT,EngineError
+from .game_terms import name_fields
 
 
 class TreeAction(DTO):
@@ -20,12 +21,17 @@ class PassiveOrderRequest(DTO):
     actions: Annotated[list[TreeAction],Field(min_length=1,max_length=64)]
 
 
+class OrderedTreeAction(TreeAction):
+    start_landmark: Annotated[str,Field(max_length=400)]
+    node_descriptions: Annotated[list[Annotated[str,Field(max_length=700)]],Field(max_length=64)]
+
+
 class PassiveOrderResult(DTO):
     build_id: BuildRef
     tree_revision: str
     engine_data_commit: str
     status: Literal['verified','unsupported_node_rule','no_order_within_requested_nodes']
-    actions: Annotated[list[TreeAction],Field(max_length=64)]
+    actions: Annotated[list[OrderedTreeAction],Field(max_length=64)]
     extra_nodes_added: Literal[False] = False
     point_budget_requires_joint_experiment: Literal[True] = True
 
@@ -59,7 +65,7 @@ def order(catalog: NativeCatalog,request: PassiveOrderRequest) -> PassiveOrderRe
         pending=set(action.node_ids)
         if len(pending)!=len(action.node_ids) or (action.action=='refund' and not pending<=allocated) or (action.action=='allocate' and pending & allocated):
             raise EngineError('engine_invalid_request')
-        ordered=[]
+        ordered: list[int]=[];landmark='';descriptions=[]
         while pending:
             found=None
             for identifier in sorted(pending):
@@ -72,8 +78,20 @@ def order(catalog: NativeCatalog,request: PassiveOrderRequest) -> PassiveOrderRe
                 if valid:found=identifier;break
             if found is None:
                 value.status='no_order_within_requested_nodes';value.actions=[];return value
+            node=nodes[found]
+            def describe(identifier):
+                entry=nodes[identifier];ko=name_fields(entry.name)['name_ko']
+                name=(ko+' ('+entry.name+')') if ko else entry.name
+                effect='; '.join(entry.stats[:2])[:280]
+                return f'{name[:300]} [{entry.x:g}, {entry.y:g}]'+(' — '+effect if effect else '')
+            if not ordered:
+                adjacent=next((n for n in sorted(node.linked_node_ids) if n in allocated and n!=found
+                    and modes[n] in (0,action.allocation_mode) and nodes[n].ascendancy==node.ascendancy),None)
+                landmark=describe(adjacent)[:400] if adjacent is not None else describe(found)[:400]
+            descriptions.append(describe(found))
             if action.action=='refund':allocated.remove(found)
             else:allocated.add(found)
             ordered.append(found);pending.remove(found)
-        value.actions.append(action.model_copy(update={'node_ids':ordered}))
+        value.actions.append(OrderedTreeAction(**{**action.model_dump(),'node_ids':ordered},
+            start_landmark=landmark,node_descriptions=descriptions))
     return value

@@ -8,7 +8,7 @@ The optional Linux worker uses the upstream headless PoE2 Path of Building engin
 |---|---|
 | PathOfBuilding-PoE2 | `fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15` |
 | PoE2 0.5.5 data | `b3282b7a9111ed6c4ec6be643edf0806d7beb675` (37 reviewed data files from open PR #2505) |
-| Companion compatibility | `forbidden-rites-0.5.5-v4` |
+| Companion compatibility | `forbidden-rites-0.5.5-v5` |
 | LuaJIT | `24c20c94e7db195b640854619577441f9b4bc6be` |
 | luautf8 | `0.2.0` |
 

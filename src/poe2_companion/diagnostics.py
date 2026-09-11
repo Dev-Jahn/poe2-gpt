@@ -2,6 +2,7 @@
 import secrets
 import time
 from collections import OrderedDict
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Annotated, Any, Iterable, Literal, Self
 
@@ -14,6 +15,7 @@ from .combat_models import CombatScenarioResult
 from .calculation_config import CalculationConfiguration
 
 Section = Literal['issues', 'mechanics', 'stats', 'metric_coverage', 'deltas', 'combat_scenario', 'inputs', 'candidates', 'excluded_listings']
+RECEIPT_OWNER: ContextVar[str] = ContextVar('poe2_receipt_owner',default='local')
 
 
 class InputValue(DTO):
@@ -120,6 +122,7 @@ class Receipt:
     evaluations: list[CandidateEvaluation]
     exclusions: list[ExcludedListing]
     size: int
+    owner: str = 'local'
 
 
 class CalculationReceipts:
@@ -130,7 +133,7 @@ class CalculationReceipts:
 
     def snapshot(self, calculation_id: str, side: str) -> EngineSnapshot:
         row=self.rows.get(calculation_id)
-        if row is None or row.expiry<=int(time.time()):
+        if row is None or row.expiry<=int(time.time()) or row.owner!=RECEIPT_OWNER.get():
             raise EngineError('calculation_expired_or_unavailable')
         snapshot=row.calculation.baseline if side=='baseline' else row.calculation.result
         if snapshot is None:
@@ -170,14 +173,14 @@ class CalculationReceipts:
         size=sum(len(s.model_dump_json().encode()) for s in
             [calculation, *snapshots, *inputs, *saved_evaluations, *saved_exclusions])
         self.rows[calculation.calculation_id] = Receipt(calculation.model_copy(deep=True), now + self.ttl,
-            inputs, snapshots, saved_evaluations, saved_exclusions, size)
+            inputs, snapshots, saved_evaluations, saved_exclusions, size, RECEIPT_OWNER.get())
         while len(self.rows) > self.capacity or (len(self.rows)>1 and sum(r.size for r in self.rows.values())>32*1024*1024):
             self.rows.popitem(last=False)
         return calculation
 
     def page(self, request: DiagnosticRequest) -> DiagnosticPage:
         row = self.rows.get(request.calculation_id)
-        if row is None or row.expiry <= time.time():
+        if row is None or row.expiry <= time.time() or row.owner!=RECEIPT_OWNER.get():
             raise EngineError('calculation_expired_or_unavailable')
         calculation, expiry = row.calculation, row.expiry
         inputs, candidates, evaluations = row.inputs, row.snapshots, row.evaluations

@@ -14,7 +14,7 @@ from .subjects import CalculationTarget, SubjectBinding
 
 ENGINE_COMMIT = "fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15"
 ENGINE_DATA_COMMIT = "b3282b7a9111ed6c4ec6be643edf0806d7beb675"
-ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v4"
+ENGINE_COMPATIBILITY = "forbidden-rites-0.5.5-v5"
 # Public output metadata has a stable schema across engine/data updates.
 # Exact pin equality remains enforced by worker health and EngineClient.status.
 EngineCommit = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$", min_length=40, max_length=40)]

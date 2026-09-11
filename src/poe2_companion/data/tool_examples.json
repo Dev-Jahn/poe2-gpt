@@ -60,6 +60,16 @@
       }
     }
   },
+  "export_build_execution_plan": {
+    "request": {
+      "execution_id": "route_00000000000000000000000000000000"
+    }
+  },
+  "delete_build_plan_export": {
+    "request": {
+      "export_id": "export_00000000000000000000000000000000"
+    }
+  },
   "get_build_requirements": {
     "request": {
       "calculation_id": "calc_00000000000000000000000000000000"
@@ -118,6 +128,13 @@
     "request": {
       "build_id": "bld_00000000000000000000000000000000",
       "entity_type": "passive"
+    }
+  },
+  "discover_passive_paths": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "tree_revision": "example",
+      "ordinary_points_available": 0
     }
   },
   "compare_passive_paths": {

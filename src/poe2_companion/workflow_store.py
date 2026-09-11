@@ -25,7 +25,7 @@ from .profiles import Digest
 from .observations import ObservationRecord
 
 PlanState = Literal['proposed','accepted','partially_applied','applied','observed','rejected','superseded']
-ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation','execution_plan','rollback_plan','currency_allocation']
+ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation','execution_plan','rollback_plan','currency_allocation','plan_export']
 ArtifactDTO = TypeVar('ArtifactDTO', bound=DTO)
 
 

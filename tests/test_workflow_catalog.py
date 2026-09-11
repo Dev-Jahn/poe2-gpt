@@ -32,3 +32,30 @@ def test_matching_weapon_branches_share_ordinary_points():
     result=route(catalog,PassiveRouteRequest(build_id=BID,tree_revision='0_5',target_node_ids=[3],
         ordinary_points_available=0,allocation_mode=2,weapon_set_points_available=1))
     assert result.status=='route_found' and result.ordinary_points_delta==0 and result.weapon_set_points_delta==1
+
+
+def test_other_weapon_branch_cannot_be_used_as_free_travel():
+    catalog=NativeCatalog(tree_version='0_5',nodes=[node(1,[2],True),node(2,[1,3],True,2),node(3,[2,4]),node(4,[3])],
+        gems=[],runes=[],class_start_node_id=1)
+    query=PassiveRouteRequest(build_id=BID,tree_revision='0_5',target_node_ids=[4],ordinary_points_available=5,
+        allocation_mode=1,weapon_set_points_available=5)
+    assert route(catalog,query).status=='no_route'
+
+
+def test_candidate_generation_includes_full_regular_and_existing_weapon_branches():
+    from poe2_companion.passive_candidates import PassiveCandidatesRequest,discover
+    nodes=[node(1,[2,10],True),node(2,[1,3]),node(3,[2]),node(10,[1,11],True,1),node(11,[10,12],True,1),node(12,[11])]
+    catalog=NativeCatalog(tree_version='0_5',nodes=nodes,gems=[],runes=[],class_start_node_id=1)
+    query=PassiveCandidatesRequest(build_id=BID,tree_revision='0_5',ordinary_points_available=5,weapon_set_1_points_available=5,limit=2)
+    rows=[]
+    while True:
+        page=discover(catalog,query);rows+=page.candidates
+        if page.next_offset is None:break
+        query.offset=page.next_offset
+    found={(r.target_node_id,r.allocation_mode):r for r in rows}
+    assert (3,0) in found and (12,1) in found
+    assert found[3,0].total_new_path_nodes==2
+    assert found[12,1].total_new_path_nodes==1 and found[12,1].start_landmark=='Node 11'
+    assert (12,0) not in found and (12,2) not in found
+    assert found[3,2].status=='weapon_point_budget_unreported'
+    assert len(found)==len(rows)==page.total_candidates

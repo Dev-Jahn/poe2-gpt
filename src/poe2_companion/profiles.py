@@ -90,6 +90,7 @@ class BuildProfile(DTO):
     source: Literal['private_native_loaders_without_combat_calculation'] = 'private_native_loaders_without_combat_calculation'
     content_is_live_state: Literal[False] = False
     calculated_metrics_available: Literal[False] = False
+    requirement_scope: Literal['native_per_gem_values_only_aggregate_and_build_modifiers_require_calculation'] = 'native_per_gem_values_only_aggregate_and_build_modifiers_require_calculation'
     raw_payload_exposed: Literal[False] = False
     next_action: Literal['select_discovered_skill_instance_for_calculation'] = 'select_discovered_skill_instance_for_calculation'
 

@@ -4,7 +4,7 @@ from pydantic import Field, model_validator
 from .builds import DTO, bounded_dto
 from .subjects import CalculationTarget
 from .engine_models import EngineSnapshot
-from .recovery import RecoveryRequest, RecoveryResult, DamageEvent, RecoveryFlow, Resource, Seconds, analyze
+from .recovery import RecoveryRequest, RecoveryResult, DamageEvent, RecoveryFlow, Resource, Seconds, CannotAttackWindow, analyze
 from .workflow_store import WorkflowError
 
 
@@ -23,6 +23,7 @@ class NativeRecoveryRequest(DTO):
     resources: Annotated[list[InitialResource],Field(min_length=1,max_length=3)]
     incoming_hits: Annotated[list[DamageEvent],Field(max_length=128)] = Field(default_factory=list)
     attack_times: Annotated[list[Seconds],Field(max_length=128)] = Field(default_factory=list)
+    cannot_attack_windows: Annotated[list[CannotAttackWindow],Field(max_length=16)] = Field(default_factory=list)
     # Flow rates and schedules remain explicit; instantaneous native leech
     # potential alone cannot establish duration, kill credit or hit uptime.
     flows: Annotated[list[RecoveryFlow],Field(max_length=32)] = Field(default_factory=list)
@@ -92,7 +93,8 @@ def bind(request: NativeRecoveryRequest,snapshot: EngineSnapshot) -> NativeRecov
     try:
         query=RecoveryRequest.model_validate(dict(calculation_id=request.calculation_id,side=request.side,scenario=request.scenario,
             duration_seconds=request.duration_seconds,resources=states,incoming_hits=request.incoming_hits,attacks=attacks,
-            flows=request.flows,mana_leech_expires_at_full=request.mana_leech_expires_at_full,inputs_evidence=request.inputs_evidence))
+            flows=request.flows,cannot_attack_windows=request.cannot_attack_windows,
+            mana_leech_expires_at_full=request.mana_leech_expires_at_full,inputs_evidence=request.inputs_evidence))
     except ValueError:raise WorkflowError('native_recovery_schedule_incompatible_with_resources') from None
     recovery=analyze(query,snapshot)
     recovery.uncertainty=[u for u in recovery.uncertainty if u!='resource_parameters_are_explicit_inputs']

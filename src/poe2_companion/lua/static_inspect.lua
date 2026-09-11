@@ -17,7 +17,7 @@ end
 local aliases={ghost_shroud_lost_recently='conditionLostGhostShroudRecently',
  refutation_active='conditionRefutationActive',refutation_ward_spent='refutationWardSpent',
  tempest_bell_prior_hits='tempestBellPriorHits',tempest_bell_knockback_metres='tempestBellKnockbackMetres',
- enemy_maimed='conditionEnemyMaimed',enemy_blinded='conditionEnemyBlinded',
+ enemy_maimed='conditionEnemyMaimed',enemy_blinded='conditionEnemyBlinded',enemy_isolated='conditionEnemyIsolated',
  wind_dancer_stages='windDancerStacks',impale_magnitude='companionImpaleMagnitude',
  leech_resistance_percent='companionLeechResistance',onslaught_active='buffOnslaught',
  thrill_of_the_kill_active='companionThrillOfTheKillActive',culling_strike_recent_cull='companionCullingStrikeRecentCull'}

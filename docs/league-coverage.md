@@ -1,7 +1,7 @@
 # Forbidden Rites calculation coverage
 
 The 0.10 integration targets PoE2 0.5.5 with compatibility revision
-`forbidden-rites-0.5.5-v4`. Game data, parsed text, calculation coverage, and
+`forbidden-rites-0.5.5-v5`. Game data, parsed text, calculation coverage, and
 complete character input are separate requirements. An imported character can
 have current data while still lacking enough information for a verified upgrade.
 

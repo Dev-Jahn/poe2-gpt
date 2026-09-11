@@ -43,3 +43,27 @@ def test_native_self_conflicts_are_reported_without_manually_requesting_rules():
     blind=next(f for f in result.findings if f.rule_id=='self_blind_requires_infliction')
     assert blind.reason=='blind_source_unknown' and blind.status=='conditional'
     assert next(m for m in result.metrics if m.name=='EnergyShield').coverage=='certified_for_snapshot'
+
+
+def test_guaranteed_target_exception_is_a_separate_unproven_scenario():
+    query=RiskRequest(calculation_id='calc_'+'1'*32,intended_rules=['critical_event_requires_nonzero_chance'],
+        automatic_checks=False,guaranteed_critical_target_exception=True)
+    result=analyze(query,snapshot())
+    assert result.findings[0].status=='conditional'
+    assert result.findings[0].reason=='guaranteed_target_exception_requires_native_scenario'
+    assert not result.certified
+
+
+def test_full_effect_graph_is_losslessly_paged_under_ordinary_json_limit():
+    from poe2_companion.builds import tool_json_bytes
+    query=RiskRequest(calculation_id='calc_'+'1'*32,intended_rules=['critical_event_requires_nonzero_chance',
+        'player_kill_requires_player_credit','self_blind_requires_infliction','charge_consumer_requires_matching_supply'],
+        kill_credit_actor='spirit_vessel',blind_source='self',effect_limit=16,
+        charge_supplies=[{'producer':'spirit_vessel','recipient':'spirit_vessel','generated_type':'endurance','converted_type':'power','events_per_second':9999.9999999}]*16)
+    edges=[]
+    while True:
+        result=analyze(query,snapshot());assert tool_json_bytes(result)<=8192
+        edges+=result.effect_graph
+        if result.next_effect_offset is None:break
+        assert result.next_effect_offset>query.effect_offset;query.effect_offset=result.next_effect_offset
+    assert len(edges)==result.effect_graph_total==17

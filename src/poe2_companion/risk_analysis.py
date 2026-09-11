@@ -1,7 +1,7 @@
 """Rule-scoped explanations. Presence in a catalog never certifies mechanics."""
 from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
-from .builds import DTO, StatName
+from .builds import DTO, StatName, bounded_dto, tool_json_bytes
 from .subjects import Actor, SubjectBinding
 from .engine_models import ENGINE_COMMIT,ENGINE_DATA_COMMIT,EngineSnapshot
 
@@ -30,6 +30,9 @@ class RiskRequest(DTO):
     required_charge_events_per_second: Annotated[float,Field(ge=0,le=10000,allow_inf_nan=False)] | None = None
     event_evidence: Literal['hypothesis','user_reported'] = 'hypothesis'
     automatic_checks: bool = True
+    guaranteed_critical_target_exception: bool | None = None
+    effect_offset: Annotated[int,Field(ge=0,le=34)] = 0
+    effect_limit: Annotated[int,Field(ge=1,le=16)] = 8
 
     @model_validator(mode='after')
     def unique_rules(self) -> Self:
@@ -55,7 +58,7 @@ class RuleFinding(DTO):
     reason: Literal['zero_critical_chance','critical_chance_unavailable','non_player_kill_credit',
         'kill_credit_unknown','self_cannot_inflict_blind','external_blind_is_separate',
         'blind_source_unknown','charge_supply_missing','charge_supply_below_demand',
-        'charge_rate_is_not_uptime','condition_satisfied_under_inputs']
+        'charge_rate_is_not_uptime','condition_satisfied_under_inputs','guaranteed_target_exception_requires_native_scenario']
     next_action: Literal['change_critical_source_and_recalculate','identify_event_owner',
         'declare_external_blind_source','restore_matching_charge_supply','supply_charge_consumption_rate',
         'validate_event_schedule','none']
@@ -91,8 +94,11 @@ class RiskResult(DTO):
     metrics: Annotated[list[ScopedMetric],Field(max_length=12)]
     findings: Annotated[list[RuleFinding],Field(max_length=4)]
     effect_graph: Annotated[list[EffectEdge],Field(max_length=34)]
+    effect_graph_total: int
+    next_effect_offset: int | None
     certified: bool
     global_confidence_score: None = None
+    critical_chance_scope: Literal['selected_subject_and_configured_target_not_all_enemies'] = 'selected_subject_and_configured_target_not_all_enemies'
 
 
 def analyze(request: RiskRequest, snapshot: EngineSnapshot) -> RiskResult:
@@ -117,6 +123,8 @@ def analyze(request: RiskRequest, snapshot: EngineSnapshot) -> RiskResult:
             subject=snapshot.subject.evaluated if snapshot.subject else None
             chance=values.get('CritChance') if subject and subject.actor_ref=='player' else None
             if chance is None: add(rule,'conditional','critical_chance_unavailable','change_critical_source_and_recalculate','native_snapshot')
+            elif chance==0 and request.guaranteed_critical_target_exception is True:
+                add(rule,'conditional','guaranteed_target_exception_requires_native_scenario','validate_event_schedule')
             elif chance==0: add(rule,'blocked','zero_critical_chance','change_critical_source_and_recalculate','native_snapshot')
             else: add(rule,'satisfied_under_inputs','condition_satisfied_under_inputs','validate_event_schedule','native_snapshot')
         elif rule=='player_kill_requires_player_credit':
@@ -158,8 +166,13 @@ def analyze(request: RiskRequest, snapshot: EngineSnapshot) -> RiskResult:
         metrics.append(ScopedMetric(name=name,value=value,coverage=coverage,limitation=limitation))
     requirement_codes={'level_requirement','attribute_requirement','gem_level_requirement','class_requirement','reservation_invalid'}
     requirements: Literal['pass','fail','indeterminate'] = 'fail' if any(i.code in requirement_codes for i in snapshot.issues) else 'pass' if snapshot.validation=='pass' else 'indeterminate'
-    return RiskResult(calculation_id=request.calculation_id,subject=snapshot.subject,
+    end=request.effect_offset+request.effect_limit
+    result=RiskResult(calculation_id=request.calculation_id,subject=snapshot.subject,
         axes=ValidationAxes(identity=identity,equipment=snapshot.equipment_validity or snapshot.validation,
             requirements=requirements,mechanics=snapshot.validation,scenario_evidence=request.event_evidence),
-        metrics=metrics,findings=findings,effect_graph=edges,
+        metrics=metrics,findings=findings,effect_graph=edges[request.effect_offset:end],effect_graph_total=len(edges),
+        next_effect_offset=end if end<len(edges) else None,
         certified=snapshot.validation=='pass' and identity=='matched' and not findings)
+    while tool_json_bytes(result)>8192 and result.effect_graph:
+        result.effect_graph.pop();result.next_effect_offset=request.effect_offset+len(result.effect_graph)
+    return bounded_dto(result)

@@ -176,7 +176,7 @@ class EngineClient:
                 data=bytearray()
                 async for chunk in response.aiter_bytes():
                     data.extend(chunk)
-                    if len(data)>128*1024:
+                    if len(data)>(4*1024*1024 if path=='/passive-order' else 128*1024):
                         raise EngineError('engine_protocol_error')
                 if response.status_code!=200:
                     code=json.loads(data).get('code')

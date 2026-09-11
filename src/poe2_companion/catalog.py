@@ -92,6 +92,7 @@ def route(catalog: NativeCatalog, request: PassiveRouteRequest) -> PassiveRoute:
             for other_id in sorted(nodes[identifier].linked_node_ids):
                 other=nodes.get(other_id)
                 if (other is None or other_id in parent or other.special_allocation_rule
+                        or (other_id in allocated and modes[other_id] not in (0,request.allocation_mode))
                         or (request.allocation_mode and other.type in {'Keystone','Socket'})
                         or other.ascendancy!=goal.ascendancy or other.type in {'ClassStart','AscendClassStart'}): continue
                 parent[other_id]=identifier;queue.append(other_id)

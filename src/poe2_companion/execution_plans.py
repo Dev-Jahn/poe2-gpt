@@ -126,7 +126,8 @@ async def labels_for(workflow: WorkflowService,document: DecisionDocument) -> di
     for start in range(0,len(ids),12):
         profile=await workflow.engine.profile(ProfileRequest(build_id=document.request.base_build_id,skill_instance_ids=ids[start:start+12],limit=12))
         if profile.snapshot_digest!=document.request.base_snapshot_digest: raise WorkflowError('execution_snapshot_mismatch')
-        for skill in profile.skill_instances: labels[skill.skill_instance_id]=skill.name
+        for skill in profile.skill_instances:
+            labels[skill.skill_instance_id]=f'{skill.name} (스킬 세트 {skill.skill_set_id}, 그룹 {skill.group_index}, 젬 {skill.gem_index})'
     node_ids: set[int]=set()
     for edit in document.request.edits:
         for field in ['node_ids','allocate_node_ids','refund_node_ids']:
@@ -169,6 +170,9 @@ async def labels_for(workflow: WorkflowService,document: DecisionDocument) -> di
                 for entity in [*page.gems,*page.runes]: labels[entity.catalog_id]=entity.name
                 if page.next_offset is None:break
                 offset=page.next_offset
+    required_labels=set(ids)|{'node:'+str(n) for n in node_ids}|{'item:'+str(i) for i in saved_ids}|set(support_ids)|set(rune_ids)
+    required_labels.update(e.source.listing_ref for e in document.request.edits if e.type=='equip_item' and e.source.kind=='retained_trade_listing')
+    if not required_labels<=labels.keys():raise WorkflowError('execution_entity_labels_unavailable')
     return labels
 
 
@@ -239,6 +243,12 @@ async def create(request: ExecutionRequest,workflow: WorkflowService,owner: str)
         tree_order=await workflow.engine.static_request('/passive-order',PassiveOrderRequest(build_id=document.request.base_build_id,
             tree_revision=document.request.tree_revision,actions=tree_actions),PassiveOrderResult)
         if tree_order.status!='verified':blocked.append('passive_click_order:'+tree_order.status)
+    labels={}
+    if not blocked:
+        try:labels=await labels_for(workflow,document)
+        except WorkflowError as exc:
+            if str(exc)!='execution_entity_labels_unavailable':raise
+            blocked.append(str(exc))
     steps: list[ExecutionStep]=[]
     def append(phase: Phase,text: str,edit_index: int | None = None,refs: list[str] | None = None,temporary: bool = False) -> None:
         steps.append(ExecutionStep(index=len(steps),phase=phase,instruction=text,edit_index=edit_index,
@@ -246,7 +256,6 @@ async def create(request: ExecutionRequest,workflow: WorkflowService,owner: str)
     if blocked:
         append('prerequisite','진행을 멈추고 미확인 해금·예산·검증 또는 실전 악화 보고를 먼저 해결하세요. 같은 실패 계획을 반복 적용하지 마세요.')
     else:
-        labels=await labels_for(workflow,document)
         def append_edit(index: int) -> None:
             edit=document.request.edits[index]
             tree_steps=[action for action in tree_order.actions if action.edit_index==index] if tree_order else []
@@ -255,7 +264,9 @@ async def create(request: ExecutionRequest,workflow: WorkflowService,owner: str)
                     for start in range(0,len(tree_step.node_ids),5):
                         batch=tree_step.node_ids[start:start+5]
                         verb='할당' if tree_step.action=='allocate' else '반환'
-                        text=verb+' 순서: '+' → '.join(labels.get('node:'+str(n),'노드 '+str(n)) for n in batch)
+                        descriptions=tree_step.node_descriptions[start:start+5]
+                        landmark=tree_step.start_landmark if start==0 else tree_step.node_descriptions[start-1]
+                        text='시작 지점: '+landmark+' / '+verb+' 순서: '+' → '.join(descriptions)
                         append('apply',text,index,['node:'+str(n) for n in batch])
             else:
                 text,refs=edit_text(edit,labels);append('apply',text,index,refs)

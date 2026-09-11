@@ -90,3 +90,16 @@ def test_degeneration_is_not_silently_zero_and_depletion_time_is_continuous():
     result=integrate(query,True).outcomes[0]
     assert result.final==0. and result.first_depleted_at==3.
     assert result.damage_exceeding_available_resource==20.
+
+
+def test_cannot_attack_window_preserves_existing_leech_but_blocks_new_spend():
+    from poe2_companion.recovery import integrate
+    request=RecoveryRequest(calculation_id='calc_'+'1'*32,scenario='custom',duration_seconds=3.,
+        resources=[{'resource':'mana','maximum':100.,'initial':50.,'regeneration_per_second':0.}],
+        attacks=[{'at':1.,'mana_cost':10.},{'at':2.,'mana_cost':10.}],
+        cannot_attack_windows=[{'starts_at':0.5,'ends_at':2.}],
+        flows=[{'kind':'leech','resource':'mana','producer':'player','recipient':'player','starts_at':0.,'ends_at':3.,
+            'potential_per_second':5.,'source_skill_instance_id':'skill:s1:g1:n1'}])
+    case=integrate(request,False)
+    assert case.attacks_blocked_by_window==1 and case.affordable_attacks==1
+    assert case.attack_resource_coverage==0.5 and case.outcomes[0].final==55.

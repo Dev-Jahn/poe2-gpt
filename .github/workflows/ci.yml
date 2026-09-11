@@ -31,16 +31,17 @@ jobs:
       - run: python scripts/check_release.py
       - run: python -m pytest -q -rs --cov --cov-report=term:skip-covered
       - run: python -m build
-      - name: Verify the offline catalog is packaged
+      - name: Verify offline catalog and tool examples are packaged
         run: |
           python - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
           wheels = list(Path('dist').glob('*.whl'))
           assert len(wheels) == 1
-          path = 'poe2_companion/data/localization-ko.json'
           with ZipFile(wheels[0]) as wheel:
-              assert wheel.read(path) == (Path('src') / path).read_bytes()
+              for name in ('localization-ko.json', 'tool_examples.json'):
+                  path = 'poe2_companion/data/' + name
+                  assert wheel.read(path) == (Path('src') / path).read_bytes()
           PY
       - name: Check optional Compose configuration
         env:

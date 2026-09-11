@@ -90,6 +90,8 @@ class SupportPortfolio(DTO):
     full_plan_detail_tool: Literal['get_build_plan'] = 'get_build_plan'
     # Each retained plan is independently retrievable even if labels are paged.
     experiment_ids: Annotated[list[ExperimentID], Field(max_length=6)]
+    configuration_fields: list[str] = Field(default_factory=list)
+    conditional_effect_uptime_proven: Literal[False] = False
     next_action: Literal['price_socket_and_gem_bill_then_validate_joint_purchase_plan'] = 'price_socket_and_gem_bill_then_validate_joint_purchase_plan'
 
 
@@ -140,7 +142,8 @@ async def compare(request: SupportPortfolioRequest, workflow: WorkflowService, o
     for rank,row in enumerate(eligible,1): row.objective_rank = rank
     response = SupportPortfolio(base_build_id=request.base_build_id,target=request.target,comparisons=comparisons,
         objective_metric=objective,primary_experiment_id=eligible[0].experiment_id if eligible else None,
-        evaluated_alternatives=len(results),experiment_ids=[r.experiment_id for r in results])
+        evaluated_alternatives=len(results),experiment_ids=[r.experiment_id for r in results],
+        configuration_fields=sorted(request.configuration.model_dump(exclude_none=True)) if request.configuration else [])
     while True:
         try: return bounded_dto(response)
         except BuildError:
