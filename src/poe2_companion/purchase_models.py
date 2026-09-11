@@ -106,6 +106,7 @@ class CandidateDecision(DTO):
     gold_sufficient: bool | None
     price_is_realized_transaction: Literal[False] = False
     qualified_in_all_scenarios: bool
+    user_observation_status: Literal['not_reported','adverse_outcome_reported','requires_evidence_review'] = 'not_reported'
     on_robust_frontier: bool = False
 
 
@@ -144,6 +145,7 @@ class PurchaseCandidateSummary(DTO):
     budget_status: Literal['within_estimated_budget','over_budget','incomplete_costs']
     liquid_currency_shortfall: float | None
     qualified_in_all_scenarios: bool
+    user_observation_status: Literal['not_reported','adverse_outcome_reported','requires_evidence_review'] = 'not_reported'
     on_robust_frontier: bool
     score_minimum: float | None
     score_maximum: float | None

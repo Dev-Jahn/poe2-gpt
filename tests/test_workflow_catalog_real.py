@@ -18,3 +18,15 @@ async def test_full_native_catalog_and_requirements_without_calculation(real_eng
     before=real_engine.inspector.process_runs
     await real_engine.inspector.document(BID,catalog=True)
     assert before==real_engine.inspector.process_runs
+    import httpx
+    from poe2_companion.engine_worker import worker_app
+    from poe2_companion.engine import EngineClient
+    from poe2_companion.passive_execution import PassiveOrderRequest,PassiveOrderResult
+    client=EngineClient('/unused',http=httpx.AsyncClient(transport=httpx.ASGITransport(app=worker_app(real_engine)),base_url='http://pob-worker'))
+    try:
+        ordered=await client.static_request('/passive-order',PassiveOrderRequest(build_id=BID,tree_revision='0_5',actions=[
+            {'edit_index':0,'action':'allocate','node_ids':[target.node_id]},
+            {'edit_index':1,'action':'refund','node_ids':[target.node_id]}]),PassiveOrderResult)
+        assert ordered.status=='verified' and ordered.actions[0].node_ids==[target.node_id]
+        assert before==real_engine.inspector.process_runs
+    finally:await client.close()

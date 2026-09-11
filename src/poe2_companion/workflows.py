@@ -5,7 +5,7 @@ import secrets
 import time
 from typing import Annotated, Literal
 from pydantic import Field, model_validator
-from .builds import DTO, bounded_dto
+from .builds import DTO, bounded_dto, tool_json_bytes
 from .capabilities import digest, canonical
 from .engine import EngineClient, deltas, calculation_context
 from .engine_protocol import WorkerRequest, ExperimentVariantJob, private_trade_item
@@ -114,17 +114,35 @@ class WorkflowService:
             expires_at_epoch=now+(30*86400 if request.persist_decision else 3600))
         self.store.save(owner,document)
         primary={'Life','Mana','EnergyShield','TotalDPS','CombinedDPS','Str','Dex','Int'}
+        subject=after.subject if after else baseline.subject
+        if subject and subject.evaluated and subject.evaluated.actor_ref in {'minion','spirit_vessel'}:
+            primary-= {'TotalDPS','CombinedDPS'}
+            primary|= {'MinionTotalDPS','MinionCombinedDPS'}
         select=lambda values:[v for v in values if v.name in primary][:8]
-        return bounded_dto(ExperimentResult(experiment_id=identifier,base_build_id=request.base_build_id,
+        result=ExperimentResult(experiment_id=identifier,base_build_id=request.base_build_id,
             base_snapshot_digest=request.base_snapshot_digest,plan_digest=plan_hash,edit_count=len(request.edits),
-            audit=audit,calculation_id=calculation.calculation_id,
+            audit=audit.model_copy(deep=True),calculation_id=calculation.calculation_id,
             calculation_expires_at_epoch=calculation.diagnostics_expires_at_epoch,
             baseline_metrics=select(baseline.stats),candidate_metrics=select(after.stats) if after else [],
             deltas=select(calculation.deltas),subject=after.subject if after else baseline.subject,
             candidate_validation=after.validation if after else 'not_evaluated',
             certified=bool(after and after.validation=='pass' and after.subject and after.subject.status=='matched'
                 and audit.transition_validation in {'no_equipment_transition','verified'}),
-            artifact_digest=self.artifact_digest(document),decision_persisted=request.persist_decision))
+            artifact_digest=self.artifact_digest(document),decision_persisted=request.persist_decision)
+        # Retain the complete audit above. The initial MCP response is a summary;
+        # its lossless validation page is bound to the same artifact digest.
+        while tool_json_bytes(result)>8192:
+            transition=result.audit.equipment_transition
+            if result.audit.applied_edits:
+                result.audit.applied_edits.pop()
+            elif transition and transition.actions:
+                transition.actions.pop()
+            elif result.audit.failures:
+                result.audit.failures.pop()
+            else:
+                break
+            result.audit_truncated=True
+        return bounded_dto(result)
 
     @staticmethod
     def artifact_digest(document: DecisionDocument) -> str:
@@ -148,7 +166,7 @@ class WorkflowService:
             for index,edit in enumerate(document.request.edits):
                 fields=edit.model_dump(mode='json');fields.pop('type')
                 actions.append(f'{index+1}. {labels[edit.type]} — '+canonical(fields))
-            text='\n'.join(['적용 전: 같은 원본과 요구 조건을 확인하세요.',*actions,
+            text='\n'.join(['아래는 원본 변경 목록입니다. 임시 장비를 포함한 실제 적용 순서는 create_build_execution_plan으로 확인하세요.',*actions,
                 '중단 조건: 요구 능력치·자원·호환성 검증에 실패하면 다음 단계를 진행하지 마세요.',
                 '적용 후: 완료한 단계 번호를 기록하고 캐릭터를 다시 조회하세요. 제안만으로 현재 상태를 바꾸지 않습니다.'])
         # UTF-8 byte bounds are enforced separately from character pagination.

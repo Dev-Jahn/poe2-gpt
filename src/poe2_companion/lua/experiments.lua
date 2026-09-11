@@ -31,7 +31,7 @@ local function graphConnected(build,index)
   end
  end
 end
-function M.apply(build,request,items,slotName,selected,selectItem)
+function M.apply(build,request,items,slotName,selected,selectItem,deferOrder)
  local used,ascUsed=build.spec:CountAllocNodes()
  local audit={status='valid_changeset',failures=array(),applied_edits=array(),base_unchanged=true,
   transition_validation='no_equipment_transition'}
@@ -85,10 +85,10 @@ function M.apply(build,request,items,slotName,selected,selectItem)
     if mode~=0 and (node.type=='Keystone' or node.type=='Socket') then fail(index,'unsupported_node_rule') end
     node.alloc=true;node.allocMode=mode;build.spec.allocNodes[id]=node
    end
-   graphConnected(build,index)
+   if not deferOrder then graphConnected(build,index) end
    build.spec:BuildAllDependsAndPaths()
    local now,ascNow=build.spec:CountAllocNodes()
-   if now-used>request.ordinary_points_available or ascNow-ascUsed>request.ascendancy_points_available then fail(index,'point_budget') end
+   if not deferOrder and (now-used>request.ordinary_points_available or ascNow-ascUsed>request.ascendancy_points_available) then fail(index,'point_budget') end
   elseif edit.type=='equip_item' or edit.type=='unequip_item' then
    local id=0
    if edit.type=='equip_item' then
@@ -127,6 +127,10 @@ function M.apply(build,request,items,slotName,selected,selectItem)
   audit.applied_edits[#audit.applied_edits+1]={edit_index=index-1,type=edit.type,status='applied_to_private_clone'}
  end
  local now,ascNow=build.spec:CountAllocNodes()
+ if deferOrder then
+  graphConnected(build,#request.edits)
+  if now-used>request.ordinary_points_available or ascNow-ascUsed>request.ascendancy_points_available then fail(#request.edits,'point_budget') end
+ end
  audit.ordinary_points_delta=now-used;audit.ascendancy_points_delta=ascNow-ascUsed
  return audit,supportChecks
 end

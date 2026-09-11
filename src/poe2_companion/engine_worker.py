@@ -216,7 +216,13 @@ def worker_app(engine: PrivateEngine):
                 data.extend(chunk)
                 if len(data)>65536:
                     raise EngineError('engine_invalid_request')
-            if request.url.path in {'/catalog','/passive-route'}:
+            if request.url.path=='/passive-order':
+                from .passive_execution import PassiveOrderRequest,order
+                order_request=PassiveOrderRequest.model_validate_json(data)
+                document,_=await engine.inspector.document(order_request.build_id,catalog=True)
+                if document.catalog is None: raise EngineError('engine_protocol_error')
+                result=order(document.catalog,order_request)
+            elif request.url.path in {'/catalog','/passive-route'}:
                 from .catalog import page, route
                 query=(CatalogRequest if request.url.path=='/catalog' else PassiveRouteRequest).model_validate_json(data)
                 document,_=await engine.inspector.document(query.build_id,catalog=True)
@@ -242,7 +248,8 @@ def worker_app(engine: PrivateEngine):
         finally: CURRENT.reset(token)
     return Starlette(routes=[Route('/health',health),Route('/batch',observed,methods=['POST']),
         Route('/inspect',observed,methods=['POST']),Route('/profile',observed,methods=['POST']),
-        Route('/catalog',observed,methods=['POST']),Route('/passive-route',observed,methods=['POST'])])
+        Route('/catalog',observed,methods=['POST']),Route('/passive-route',observed,methods=['POST']),
+        Route('/passive-order',observed,methods=['POST'])])
 
 
 def main():

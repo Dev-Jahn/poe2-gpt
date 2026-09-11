@@ -99,8 +99,8 @@ class OwnedHelper(DTO):
 
 
 class TransitionAction(DTO):
-    slot: EngineSlot
-    action: Literal['equip', 'unequip']
+    slot: EngineSlot | None = None
+    action: Literal['equip', 'unequip', 'apply_edit']
     saved_item_id: Annotated[int, Field(ge=1, le=1000000)] | None = None
     edit_index: Annotated[int, Field(ge=0, le=31)] | None = None
     temporary: bool
@@ -180,6 +180,7 @@ class ExperimentResult(DTO):
     base_snapshot_digest: Digest
     plan_digest: Digest
     audit: ExperimentAudit
+    audit_truncated: bool = False
     edit_count: int
     calculation_id: Annotated[str, Field(pattern=r'^calc_[0-9a-f]{32}$')]
     calculation_expires_at_epoch: int

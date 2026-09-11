@@ -14,7 +14,8 @@ Number = Annotated[float,Field(ge=0,le=1e12,allow_inf_nan=False)]
 Seconds = Annotated[float,Field(ge=0,le=120,allow_inf_nan=False)]
 Resource = Literal['life','mana','energy_shield']
 Uncertainty = Literal['mana_leech_expiry_unknown','damage_schedule_is_assumed',
-    'max_hit_not_derived_from_post_mitigation_schedule','resource_parameters_are_explicit_inputs']
+    'max_hit_not_derived_from_post_mitigation_schedule','resource_parameters_are_explicit_inputs',
+    'native_parameter_coverage_is_reported_separately']
 
 
 class ResourceState(DTO):
@@ -54,6 +55,9 @@ class RecoveryFlow(DTO):
     ends_at: Seconds
     potential_per_second: Number
     source_skill_instance_id: Annotated[str,Field(pattern=r'^skill:s[1-9][0-9]{0,3}:g[1-9][0-9]{0,3}:n[1-9][0-9]{0,3}$')]
+    # A copied ES leech instance can share the uncertain lifetime of its
+    # originating mana instance. This is an explicit scenario assumption.
+    expires_with_full_mana: bool = False
 
     @model_validator(mode='after')
     def ordered(self) -> Self:
@@ -84,6 +88,8 @@ class RecoveryRequest(DTO):
             raise ValueError('attack_outside_scenario')
         if any(f.ends_at>self.duration_seconds or f.resource not in resources for f in self.flows):
             raise ValueError('flow_outside_scenario')
+        if any(f.expires_with_full_mana and (f.kind!='leech' or 'mana' not in resources) for f in self.flows):
+            raise ValueError('copied_leech_requires_mana_state')
         if self.scenario=='no_hit' and self.incoming_hits: raise ValueError('no_hit_scenario_has_hits')
         if self.scenario in {'continuous_hits','ritual'} and len(self.incoming_hits)<2:
             raise ValueError('repeated_hit_schedule_required')
@@ -139,21 +145,28 @@ def integrate(request: RecoveryRequest, expires_at_full: bool) -> RecoveryCase:
             times.add(min(event.at+definitions[event.resource].recharge_delay_seconds,request.duration_seconds))
     previous=0.0
     for stamp in sorted(times):
-        delta=stamp-previous
-        for name,row in definitions.items():
-            flows=[(i,f) for i,f in enumerate(request.flows) if f.resource==name and i not in ended
-                and f.starts_at<=previous<f.ends_at]
-            if expires_at_full and name=='mana' and current[name]>=row.maximum:
-                ended.update(i for i,f in flows if f.kind=='leech')
-                flows=[(i,f) for i,f in flows if i not in ended]
-            recharge=max(0.0,stamp-max(previous,recharge_ready[name]))
-            potential=row.regeneration_per_second*delta+row.recharge_per_second*recharge
-            potential+=sum(flow.potential_per_second*delta for _,flow in flows)
-            recovered=min(max(0.0,row.maximum-current[name]),potential)
-            current[name]+=recovered;effective[name]+=recovered;wasted[name]+=potential-recovered
-            if row.recharge_per_second>0: recharge_time[name]+=recharge
-            if expires_at_full and name=='mana' and current[name]>=row.maximum:
-                ended.update(i for i,f in flows if f.kind=='leech')
+        cursor=previous
+        while cursor<stamp:
+            active=[(i,f) for i,f in enumerate(request.flows) if i not in ended and f.starts_at<=cursor<f.ends_at]
+            linked=[i for i,f in active if f.kind=='leech' and (f.resource=='mana' or f.expires_with_full_mana)]
+            if expires_at_full and 'mana' in current and current['mana']>=definitions['mana'].maximum:
+                ended.update(linked);active=[(i,f) for i,f in active if i not in ended];linked=[]
+            rates={name:row.regeneration_per_second+(row.recharge_per_second if cursor>=recharge_ready[name] else 0.)
+                +sum(f.potential_per_second for _,f in active if f.resource==name) for name,row in definitions.items()}
+            delta=stamp-cursor
+            # Split exactly when mana becomes full, including in the middle
+            # of an interval, before granting copied ES recovery afterwards.
+            if expires_at_full and linked and rates.get('mana',0.)>0:
+                delta=min(delta,max(0.,definitions['mana'].maximum-current['mana'])/rates['mana'])
+            if delta<=0:
+                ended.update(linked)
+                continue
+            for name,row in definitions.items():
+                potential=rates[name]*delta
+                recovered=min(max(0.0,row.maximum-current[name]),potential)
+                current[name]+=recovered;effective[name]+=recovered;wasted[name]+=potential-recovered
+                if row.recharge_per_second>0 and cursor>=recharge_ready[name]:recharge_time[name]+=delta
+            cursor+=delta
         # A hit at the same timestamp precedes a planned attack. This ordering
         # is explicit and deterministic, not an inferred server combat tick.
         for event in request.incoming_hits:

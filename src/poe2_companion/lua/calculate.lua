@@ -146,12 +146,24 @@ local function inspect(expected, order, sequenceOk)
  end
  local mainSkill=env.player.mainSkill
  local effect=mainSkill and mainSkill.activeEffect and mainSkill.activeEffect.grantedEffect
+ if subjects.actor(mainSkill)=='spirit_vessel' and mainSkill.minion.mainSkill then
+  effect=mainSkill.minion.mainSkill.activeEffect.grantedEffect
+  -- Generic player attack/cost numbers must not be mistaken for a copied
+  -- Vessel attack. Copy DPS uses the explicit Minion* metric namespace.
+  local personalOffence={TotalDPS=true,CombinedDPS=true,FullDPS=true,Speed=true,AverageDamage=true,CritChance=true,CritMultiplier=true,
+   LifeLeechRate=true,ManaLeechRate=true,EnergyShieldLeechRate=true,
+   HitChance=true,ManaCost=true,ESCost=true,LifeCost=true,ManaPerSecondCost=true,ESPerSecondCost=true,AreaOfEffectRadius=true}
+  local filtered=array()
+  for _,stat in ipairs(stats) do if not personalOffence[stat.name] then filtered[#filtered+1]=stat end end
+  stats=filtered
+ end
  local selectedSkill=nil
  -- Resolve identity from immutable engine data; saved labels are private.
  local canonicalEffect=effect and effect.id and build.data.skills[effect.id]
  if canonicalEffect then
   selectedSkill={skill_id=effect.id,name=canonicalEffect.name,actor=subjects.actor(mainSkill)}
-  local gem=mainSkill.activeEffect.srcInstance and mainSkill.activeEffect.srcInstance.gemData
+  local source=subjects.actor(mainSkill)=='spirit_vessel' and mainSkill.minion.mainSkill.activeEffect or mainSkill.activeEffect
+  local gem=source.srcInstance and source.srcInstance.gemData
   if gem and type(gem.name)=='string' then selectedSkill.gem_name=gem.name end
  end
  if mainSkill and mainSkill.minion and type(out.Minion)=='table' then
@@ -388,12 +400,21 @@ local function evaluateExperiment()
   load()
   local originals={};for _,slot in ipairs(slotKeys) do originals[slot]=selected(slotName(slot)) end
   local edits=dofile(companionRoot..'experiments.lua')
-  local audit,checks=edits.apply(build,job.experiment,job.experiment_items,slotName,selected,selectItem)
+  local gear,other=false,false
+  for _,edit in ipairs(job.experiment.edits) do
+   if edit.type=='equip_item' or edit.type=='unequip_item' then gear=true else other=true end
+  end
+  local mixed=gear and other
+  local audit,checks=edits.apply(build,job.experiment,job.experiment_items,slotName,selected,selectItem,mixed)
   refresh()
   selectionError=subjects.select(build,job.target,refresh)
   edits.validateSupports(checks)
   if audit.transition_validation=='requires_order_validation' then
-   audit.equipment_transition=dofile(companionRoot..'equipment_transition.lua').solve(build,job.experiment,originals,slotKeys,slotName,selected,selectItem,refresh,itemChecks)
+   if mixed then
+    audit.equipment_transition=dofile(companionRoot..'mixed_transition.lua').solve(build,job.experiment,job.experiment_items,originals,slotKeys,slotName,selected,selectItem,refresh,itemChecks,load,edits,dofile(companionRoot..'requirements.lua'))
+   else
+    audit.equipment_transition=dofile(companionRoot..'equipment_transition.lua').solve(build,job.experiment,originals,slotKeys,slotName,selected,selectItem,refresh,itemChecks)
+   end
    if audit.equipment_transition.status=='verified' then audit.transition_validation='verified' end
    selectionError=subjects.select(build,job.target,refresh)
   end

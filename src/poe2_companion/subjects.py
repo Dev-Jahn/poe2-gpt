@@ -14,6 +14,13 @@ class CalculationTarget(DTO):
     component_ref: EffectID | None = None
     weapon_set_id: Literal[1, 2]
     aggregation: Literal['single_skill', 'component_breakdown'] = 'single_skill'
+    actor_owner_instance_id: SkillInstanceID | None = None
+
+    @model_validator(mode='after')
+    def owner_scope(self) -> Self:
+        if self.actor_owner_instance_id is not None and self.actor_ref!='spirit_vessel':
+            raise ValueError('actor_owner_only_for_spirit_vessel')
+        return self
 
 
 class EvaluatedSubject(DTO):
@@ -22,6 +29,7 @@ class EvaluatedSubject(DTO):
     actor_ref: Actor
     component_ref: EffectID
     weapon_set_id: Literal[1, 2]
+    actor_owner_instance_id: SkillInstanceID | None = None
 
 
 class SubjectBinding(DTO):
@@ -30,7 +38,7 @@ class SubjectBinding(DTO):
     evaluated: EvaluatedSubject | None = None
     status: Literal['saved_default', 'matched', 'unavailable']
     reason: Literal['instance_not_found', 'instance_disabled', 'ambiguous_component',
-        'component_not_found', 'actor_not_supported', 'actor_mismatch', 'eligibility_changed'] | None = None
+        'component_not_found', 'actor_not_supported', 'actor_mismatch', 'eligibility_changed', 'aggregation_not_supported'] | None = None
     scenario_digest: Digest
     next_action: Literal['inspect_skill_instances', 'choose_component', 'supply_supported_actor', 'repair_skill_eligibility'] | None = None
 
@@ -42,6 +50,7 @@ class SubjectBinding(DTO):
             if (self.requested.skill_instance_id!=self.evaluated.skill_instance_id
                     or self.requested.actor_ref!=self.evaluated.actor_ref
                     or self.requested.weapon_set_id!=self.evaluated.weapon_set_id
+                    or (self.requested.actor_owner_instance_id is not None and self.requested.actor_owner_instance_id!=self.evaluated.actor_owner_instance_id)
                     or (self.requested.component_ref is not None and self.requested.component_ref!=self.evaluated.component_ref)):
                 raise ValueError('evaluated_subject_mismatch')
         if self.status=='unavailable' and self.evaluated is not None:

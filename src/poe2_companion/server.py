@@ -37,6 +37,7 @@ from .workflows import WorkflowService, PlanPageRequest, PlanPage, PlanTransitio
 from .workflow_store import DecisionStore, WorkflowError
 from .catalog_models import CatalogRequest, CatalogPage, PassiveRouteRequest, PassiveRoute
 from .recovery import RecoveryRequest, RecoveryResult, analyze as analyze_recovery
+from .native_recovery import NativeRecoveryRequest, NativeRecoveryResult, bind as bind_native_recovery
 from .risk_analysis import RiskRequest, RiskResult, analyze as analyze_risks
 from .observations import (ObservationRequest,ObservationRecord,ObservationPageRequest,ObservationPage,
     DeleteObservationRequest,record as record_observation,page as observation_page)
@@ -57,6 +58,10 @@ from .value_analysis import (SaleRequest, SaleAnalysis, CraftRequest, CraftAnaly
     sale as analyze_sale, crafting, rewards)
 from .workflow_telemetry import (WorkflowTelemetry, BeginTrace, TraceSummary, TraceStepRequest, TraceStepResult,
     TraceReference, TracePageRequest, TracePage, FinishTrace, summary as trace_summary)
+from .execution_plans import (ExecutionRequest, ExecutionSummary, ExecutionPageRequest, ExecutionPage,
+    ExecutionReference, create as create_execution, page as execution_page)
+from .rollback_plans import (RollbackRequest, RollbackSummary, RollbackPageRequest, RollbackPage,
+    RollbackReference, create as create_rollback, page as rollback_page)
 from .diagnostics import DiagnosticRequest, DiagnosticPage
 from .observability import ToolCounters, RuntimeStatus, ErrorTrace, recovery
 from .currency_models import Envelope, Leagues, Categories, PriceResponse, CurrencySearch, CurrencyQuote
@@ -86,6 +91,7 @@ EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'search_game_catalog': CatalogRequest,
     'plan_passive_route': PassiveRouteRequest,
     'analyze_recovery_scenario': RecoveryRequest,
+    'analyze_native_recovery_scenario': NativeRecoveryRequest,
     'analyze_build_risks': RiskRequest,
     'get_build_requirements': RequirementsRequest,
     'plan_build_progression': ProgressionRequest,
@@ -117,6 +123,12 @@ EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'finish_workflow_trace': FinishTrace,
     'cancel_workflow_trace': TraceReference,
     'delete_workflow_trace': TraceReference,
+    'create_build_execution_plan': ExecutionRequest,
+    'get_build_execution_plan': ExecutionPageRequest,
+    'delete_build_execution_plan': ExecutionReference,
+    'plan_build_rollback': RollbackRequest,
+    'get_build_rollback': RollbackPageRequest,
+    'delete_build_rollback': RollbackReference,
     'record_build_observation': ObservationRequest,
     'get_build_observations': ObservationPageRequest,
     'delete_build_observation': DeleteObservationRequest,
@@ -489,6 +501,11 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             return analyze_recovery(request,engine.receipts.snapshot(request.calculation_id,request.side))
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def analyze_native_recovery_scenario(request: NativeRecoveryRequest) -> NativeRecoveryResult:
+            """Bind resource capacities, regeneration, ES recharge and attack costs to an exact retained player skill, then integrate a finite hit schedule. Native parameter coverage remains explicit. Copied mana-to-ES leech can share uncertain full-mana expiry; evaluate both bounds. Supply hit/flow schedules as observations or hypotheses, never borrow another skill's leech or infer guaranteed Ritual sustain."""
+            return bind_native_recovery(request,engine.receipts.snapshot(request.calculation_id,request.side))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def search_game_catalog(request: CatalogRequest) -> CatalogPage:
             """Search the full pinned passive graph, native gem levels/requirements or rune identities. Always select entity_type. Use node_ids or catalog_id for exact details; page gem levels with level_offset. Korean names are verified catalog translations with English fallback. Game data presence is not proof that every mechanic calculates correctly."""
             return await engine.static_request('/catalog',request,CatalogPage)
@@ -542,6 +559,38 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             owner=workflow_owner(ctx)
             if (owner,request.trace_id) in telemetry.running: await telemetry.cancel(owner,request.trace_id)
             workflow.store.delete_artifact(owner,'workflow_trace',request.trace_id)
+            return DeletedDecision()
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
+        async def create_build_execution_plan(request: ExecutionRequest, ctx: Context) -> ExecutionSummary:
+            """Prepare at most one human execution route for a retained experiment. Use its proven equipment order including owned temporary helpers; keep machine references in the evidence appendix. Missing instill/ascendancy/socket unlocks, incomplete purchase quotes, invalid transitions and related adverse observations block execution. Report lost defences/recovery and explicit stop conditions. No game or purchase actions are performed."""
+            return await create_execution(request,workflow,workflow_owner(ctx))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_execution_plan(request: ExecutionPageRequest, ctx: Context) -> ExecutionPage:
+            """Recover all human steps or exact execution evidence with one artifact digest. source_revision_changed means new plan/observation evidence exists: rebuild the route before following old steps. Preparation and blocked prerequisites are distinct from executable changes."""
+            return execution_page(request,workflow.store,workflow_owner(ctx))
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False), structured_output=True)
+        async def delete_build_execution_plan(request: ExecutionReference, ctx: Context) -> DeletedDecision:
+            """Delete this owner's generated execution route; preserve the underlying calculation and observation records."""
+            workflow.store.delete_artifact(workflow_owner(ctx),'execution_plan',request.execution_id)
+            return DeletedDecision()
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
+        async def plan_build_rollback(request: RollbackRequest, ctx: Context) -> RollbackSummary:
+            """Compare two explicitly reported applied plans from the same immutable origin and subject. Require matched earlier stable and later adverse resource observations for the same encounter. Restore only differing reported target fields, preserving unchanged fields. Missing previous values point to the original snapshot; spent consumables are not refunded. Current character lookup and a new joint transition calculation remain required before execution. User reports are not causal proof."""
+            return create_rollback(request,workflow.store,workflow_owner(ctx))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_rollback(request: RollbackPageRequest, ctx: Context) -> RollbackPage:
+            """Recover complete minimal field differences and supporting success/failure evidence. A historical successful end state does not prove that today's rollback can be equipped in that order. source_revision_changed requires refreshing this plan."""
+            return rollback_page(request,workflow.store,workflow_owner(ctx))
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False), structured_output=True)
+        async def delete_build_rollback(request: RollbackReference, ctx: Context) -> DeletedDecision:
+            """Delete this owner's rollback artifact while preserving the original experiment and observation evidence."""
+            workflow.store.delete_artifact(workflow_owner(ctx),'rollback_plan',request.rollback_id)
             return DeletedDecision()
 
         @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)

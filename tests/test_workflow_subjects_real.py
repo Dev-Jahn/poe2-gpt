@@ -52,3 +52,31 @@ async def test_hollow_copy_has_its_own_actor_identity(real_engine):
     wrong=await real_engine.calculate(WorkerRequest(build_id=BID,target={**target,'actor_ref':'player'}))
     assert wrong.baseline.subject.status=='unavailable' and wrong.baseline.subject.reason=='actor_mismatch'
     assert wrong.baseline.stats==[] and deltas(copied.baseline,wrong.baseline)==[]
+
+
+async def test_vessel_copy_binds_original_instance_and_explicit_owner(real_engine):
+    from test_spirit_vessel_real import synthetic,vessel,gem
+    root=synthetic()
+    group=vessel(root,level=20)
+    gem(group,'Furious Slam','FuriousSlamPlayer')
+    gem(group,'Oil Barrage','OilBarragePlayer')
+    def save():
+        (real_engine.private_dir/(BID+'.pob')).write_bytes(base64.urlsafe_b64encode(zlib.compress(ET.tostring(root))))
+    save()
+    target={'skill_instance_id':'skill:s1:g2:n2','actor_ref':'spirit_vessel','actor_owner_instance_id':'skill:s1:g2:n1','weapon_set_id':1}
+    first=(await real_engine.calculate(WorkerRequest(build_id=BID,target=target))).baseline
+    assert first.subject.status=='matched'
+    assert first.subject.evaluated.skill_id=='FuriousSlamPlayer'
+    assert first.subject.evaluated.skill_instance_id=='skill:s1:g2:n2'
+    assert first.subject.evaluated.actor_owner_instance_id=='skill:s1:g2:n1'
+    assert first.selected_skill.actor=='spirit_vessel' and first.selected_skill.skill_id=='FuriousSlamPlayer'
+    assert next(s.value for s in first.stats if s.name=='MinionCombinedDPS')>0
+    assert not {'CombinedDPS','ManaLeechRate','Speed'} & {s.name for s in first.stats}
+    other=(await real_engine.calculate(WorkerRequest(build_id=BID,target={**target,'skill_instance_id':'skill:s1:g2:n3'}))).baseline
+    assert other.subject.status=='matched' and other.subject.evaluated.skill_id=='OilBarragePlayer'
+    assert deltas(first,other)==[]
+    gem(group,'Furious Slam','FuriousSlamPlayer')
+    save()
+    duplicate=(await real_engine.calculate(WorkerRequest(build_id=BID,target=target))).baseline
+    assert duplicate.subject.status=='unavailable' and duplicate.subject.reason=='ambiguous_component'
+    assert duplicate.stats==[]

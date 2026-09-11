@@ -143,6 +143,11 @@ async def compare(request: PurchaseComparisonRequest, workflow: WorkflowService,
     spendable = Decimal(str(request.budget.amount))-reserve
     candidates = []
     for candidate,group,scenarios,bill in zip(request.candidates,documents,grouped_scenarios,bills,strict=True):
+        from .execution_plans import observations
+        observation_problems=[problem for document in group for problem in observations(workflow.store,owner,document,[])[1]]
+        observation_status: Literal['not_reported','adverse_outcome_reported','requires_evidence_review']=(
+            'adverse_outcome_reported' if any(p.startswith('adverse_outcome_reported:') for p in observation_problems)
+            else 'requires_evidence_review' if observation_problems else 'not_reported')
         total = Decimal(0)
         complete = True
         gold = 0
@@ -164,7 +169,8 @@ async def compare(request: PurchaseComparisonRequest, workflow: WorkflowService,
         candidates.append(CandidateDecision(key=candidate.key,edit_plan_digest=normalized_plan(group[0]),scenarios=scenarios,bill=bill,
             known_cost=float(total),total_estimated_cost=float(total) if complete else None,gold_required=gold if gold_known else None,
             budget_status=budget_status,liquid_currency_shortfall=liquid_shortfall,gold_sufficient=gold_sufficient,
-            qualified_in_all_scenarios=all(s.qualified for s in scenarios) and complete and total <= spendable and gold_sufficient is True))
+            user_observation_status=observation_status,
+            qualified_in_all_scenarios=not observation_problems and all(s.qualified for s in scenarios) and complete and total <= spendable and gold_sufficient is True))
     crossings = frontier(candidates)
     qualified = [c for c in candidates if c.qualified_in_all_scenarios and c.on_robust_frontier]
     # A crossing is preserved even when a cheap candidate has better efficiency.
@@ -218,6 +224,7 @@ def summary(document: PurchaseComparison) -> PurchaseSummary:
         rows.append(PurchaseCandidateSummary(key=candidate.key,total_estimated_cost=candidate.total_estimated_cost,
             known_cost=candidate.known_cost,gold_required=candidate.gold_required,budget_status=candidate.budget_status,
             liquid_currency_shortfall=candidate.liquid_currency_shortfall,qualified_in_all_scenarios=candidate.qualified_in_all_scenarios,
+            user_observation_status=candidate.user_observation_status,
             on_robust_frontier=candidate.on_robust_frontier,score_minimum=min(scores) if scores else None,score_maximum=max(scores) if scores else None,
             missing_cost_count=sum(line.status in {'missing','stale'} for line in candidate.bill)))
     result = PurchaseSummary(comparison_id=document.comparison_id,artifact_digest=document.artifact_digest,candidates=rows,

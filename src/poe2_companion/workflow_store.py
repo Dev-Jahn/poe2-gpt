@@ -25,7 +25,7 @@ from .profiles import Digest
 from .observations import ObservationRecord
 
 PlanState = Literal['proposed','accepted','partially_applied','applied','observed','rejected','superseded']
-ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation']
+ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation','execution_plan','rollback_plan']
 ArtifactDTO = TypeVar('ArtifactDTO', bound=DTO)
 
 
@@ -241,6 +241,9 @@ class DecisionStore:
                     (document.expires_at_epoch,len(raw),document.revision,sealed,*key,expected_revision)).rowcount
                 if changed!=1: raise WorkflowError('plan_revision_conflict')
         else:
+            # A revision replaces one existing entry; do not count or evict it
+            # as an additional decision at the memory quota boundary.
+            self.memory.pop(key,None)
             size=sum(len(value.model_dump_json().encode()) for value in self.memory.values())
             while self.memory and (len(self.memory)>=self.MAX_RECORDS or size+len(raw)>self.MAX_BYTES):
                 _,old=self.memory.popitem(last=False);size-=len(old.model_dump_json().encode())

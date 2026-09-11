@@ -63,3 +63,29 @@ def test_opt_in_and_quota_are_enforced(tmp_path):
     store.save('alice',decision(False))
     assert store.get('alice',EID).state=='proposed'
     with pytest.raises(WorkflowError):store.get('bob',EID)
+
+
+async def test_large_audit_summary_keeps_lossless_retained_actions():
+    from poe2_companion.builds import tool_json_bytes
+    from poe2_companion.experiment_models import EditAudit,EquipmentTransition,TransitionAction
+    store=DecisionStore('owner');engine=EngineClient('/unused');workflow=WorkflowService(engine,store)
+    document=decision(False)
+    document.request.edits*=32
+    from poe2_companion.builds import PlayerStat
+    document.calculation.baseline.stats=[PlayerStat(name=n,value=123456789.98765432) for n in
+        ['Life','Mana','EnergyShield','TotalDPS','CombinedDPS','Str','Dex','Int']]
+    document.calculation.result=document.calculation.baseline.model_copy(deep=True)
+    document.audit.applied_edits=[EditAudit(edit_index=i,type='set_gem',status='applied_to_private_clone') for i in range(32)]
+    document.audit.equipment_transition=EquipmentTransition(status='verified',actions=[
+        TransitionAction(action='apply_edit',edit_index=i,temporary=False,owned_helper=False) for i in range(32)],
+        states_evaluated=32,search_exhausted=False)
+    try:
+        result=workflow.retain_result('alice',document.request,document.calculation.baseline,document.calculation.result,document.audit)
+        assert result.audit_truncated and tool_json_bytes(result)<=8192
+        saved=store.get('alice',result.experiment_id)
+        assert len(saved.audit.applied_edits)==32 and len(saved.audit.equipment_transition.actions)==32
+        assert len(document.audit.applied_edits)==32
+        store.MAX_RECORDS=1
+        saved.revision+=1;store.save('alice',saved,expected_revision=1)
+        assert store.get('alice',result.experiment_id).revision==2
+    finally:await engine.close();store.close()

@@ -48,3 +48,37 @@ def test_removing_both_buffer_and_recovery_increases_loss():
     changed=request(resources=[{'resource':'energy_shield','maximum':50.,'initial':50.,'regeneration_per_second':0.}],incoming_hits=hits)
     assert integrate(original,True).outcomes[0].damage_exceeding_available_resource==0
     assert integrate(changed,True).outcomes[0].damage_exceeding_available_resource==40
+
+
+def test_copied_es_leech_stops_at_mid_interval_mana_saturation():
+    query=request(duration_seconds=10.,resources=[
+        {'resource':'mana','maximum':100.,'initial':50.,'regeneration_per_second':10.},
+        {'resource':'energy_shield','maximum':100.,'initial':0.,'regeneration_per_second':0.}],
+        flows=[{'kind':'leech','resource':'energy_shield','producer':'player','recipient':'player',
+            'source_skill_instance_id':'skill:s1:g1:n1','starts_at':0.,'ends_at':10.,'potential_per_second':10.,
+            'expires_with_full_mana':True}])
+    # Independent arithmetic: mana fills in five seconds, so the copied
+    # stream delivers 50 ES under expiry and 100 ES if it persists.
+    assert integrate(query,True).outcomes[1].final==50.
+    assert integrate(query,False).outcomes[1].final==100.
+
+
+def test_native_binding_does_not_borrow_other_skill_or_fill_missing_metrics():
+    from poe2_companion.native_recovery import NativeRecoveryRequest,bind
+    target={'skill_instance_id':'skill:s1:g1:n1','actor_ref':'player','weapon_set_id':1}
+    snapshot=EngineSnapshot(stats=[{'name':n,'value':v} for n,v in {
+        'EnergyShield':100,'EnergyShieldRegen':0,'EnergyShieldRecharge':50,'EnergyShieldRechargeDelay':2}.items()],
+        equipped=[],issues=[],issue_count=0,validation='indeterminate',active_weapon_set=1,main_skill_group=1,
+        subject={'status':'matched','scenario_digest':'a'*64,'requested':target,
+            'evaluated':{**target,'skill_id':'FireballPlayer','component_ref':'FireballPlayer'}})
+    query=NativeRecoveryRequest(calculation_id=CID,target=target,scenario='ritual',duration_seconds=3.,
+        resources=[{'resource':'energy_shield'}],incoming_hits=[
+            {'at':float(t),'resource':'energy_shield','post_mitigation_damage':30.} for t in range(3)])
+    result=bind(query,snapshot)
+    assert result.recovery.cases[0].outcomes[0].final==10.
+    assert result.recovery.cases[0].outcomes[0].recharge_active_seconds==0
+    assert all(p.evidence=='native_estimate_unresolved_dependencies' for p in result.bindings)
+    query.target.skill_instance_id='skill:s1:g2:n1'
+    assert bind(query,snapshot).status=='subject_mismatch'
+    query.target.skill_instance_id='skill:s1:g1:n1';snapshot.stats.pop()
+    assert bind(query,snapshot).status=='missing_native_parameters'

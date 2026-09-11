@@ -105,6 +105,7 @@ def record(store: DecisionStore, owner: str, request: ObservationRequest) -> Obs
     from .workflow_store import WorkflowError
     now=int(time.time())
     if request.observed_at_epoch>now+300: raise WorkflowError('observation_timestamp_in_future')
+    plan=None
     if request.related_experiment_id:
         plan=store.get(owner,request.related_experiment_id)
         if plan.request.base_build_id!=request.base_build_id or plan.request.base_snapshot_digest!=request.base_snapshot_digest:
@@ -114,6 +115,16 @@ def record(store: DecisionStore, owner: str, request: ObservationRequest) -> Obs
     if len(keys(value))!=len(request.values): raise WorkflowError('duplicate_observation_field')
     bounded_dto(value)
     store.save_observation(owner,value)
+    if plan is not None:
+        if len(plan.observation_ids)>=32:
+            store.delete_observation(owner,value.observation_id)
+            raise WorkflowError('plan_observation_limit_exceeded')
+        previous=plan.revision
+        plan.observation_ids.append(value.observation_id);plan.revision+=1
+        try: store.save(owner,plan,expected_revision=previous)
+        except Exception:
+            store.delete_observation(owner,value.observation_id)
+            raise
     return value
 
 
