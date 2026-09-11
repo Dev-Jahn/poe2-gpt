@@ -45,6 +45,9 @@ for setId,set in pairs(build.skillsTab.skillSets) do
    if effect then
     skills[#skills+1]={skill_instance_id='skill:s'..setId..':g'..groupId..':n'..gemId,
      skill_id=effect.id,name=effect.name,skill_set_id=setId,group_index=groupId,gem_index=gemId,
+     gem_catalog_id=gem.gemData and gem.gemData.id or nil,
+     native_character_level_required=gem.reqLevel,
+     native_attributes_before_modifiers={strength=gem.reqStr or 0,dexterity=gem.reqDex or 0,intelligence=gem.reqInt or 0},
      native_level=gem.level,quality=gem.quality or 0,enabled=group.enabled~=false and gem.enabled~=false,
      active_set=active,saved_main_group=active and build.mainSocketGroup==groupId,support=not not effect.support,
      origin=(gem.fromItem or gem.fromTree) and 'granted' or 'socketed'}
@@ -56,9 +59,20 @@ table.sort(skills,function(a,b) return a.skill_instance_id<b.skill_instance_id e
 local itemSet,treeSet
 for id,set in pairs(build.itemsTab.itemSets) do if set==build.itemsTab.activeItemSet then itemSet=id end end
 for id,spec in ipairs(build.treeTab.specList) do if spec==build.spec then treeSet=id end end
+local equipmentSlots=array()
+for _,name in ipairs({'Helmet','Body Armour','Gloves','Boots','Belt','Amulet','Ring 1','Ring 2','Weapon 1','Weapon 2'}) do
+ local actual=name
+ if name:match('^Weapon') and build.itemsTab.activeItemSet.useSecondWeaponSet then actual=actual..' Swap' end
+ local slot=build.itemsTab.activeItemSet[actual];local id=slot and slot.selItemId or 0
+ local item=build.itemsTab.items[id];local sockets=item and item.itemSocketCount or 0
+ local empty=0
+ for i=1,sockets do if not item.runes[i] or item.runes[i]=='None' then empty=empty+1 end end
+ equipmentSlots[#equipmentSlots+1]={slot=name,saved_item_id=id~=0 and id or nil,empty=id==0,
+  augment_socket_capacity=sockets,empty_augment_sockets=empty}
+end
 local catalog=job.catalog and dofile(root..'catalog.lua').project(build) or nil
 io.write(json.encode({catalog=catalog,records=records,skills=skills,metadata={level=build.characterLevel,
  tree_version=build.spec.treeVersion,active_item_set_id=itemSet,active_skill_set_id=activeSkillSet,
  active_tree_set_id=treeSet,active_configuration_set_id=build.configTab.activeConfigSetId,
  active_weapon_set_id=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,
- saved_main_group=build.mainSocketGroup,counts=count}}))
+ saved_main_group=build.mainSocketGroup,counts=count,equipment_slots=equipmentSlots}}))

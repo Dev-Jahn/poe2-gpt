@@ -105,14 +105,18 @@ class PrivateEngine:
                 'combat_scenario':request.combat_scenario.model_dump(mode='json') if request.combat_scenario else None})
             if request.target is not None:
                 job['target']=request.target.model_dump(exclude_none=True)
-            if request.experiment is not None:
+            experiments = ([request.experiment] if request.experiment is not None else []) + [v.request for v in request.variant_jobs]
+            for experiment in experiments:
                 import hashlib
-                if (hashlib.sha256(code).hexdigest()!=request.experiment.base_snapshot_digest
-                        or request.experiment.engine_data_commit!=ENGINE_DATA_COMMIT
-                        or tree is None or tree.findall('Spec')[active-1].get('treeVersion')!=request.experiment.tree_revision):
+                if (hashlib.sha256(code).hexdigest()!=experiment.base_snapshot_digest
+                        or experiment.engine_data_commit!=ENGINE_DATA_COMMIT
+                        or tree is None or tree.findall('Spec')[active-1].get('treeVersion')!=experiment.tree_revision):
                     raise EngineError('engine_invalid_request')
+            if request.experiment is not None:
                 job['experiment']=request.experiment.model_dump(exclude_none=True)
                 job['experiment_items']=request.experiment_items
+            if request.variant_jobs:
+                job['variant_jobs']=[v.model_dump(exclude_none=True) for v in request.variant_jobs]
             if request.inspection is not None:
                 if request.inspection.build_id != request.build_id:
                     raise EngineError('engine_invalid_request')
@@ -156,10 +160,10 @@ class PrivateEngine:
                 origin_path=self.private_dir/(request.build_id+'.origin.json')
                 if origin_path.exists() or origin_path.is_symlink():
                     origin=BuildOrigin.model_validate_json(read_regular_file(origin_path,2048))
-                    for snapshot in [result.baseline,*result.results]:
+                    for snapshot in [result.baseline,*result.results,*[v.snapshot for v in result.experiment_variants if v.snapshot is not None]]:
                         snapshot.origin=origin
                 expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
-                if len(result.results)!=expected_count:
+                if len(result.results)!=expected_count or len(result.experiment_variants)!=len(request.variant_jobs):
                     raise EngineError('engine_protocol_error')
                 return result
             except TimeoutError:

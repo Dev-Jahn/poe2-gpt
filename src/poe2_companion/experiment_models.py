@@ -26,6 +26,8 @@ class SetSupports(DTO):
     support_gem_ids: Annotated[list[CatalogID], Field(max_length=10)]
     # Capacity belongs to this skill gem, not to a previously owned gem.
     observed_socket_capacity: Annotated[int, Field(ge=0, le=10)]
+    socket_capacity_evidence: Literal['user_reported', 'planned_upgrade'] = 'user_reported'
+    original_observed_socket_capacity: Annotated[int, Field(ge=0, le=10)] | None = None
 
 
 class AttributeChoice(DTO):
@@ -90,6 +92,31 @@ Edit = Annotated[SetGem | SetSupports | AllocatePassives | RefundPassives | SetA
     EquipItem | UnequipItem | SocketRune | InstillAmulet, Field(discriminator='type')]
 
 
+class OwnedHelper(DTO):
+    slot: EngineSlot
+    saved_item_id: Annotated[int, Field(ge=1, le=1000000)]
+    availability: Literal['user_confirmed_owned']
+
+
+class TransitionAction(DTO):
+    slot: EngineSlot
+    action: Literal['equip', 'unequip']
+    saved_item_id: Annotated[int, Field(ge=1, le=1000000)] | None = None
+    edit_index: Annotated[int, Field(ge=0, le=31)] | None = None
+    temporary: bool
+    owned_helper: bool
+
+
+class EquipmentTransition(DTO):
+    status: Literal['verified', 'requires_order_validation', 'no_valid_order_within_choices', 'search_budget_exhausted']
+    actions: Annotated[list[TransitionAction], Field(max_length=32)]
+    states_evaluated: int
+    search_exhausted: bool
+    optimality: Literal['fewest_actions_within_supplied_owned_choices', 'unproven'] = 'unproven'
+    helper_purchase_cost: Literal[0] = 0
+    scope: Literal['supplied_final_items_and_user_confirmed_owned_helpers'] = 'supplied_final_items_and_user_confirmed_owned_helpers'
+
+
 class ExperimentRequest(DTO):
     base_build_id: BuildRef
     base_snapshot_digest: Digest
@@ -102,6 +129,8 @@ class ExperimentRequest(DTO):
     ordinary_points_available: Annotated[int, Field(ge=0, le=128)] = 0
     ascendancy_points_available: Annotated[int, Field(ge=0, le=8)] = 0
     point_budget_evidence: Literal['user_reported'] = 'user_reported'
+    temporary_equipment: Annotated[list[OwnedHelper], Field(max_length=8)] = Field(default_factory=list)
+    transition_state_budget: Annotated[int, Field(ge=1, le=64)] = 32
     mode: Literal['dry_run'] = 'dry_run'
     persist_decision: bool = False
 
@@ -141,7 +170,8 @@ class ExperimentAudit(DTO):
     ordinary_points_delta: int = 0
     ascendancy_points_delta: int = 0
     base_unchanged: Literal[True] = True
-    transition_validation: Literal['requires_order_validation', 'no_equipment_transition'] = 'requires_order_validation'
+    equipment_transition: EquipmentTransition | None = None
+    transition_validation: Literal['requires_order_validation', 'no_equipment_transition', 'verified'] = 'requires_order_validation'
 
 
 class ExperimentResult(DTO):

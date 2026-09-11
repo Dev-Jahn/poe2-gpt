@@ -15,7 +15,7 @@ from typing import Any, Literal, TYPE_CHECKING
 if TYPE_CHECKING:
     from .engine_worker import PrivateEngine
 
-from .builds import read_regular_file
+from .builds import read_regular_file, bounded_dto, BuildError
 from .engine_models import ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError
 from .inspection import InspectionPage, InspectionRequest
 from .pob_io import MAX_CODE_BYTES, decode_pob, project_pob
@@ -45,7 +45,7 @@ class StaticInspector:
             raise EngineError('engine_invalid_build') from None
         selector = query.model_dump(exclude={'offset', 'limit', 'build_id'}, exclude_none=True) if query else None
         key = hashlib.sha256(json.dumps([digest, ENGINE_COMMIT, ENGINE_DATA_COMMIT,
-            ENGINE_COMPATIBILITY, 'static-v1', selector, catalog], sort_keys=True).encode()).hexdigest()
+            ENGINE_COMPATIBILITY, 'static-v2', selector, catalog], sort_keys=True).encode()).hexdigest()
         # The owner boundary is the worker's private directory; no global cache.
         # Recheck after acquiring the lock to collapse identical cold requests.
         try:
@@ -131,8 +131,15 @@ class StaticInspector:
                 raise EngineError('engine_invalid_build') from None
             changed = 'same_content' if previous == digest else 'different_content'
         end = request.offset + request.limit
-        return BuildProfile(build_id=request.build_id, snapshot_digest=digest,
+        skills = [s for s in document.skills if not request.skill_instance_ids or s.skill_instance_id in request.skill_instance_ids]
+        result = BuildProfile(build_id=request.build_id, snapshot_digest=digest,
             engine_commit=ENGINE_COMMIT, engine_data_commit=ENGINE_DATA_COMMIT,
-            metadata=document.metadata, skill_instances=document.skills[request.offset:end],
-            total_skill_instances=len(document.skills), next_offset=end if end < len(document.skills) else None,
+            metadata=document.metadata, skill_instances=skills[request.offset:end],
+            total_skill_instances=len(skills), next_offset=end if end < len(skills) else None,
             changed_since=changed)
+        while True:
+            try: return bounded_dto(result)
+            except BuildError:
+                if len(result.skill_instances) <= 1: raise
+                result.skill_instances.pop()
+                result.next_offset = request.offset + len(result.skill_instances)

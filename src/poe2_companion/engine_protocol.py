@@ -104,9 +104,33 @@ class WorkerChange(DTO):
         return self
 
 
+class ExperimentVariantJob(DTO):
+    request: ExperimentRequest
+    items: dict[str, dict] | None = None
+
+    @model_validator(mode='after')
+    def validated_items(self):
+        if self.items is not None:
+            if len(self.items) > 32: raise ValueError('invalid_experiment_items')
+            self.items = {key:private_trade_item(item) for key,item in self.items.items()}
+        return self
+
+
+class ExperimentVariantResult(DTO):
+    audit: ExperimentAudit
+    snapshot: EngineSnapshot | None = None
+
+    @model_validator(mode='after')
+    def consistent(self):
+        if (self.audit.status == 'valid_changeset') != (self.snapshot is not None):
+            raise ValueError('experiment_variant_result_mismatch')
+        return self
+
+
 class WorkerRequest(DTO):
     build_id: BuildID
     target: CalculationTarget | None = None
+    variant_jobs: Annotated[list[ExperimentVariantJob], Field(max_length=6)] = Field(default_factory=list)
     experiment: ExperimentRequest | None = None
     experiment_items: dict[str, dict] | None = None
     inspection: InspectionRequest | None = None
@@ -116,6 +140,14 @@ class WorkerRequest(DTO):
 
     @model_validator(mode='after')
     def distinct(self):
+        if self.variant_jobs:
+            if self.experiment is not None or self.experiment_items is not None or self.scenarios or self.inspection:
+                raise ValueError('experiment_context_mismatch')
+            for variant in self.variant_jobs:
+                value = variant.request
+                if (value.base_build_id != self.build_id or value.target != self.target
+                        or value.configuration != self.configuration or value.combat_scenario != self.combat_scenario):
+                    raise ValueError('experiment_context_mismatch')
         if self.experiment is not None:
             if self.experiment.base_build_id!=self.build_id or self.scenarios or self.inspection is not None:
                 raise ValueError('experiment_context_mismatch')
@@ -149,3 +181,4 @@ class WorkerResult(DTO):
     results: Annotated[list[EngineSnapshot],Field(max_length=64)]
     inspection: InspectionPage | None = None
     experiment_audit: ExperimentAudit | None = None
+    experiment_variants: Annotated[list[ExperimentVariantResult], Field(max_length=6)] = Field(default_factory=list)

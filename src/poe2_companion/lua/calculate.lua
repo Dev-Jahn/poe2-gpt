@@ -37,7 +37,7 @@ modLib.parseModCache['Equipment has no Attribute Requirements']={{
  modLib.createMod('GlobalItemAttributeRequirements','MORE',-100,'PoE2Companion')},nil}
 local slots = {helmet='Helmet',body_armour='Body Armour',gloves='Gloves',boots='Boots',belt='Belt',amulet='Amulet',ring_left='Ring 1',ring_right='Ring 2',weapon_main='Weapon 1',weapon_off='Weapon 2'}
 local slotKeys = {'helmet','body_armour','gloves','boots','belt','amulet','ring_left','ring_right','weapon_main','weapon_off'}
-local statKeys = {'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
+local statKeys = {'ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage','Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
 for _,key in ipairs({'FireResistTotal','ColdResistTotal','LightningResistTotal','ChaosResistTotal','FireResistOverCap','ColdResistOverCap','LightningResistOverCap','ChaosResistOverCap','PhysicalMaximumHitTaken','FireMaximumHitTaken','ColdMaximumHitTaken','LightningMaximumHitTaken','ChaosMaximumHitTaken','LifeRegen','ManaRegen','EnergyShieldRegen','LifeLeechRate','ManaLeechRate','EnergyShieldLeechRate','TotalEHP'}) do statKeys[#statKeys+1]=key end
 local function array(t) return setmetatable(t or {}, {__jsontype='array'}) end
 local function refresh()
@@ -295,7 +295,7 @@ local function inspect(expected, order, sequenceOk)
  local mechanicCount=#mechanics
  local combat=job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
  local equipmentValidity,coverage=dofile(companionRoot..'metric_coverage.lua').inspect(env,out,stats,uniqueIssues,mechanics,status)
- return {subject=binding,stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
+ return {requirements=dofile(companionRoot..'requirements.lua').project(build),subject=binding,stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
 end
 local function scenario(changes)
  load()
@@ -382,27 +382,41 @@ local baseline=inspect()
 local inspection=job.inspection and dofile(companionRoot..'inspection.lua').project(build,job.inspection,savedConfig,configurationAliases) or nil
 local results=array()
 local experimentAudit
-if job.experiment then
+local experimentVariants=array()
+local function evaluateExperiment()
  local function experiment()
   load()
+  local originals={};for _,slot in ipairs(slotKeys) do originals[slot]=selected(slotName(slot)) end
   local edits=dofile(companionRoot..'experiments.lua')
   local audit,checks=edits.apply(build,job.experiment,job.experiment_items,slotName,selected,selectItem)
   refresh()
   selectionError=subjects.select(build,job.target,refresh)
   edits.validateSupports(checks)
+  if audit.transition_validation=='requires_order_validation' then
+   audit.equipment_transition=dofile(companionRoot..'equipment_transition.lua').solve(build,job.experiment,originals,slotKeys,slotName,selected,selectItem,refresh,itemChecks)
+   if audit.equipment_transition.status=='verified' then audit.transition_validation='verified' end
+   selectionError=subjects.select(build,job.target,refresh)
+  end
   local result=inspect(nil,nil,audit.transition_validation~='requires_order_validation')
   return {audit=audit,result=result}
  end
  local ok,value=pcall(experiment)
- if ok then experimentAudit=value.audit;results[1]=value.result
+ if ok then return {audit=value.audit,snapshot=value.result}
  else
   if type(value)~='table' or not value.code then value={edit_index=0,code='entity_not_found'} end
-  experimentAudit={status='rejected_atomically',failures=array{value},applied_edits=array(),base_unchanged=true}
+  return {audit={status='rejected_atomically',failures=array{value},applied_edits=array(),base_unchanged=true}}
  end
+end
+if job.experiment then
+ local value=evaluateExperiment();experimentAudit=value.audit;results[1]=value.snapshot
+end
+for _,variant in ipairs(job.variant_jobs or {}) do
+ job.experiment=variant.request;job.experiment_items=variant.items
+ experimentVariants[#experimentVariants+1]=evaluateExperiment()
 end
 for _,changes in ipairs(job.scenarios) do
  local ok,value=pcall(scenario,changes)
  if ok then results[#results+1]=value
  else results[#results+1]={stats=array(),equipped=array(),issues=array({{code='scenario_calculation_failed'}}),issue_count=1,validation='indeterminate',equip_order=array(),active_weapon_set=baseline.active_weapon_set,main_skill_group=baseline.main_skill_group} end
 end
-io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection,experiment_audit=experimentAudit}))
+io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection,experiment_audit=experimentAudit,experiment_variants=experimentVariants}))

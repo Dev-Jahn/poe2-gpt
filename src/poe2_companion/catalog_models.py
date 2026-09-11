@@ -69,6 +69,8 @@ class CatalogRequest(DTO):
     query: Annotated[str, Field(max_length=100, pattern=r'^[^\x00-\x1f\x7f]*$')] = ''
     node_ids: Annotated[list[NodeID], Field(max_length=20)] = Field(default_factory=list)
     catalog_id: Annotated[str, Field(max_length=160)] | None = None
+    catalog_ids: Annotated[list[Annotated[str, Field(max_length=160)]], Field(max_length=20)] = Field(default_factory=list)
+    native_level: Annotated[int, Field(ge=1, le=100)] | None = None
     level_offset: Annotated[int, Field(ge=0, le=100)] = 0
     level_limit: Annotated[int, Field(ge=1, le=8)] = 3
     offset: Annotated[int, Field(ge=0, le=30000)] = 0

@@ -21,6 +21,7 @@ def page(catalog: NativeCatalog, request: CatalogRequest) -> CatalogPage:
         if request.node_ids and (not isinstance(row,PassiveNode) or row.node_id not in request.node_ids): continue
         identifier=str(row.node_id) if isinstance(row,PassiveNode) else row.catalog_id
         if request.catalog_id is not None and request.catalog_id!=identifier: continue
+        if request.catalog_ids and identifier not in request.catalog_ids: continue
         if query and query not in row.name.casefold() and query not in identifier.casefold(): continue
         rows.append(row)
     selected=rows[request.offset:request.offset+request.limit]
@@ -31,8 +32,9 @@ def page(catalog: NativeCatalog, request: CatalogRequest) -> CatalogPage:
         for row in selected:
             if not isinstance(row,GemDefinition): continue
             end=request.level_offset+request.level_limit
-            result.gems.append(row.model_copy(update={'levels':row.levels[request.level_offset:end],
-                'level_count':len(row.levels),'next_level_offset':end if end<len(row.levels) else None}))
+            levels = [level for level in row.levels if level.native_level == request.native_level] if request.native_level is not None else row.levels[request.level_offset:end]
+            result.gems.append(row.model_copy(update={'levels':levels,
+                'level_count':len(row.levels),'next_level_offset':end if request.native_level is None and end<len(row.levels) else None}))
     else: result.runes=[row for row in selected if isinstance(row,RuneDefinition)]
     entries: list[PassiveNode] | list[GemDefinition] | list[RuneDefinition] = result.passives if request.entity_type=='passive' else result.gems if request.entity_type=='gem' else result.runes
     while True:

@@ -21,7 +21,7 @@ BASE_CLASSES = ("Warrior", "Mercenary", "Ranger", "Huntress", "Monk", "Druid",
                 "Sorceress", "Witch", "Marauder", "Duelist", "Shadow", "Templar", "Unknown")
 ClassName = Literal["Warrior", "Mercenary", "Ranger", "Huntress", "Monk", "Druid",
                     "Sorceress", "Witch", "Marauder", "Duelist", "Shadow", "Templar", "Unknown"]
-StatName = Literal["Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergyShield", "Armour", "Evasion",
+StatName = Literal['ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage',"Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergyShield", "Armour", "Evasion",
                    "FireResistTotal", "ColdResistTotal", "LightningResistTotal", "ChaosResistTotal",
                    "FireResistOverCap", "ColdResistOverCap", "LightningResistOverCap", "ChaosResistOverCap",
                    "PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken",
@@ -31,6 +31,7 @@ StatName = Literal["Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergySh
                    "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed", "DeflectionRating"]
 STAT_NAMES = set(get_args(StatName))
 OPTIONAL_DERIVED_STAT_NAMES = {
+    'ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage',
     'FireResistTotal', 'ColdResistTotal', 'LightningResistTotal', 'ChaosResistTotal',
     'FireResistOverCap', 'ColdResistOverCap', 'LightningResistOverCap', 'ChaosResistOverCap',
     'PhysicalMaximumHitTaken', 'FireMaximumHitTaken', 'ColdMaximumHitTaken',

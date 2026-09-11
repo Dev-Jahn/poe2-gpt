@@ -4,6 +4,7 @@ No model-facing code/XML/path/text input or output fields exist here.
 """
 from typing import Annotated, Literal
 from pydantic import Field, model_serializer, model_validator
+from .requirements import RequirementBreakdown
 from .builds import DTO, StatName, PlayerStat, BuildOrigin
 from .equipment import Price, LeagueName, unique
 from . import __version__
@@ -182,6 +183,8 @@ class MetricCoverage(DTO):
 
 
 class EngineSnapshot(DTO):
+    requirements: RequirementBreakdown | None = None
+    requirements_truncated: bool = False
     subject: SubjectBinding | None = None
     origin: BuildOrigin | None = None
     stats: Annotated[list[PlayerStat], Field(max_length=64)]

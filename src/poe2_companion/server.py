@@ -38,6 +38,11 @@ from .workflow_store import DecisionStore, WorkflowError
 from .catalog_models import CatalogRequest, CatalogPage, PassiveRouteRequest, PassiveRoute
 from .recovery import RecoveryRequest, RecoveryResult, analyze as analyze_recovery
 from .risk_analysis import RiskRequest, RiskResult, analyze as analyze_risks
+from .observations import (ObservationRequest,ObservationRecord,ObservationPageRequest,ObservationPage,
+    DeleteObservationRequest,record as record_observation,page as observation_page)
+from .support_portfolio import SupportPortfolioRequest, SupportPortfolio, compare as support_portfolio
+from .progression import ProgressionRequest, ProgressionPlan, plan as progression_plan
+from .requirements import RequirementsRequest, RequirementsPage, page as requirements_page
 from .diagnostics import DiagnosticRequest, DiagnosticPage
 from .observability import ToolCounters, RuntimeStatus, ErrorTrace, recovery
 from .currency_models import Envelope, Leagues, Categories, PriceResponse, CurrencySearch, CurrencyQuote
@@ -68,6 +73,12 @@ EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'plan_passive_route': PassiveRouteRequest,
     'analyze_recovery_scenario': RecoveryRequest,
     'analyze_build_risks': RiskRequest,
+    'get_build_requirements': RequirementsRequest,
+    'plan_build_progression': ProgressionRequest,
+    'compare_support_portfolio': SupportPortfolioRequest,
+    'record_build_observation': ObservationRequest,
+    'get_build_observations': ObservationPageRequest,
+    'delete_build_observation': DeleteObservationRequest,
     "get_trade_item_details": TradeDetailRequest,
     "get_build_diagnostics": DiagnosticRequest,
     "inspect_build": InspectionRequest,
@@ -417,6 +428,11 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
     if engine is not None:
         workflow=WorkflowService(engine,decisions or DecisionStore(mcp_path),trade)
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_requirements(request: RequirementsRequest) -> RequirementsPage:
+            """Explain every native requirement source in a retained calculation: equipment maximum, native gem maximum and support totals. Native and effective levels are separate. Includes substitution modifiers, exact available attributes and failures. Final attributes do not prove initial equip requirements; use a validated transition order. Follow next_offset for the complete table."""
+            return requirements_page(request,engine.receipts.snapshot(request.calculation_id,request.side))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def analyze_build_risks(request: RiskRequest) -> RiskResult:
             """Explain separate identity, equipment, requirement, mechanic and metric coverage for a retained calculation. Lint explicit critical-event, player-kill, self-blind or charge-supply goals. Effects retain producer/owner/recipient and evidence; hypothetical charge conversion is not a verified game rule. Unknown unrelated mechanics do not erase a proven resource metric. No global confidence score or guaranteed uptime."""
             return analyze_risks(request,engine.receipts.snapshot(request.calculation_id,request.side))
@@ -443,6 +459,34 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             # Authenticated HTTP is enforced by the outer Access middleware;
             # stdio/in-memory sessions have one local principal.
             return 'local'
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
+        async def record_build_observation(request: ObservationRequest, ctx: Context) -> ObservationRecord:
+            """Record explicit user-reported level, available ordinary/ascendancy points, progression unlock, native gem/socket state or resource outcome against an existing snapshot. Reports are pending source confirmation and never applied to engine inputs automatically. Persistence is opt-in; no unreported quest or unlock is assumed."""
+            profile=await engine.profile(ProfileRequest(build_id=request.base_build_id))
+            if profile.snapshot_digest!=request.base_snapshot_digest: raise WorkflowError('observation_snapshot_mismatch')
+            return record_observation(workflow.store,workflow_owner(ctx),request)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
+        async def compare_support_portfolio(request: SupportPortfolioRequest, ctx: Context) -> SupportPortfolio:
+            """Compare up to six complete support alternatives for one explicit skill instance in one private worker. Common gem/passive/equipment edits are jointly evaluated in every independent clone. Reports native compatibility, marginal DPS/cost/AoE and additional sockets; a socket on another or replaced gem is not transferable. Each result retains an exact changeset and calculation. Missing gem/socket prices prevent a total purchase quote. Only covered, certified metrics enter the primary ranking."""
+            return await support_portfolio(request,workflow,workflow_owner(ctx))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def plan_build_progression(request: ProgressionRequest, ctx: Context) -> ProgressionPlan:
+            """Plan ordered level milestones using the immutable profile, native gem requirements and explicit observation IDs. Unreported quests/unlocks remain unknown. Ordinary level points never become ascendancy points. Each gem retains its own observed sockets; effective levels do not set purchase/level requirements. Costs are sequential per milestone. A joint native changeset is still required before applying the plan."""
+            return await progression_plan(request,engine,workflow.store,workflow_owner(ctx))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_observations(request: ObservationPageRequest, ctx: Context) -> ObservationPage:
+            """Recover this user's typed observations and explicit conflicts for one source revision. A reported partial change is not an engine-verified or live build. Resolve conflicting reports before planning; get_character refreshes the source independently."""
+            return observation_page(workflow.store,workflow_owner(ctx),request)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False), structured_output=True)
+        async def delete_build_observation(request: DeleteObservationRequest, ctx: Context) -> DeletedDecision:
+            """Delete the user's requested observation. Does not modify a source snapshot or another user's records."""
+            workflow.store.delete_observation(workflow_owner(ctx),request.observation_id)
+            return DeletedDecision()
 
         @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
         async def create_build_experiment(request: ExperimentRequest, ctx: Context) -> ExperimentResult:

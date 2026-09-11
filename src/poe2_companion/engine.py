@@ -66,6 +66,11 @@ def bounded_engine_dto(value):
     primary={'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier','MinionTotalDPS','MinionCombinedDPS','MinionSpeed'}
     primary.update(calculation.requested_metrics)
     while len(value.model_dump_json().encode('utf-8'))>MAX_TOOL_JSON_BYTES:
+        details=[s for s in snapshots if s.requirements is not None]
+        if details:
+            details[0].requirements=None
+            details[0].requirements_truncated=True
+            continue
         expanded=[s for s in snapshots if any(v.name not in primary for v in s.stats)]
         if expanded:
             snapshot=max(expanded,key=lambda s:len(s.stats))

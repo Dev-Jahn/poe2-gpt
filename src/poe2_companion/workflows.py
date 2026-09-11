@@ -8,9 +8,9 @@ from pydantic import Field, model_validator
 from .builds import DTO, bounded_dto
 from .capabilities import digest, canonical
 from .engine import EngineClient, deltas, calculation_context
-from .engine_protocol import WorkerRequest, private_trade_item
-from .engine_models import EngineCalculation, EngineRequest
-from .experiment_models import ExperimentID, ExperimentRequest, ExperimentResult, EquipItem
+from .engine_protocol import WorkerRequest, ExperimentVariantJob, private_trade_item
+from .engine_models import EngineCalculation, EngineRequest, EngineSnapshot
+from .experiment_models import ExperimentID, ExperimentRequest, ExperimentResult, ExperimentAudit, EquipItem
 from .profiles import Digest
 from .workflow_store import DecisionDocument, DecisionStore, PlanState, WorkflowError
 
@@ -64,7 +64,7 @@ class WorkflowService:
     def __init__(self, engine: EngineClient, store: DecisionStore, trade=None):
         self.engine,self.store,self.trade=engine,store,trade
 
-    async def create(self, owner: str, request: ExperimentRequest) -> ExperimentResult:
+    async def resolve_items(self, request: ExperimentRequest) -> dict[str,dict]:
         if request.persist_decision and self.store.db is None:
             raise WorkflowError('workflow_persistence_unconfigured')
         items={}
@@ -77,15 +77,32 @@ class WorkflowService:
                 raw=entry.get('engine_items',{}).get(edit.source.listing_ref)
                 if raw is None: raise WorkflowError('listing_unavailable')
                 items[str(index+1)]=private_trade_item(raw)
+        return items
+
+    async def create(self, owner: str, request: ExperimentRequest) -> ExperimentResult:
+        items = await self.resolve_items(request)
         worker=await self.engine.batch(WorkerRequest(build_id=request.base_build_id,
             target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario,
             experiment=request,experiment_items=items or None))
         if worker.experiment_audit is None: raise WorkflowError('experiment_protocol_mismatch')
         after=worker.results[0] if worker.results else None
+        return self.retain_result(owner,request,worker.baseline,after,worker.experiment_audit)
+
+    async def create_variants(self, owner: str, requests: list[ExperimentRequest]) -> list[ExperimentResult]:
+        if not 1 <= len(requests) <= 6: raise WorkflowError('variant_limit_exceeded')
+        first = requests[0]
+        jobs = [ExperimentVariantJob(request=request,items=await self.resolve_items(request)) for request in requests]
+        worker = await self.engine.batch(WorkerRequest(build_id=first.base_build_id,target=first.target,
+            configuration=first.configuration,combat_scenario=first.combat_scenario,variant_jobs=jobs))
+        return [self.retain_result(owner,request,worker.baseline,result.snapshot,result.audit)
+            for request,result in zip(requests,worker.experiment_variants,strict=True)]
+
+    def retain_result(self, owner: str, request: ExperimentRequest, baseline: EngineSnapshot,
+            after: EngineSnapshot | None, audit: ExperimentAudit) -> ExperimentResult:
         context=EngineRequest(build_id=request.base_build_id,target=request.target,
             configuration=request.configuration,combat_scenario=request.combat_scenario)
         calculation=EngineCalculation(build_id=request.base_build_id,calculated_at_epoch=int(time.time()),
-            baseline=worker.baseline,result=after,deltas=deltas(worker.baseline,after) if after else [],
+            baseline=baseline,result=after,deltas=deltas(baseline,after) if after else [],
             **calculation_context(context))
         self.engine.receipts.retain(calculation,context)
         assert calculation.calculation_id is not None and calculation.diagnostics_expires_at_epoch is not None
@@ -93,20 +110,20 @@ class WorkflowService:
         plan_hash=digest(request.model_dump(mode='json'))
         now=int(time.time())
         document=DecisionDocument(experiment_id=identifier,request=request,plan_digest=plan_hash,
-            audit=worker.experiment_audit,calculation=calculation,created_at_epoch=now,
+            audit=audit,calculation=calculation,created_at_epoch=now,
             expires_at_epoch=now+(30*86400 if request.persist_decision else 3600))
         self.store.save(owner,document)
         primary={'Life','Mana','EnergyShield','TotalDPS','CombinedDPS','Str','Dex','Int'}
         select=lambda values:[v for v in values if v.name in primary][:8]
         return bounded_dto(ExperimentResult(experiment_id=identifier,base_build_id=request.base_build_id,
             base_snapshot_digest=request.base_snapshot_digest,plan_digest=plan_hash,edit_count=len(request.edits),
-            audit=worker.experiment_audit,calculation_id=calculation.calculation_id,
+            audit=audit,calculation_id=calculation.calculation_id,
             calculation_expires_at_epoch=calculation.diagnostics_expires_at_epoch,
-            baseline_metrics=select(worker.baseline.stats),candidate_metrics=select(after.stats) if after else [],
-            deltas=select(calculation.deltas),subject=after.subject if after else worker.baseline.subject,
+            baseline_metrics=select(baseline.stats),candidate_metrics=select(after.stats) if after else [],
+            deltas=select(calculation.deltas),subject=after.subject if after else baseline.subject,
             candidate_validation=after.validation if after else 'not_evaluated',
             certified=bool(after and after.validation=='pass' and after.subject and after.subject.status=='matched'
-                and worker.experiment_audit.transition_validation=='no_equipment_transition'),
+                and audit.transition_validation in {'no_equipment_transition','verified'}),
             artifact_digest=self.artifact_digest(document),decision_persisted=request.persist_decision))
 
     @staticmethod

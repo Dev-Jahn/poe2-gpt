@@ -22,6 +22,7 @@ from .builds import DTO
 from .engine_models import EngineCalculation
 from .experiment_models import ExperimentID, ExperimentRequest, ExperimentAudit
 from .profiles import Digest
+from .observations import ObservationRecord
 
 PlanState = Literal['proposed','accepted','partially_applied','applied','observed','rejected','superseded']
 
@@ -53,6 +54,7 @@ class DecisionStore:
     def __init__(self, member: str, directory: Path | None = None, key_path: Path | None = None):
         self.member=member
         self.memory: OrderedDict[tuple[str,str],DecisionDocument] = OrderedDict()
+        self.observations: OrderedDict[tuple[str,str],ObservationRecord] = OrderedDict()
         self.db: sqlite3.Connection | None = None
         self.cipher: AESGCM | None = None
         if directory is not None:
@@ -68,7 +70,9 @@ class DecisionStore:
             self.db.execute('PRAGMA secure_delete=ON')
             self.db.executescript('''CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS decisions(owner TEXT NOT NULL,id TEXT NOT NULL,expires INTEGER NOT NULL,
-                    size INTEGER NOT NULL,revision INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,id));''')
+                    size INTEGER NOT NULL,revision INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,id));
+                CREATE TABLE IF NOT EXISTS observations(owner TEXT NOT NULL,id TEXT NOT NULL,expires INTEGER NOT NULL,
+                    size INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,id));''')
             stored=self.db.execute("SELECT value FROM metadata WHERE key='member'").fetchone()
             if stored and stored[0]!=member: raise ValueError('workflow_member_mismatch')
             self.db.execute("INSERT OR IGNORE INTO metadata VALUES ('member',?)",(member,))
@@ -80,8 +84,45 @@ class DecisionStore:
         now=int(time.time())
         for key,document in list(self.memory.items()):
             if document.expires_at_epoch<=now: self.memory.pop(key)
+        for key,observation in list(self.observations.items()):
+            if observation.expires_at_epoch<=now: self.observations.pop(key)
         if self.db:
             self.db.execute('DELETE FROM decisions WHERE expires<=?',(now,))
+            self.db.execute('DELETE FROM observations WHERE expires<=?',(now,))
+
+    def save_observation(self, owner: str, record: ObservationRecord) -> None:
+        self.purge()
+        key=(self.owner_key(owner),record.observation_id)
+        raw=record.model_dump_json().encode()
+        if len(raw)>8192: raise WorkflowError('observation_too_large')
+        if record.request.persist_observation:
+            if self.db is None or self.cipher is None: raise WorkflowError('workflow_persistence_unconfigured')
+            count=self.db.execute('SELECT COUNT(*) FROM observations WHERE owner=?',(key[0],)).fetchone()[0]
+            if count>=self.MAX_RECORDS: raise WorkflowError('observation_quota_exceeded')
+            nonce=secrets.token_bytes(12)
+            aad='\0'.join((self.member,'observations',*key)).encode()
+            sealed=nonce+self.cipher.encrypt(nonce,raw,aad)
+            self.db.execute('INSERT INTO observations VALUES (?,?,?,?,?)',(*key,record.expires_at_epoch,len(raw),sealed))
+        else:
+            while len(self.observations)>=self.MAX_RECORDS:self.observations.popitem(last=False)
+            self.observations[key]=record.model_copy(deep=True)
+
+    def get_observation(self, owner: str, identifier: str) -> ObservationRecord:
+        self.purge()
+        key=(self.owner_key(owner),identifier)
+        if key in self.observations:return self.observations[key].model_copy(deep=True)
+        if self.db is not None and self.cipher is not None:
+            row=self.db.execute('SELECT payload FROM observations WHERE owner=? AND id=?',key).fetchone()
+            if row:
+                raw=row[0];aad='\0'.join((self.member,'observations',*key)).encode()
+                try:return ObservationRecord.model_validate_json(self.cipher.decrypt(raw[:12],raw[12:],aad))
+                except Exception:raise WorkflowError('observation_integrity_failure') from None
+        raise WorkflowError('observation_expired_or_unavailable')
+
+    def delete_observation(self, owner: str, identifier: str) -> None:
+        key=(self.owner_key(owner),identifier)
+        self.observations.pop(key,None)
+        if self.db:self.db.execute('DELETE FROM observations WHERE owner=? AND id=?',key)
 
     def save(self, owner: str, document: DecisionDocument, expected_revision: int | None = None) -> None:
         raw=document.model_dump_json().encode()
