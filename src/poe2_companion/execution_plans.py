@@ -113,7 +113,7 @@ def risks(document: DecisionDocument) -> list[str]:
     old: dict[str,float]={v.name:v.value for v in before.stats}
     new: dict[str,float]={v.name:v.value for v in after.stats}
     notes=[]
-    for name in ['Life','EnergyShield','LifeRegen','EnergyShieldRegen','FireResist','ColdResist','LightningResist','SpiritUnreserved']:
+    for name in ['Life','EnergyShield','LifeRegen','EnergyShieldRegen','LifeRegenRecovery','EnergyShieldRegenRecovery','FireResist','ColdResist','LightningResist','SpiritUnreserved']:
         if name in old and name in new and new[name]<old[name]: notes.append(f'{name}: {old[name]:g} → {new[name]:g}')
     active=lambda snapshot:{m.mechanic for m in snapshot.mechanics if m.status in {'calculated','partial','requires_configuration'}}
     if 'ghost_dance' in active(before)-active(after): notes.append('Ghost Dance 회복 공급원이 제거됩니다. 반복 피격에서 ES 여유와 회복을 함께 확인하세요.')
@@ -174,7 +174,8 @@ async def labels_for(workflow: WorkflowService,document: DecisionDocument) -> di
 
 def edit_text(edit: Any,labels: dict[str,str]) -> tuple[str,list[str]]:
     if edit.type=='set_gem':
-        return f'{labels.get(edit.skill_instance_id,"지정한 젬")}의 기본 레벨을 {edit.native_level}, 퀄리티를 {edit.quality}로 맞추세요.',[edit.skill_instance_id]
+        state='' if edit.enabled is None else (' 활성화하세요.' if edit.enabled else ' 비활성화하세요.')
+        return f'{labels.get(edit.skill_instance_id,"지정한 젬")}의 기본 레벨을 {edit.native_level}, 퀄리티를 {edit.quality}로 맞추세요.'+state,[edit.skill_instance_id]
     if edit.type=='set_supports':
         names=', '.join(labels.get(identifier,'이름 확인이 필요한 보조') for identifier in edit.support_gem_ids) or '보조 없음'
         return f'{labels.get(edit.skill_instance_id,"지정한 스킬")}의 보조 소켓 {edit.observed_socket_capacity}개를 확인한 뒤 구성하세요: {names}',[edit.skill_instance_id,*edit.support_gem_ids]

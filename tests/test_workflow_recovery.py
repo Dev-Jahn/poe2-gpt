@@ -67,7 +67,7 @@ def test_native_binding_does_not_borrow_other_skill_or_fill_missing_metrics():
     from poe2_companion.native_recovery import NativeRecoveryRequest,bind
     target={'skill_instance_id':'skill:s1:g1:n1','actor_ref':'player','weapon_set_id':1}
     snapshot=EngineSnapshot(stats=[{'name':n,'value':v} for n,v in {
-        'EnergyShield':100,'EnergyShieldRegen':0,'EnergyShieldRecharge':50,'EnergyShieldRechargeDelay':2}.items()],
+        'EnergyShield':100,'EnergyShieldRegenRecovery':0,'EnergyShieldRecharge':50,'EnergyShieldRechargeDelay':2}.items()],
         equipped=[],issues=[],issue_count=0,validation='indeterminate',active_weapon_set=1,main_skill_group=1,
         subject={'status':'matched','scenario_digest':'a'*64,'requested':target,
             'evaluated':{**target,'skill_id':'FireballPlayer','component_ref':'FireballPlayer'}})
@@ -82,3 +82,11 @@ def test_native_binding_does_not_borrow_other_skill_or_fill_missing_metrics():
     assert bind(query,snapshot).status=='subject_mismatch'
     query.target.skill_instance_id='skill:s1:g1:n1';snapshot.stats.pop()
     assert bind(query,snapshot).status=='missing_native_parameters'
+
+
+def test_degeneration_is_not_silently_zero_and_depletion_time_is_continuous():
+    query=request(duration_seconds=4.,resources=[{'resource':'energy_shield','maximum':100.,'initial':60.,
+        'regeneration_per_second':10.,'degeneration_per_second':30.}])
+    result=integrate(query,True).outcomes[0]
+    assert result.final==0. and result.first_depleted_at==3.
+    assert result.damage_exceeding_available_resource==20.

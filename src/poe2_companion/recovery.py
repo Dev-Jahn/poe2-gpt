@@ -23,6 +23,7 @@ class ResourceState(DTO):
     maximum: Number
     initial: Number
     regeneration_per_second: Number
+    degeneration_per_second: Number = 0.
     recharge_per_second: Number = 0.0
     recharge_delay_seconds: Seconds = 0.0
     initial_recharge_delay_remaining: Seconds = 0.0
@@ -151,8 +152,9 @@ def integrate(request: RecoveryRequest, expires_at_full: bool) -> RecoveryCase:
             linked=[i for i,f in active if f.kind=='leech' and (f.resource=='mana' or f.expires_with_full_mana)]
             if expires_at_full and 'mana' in current and current['mana']>=definitions['mana'].maximum:
                 ended.update(linked);active=[(i,f) for i,f in active if i not in ended];linked=[]
-            rates={name:row.regeneration_per_second+(row.recharge_per_second if cursor>=recharge_ready[name] else 0.)
+            recovery_rates={name:row.regeneration_per_second+(row.recharge_per_second if cursor>=recharge_ready[name] else 0.)
                 +sum(f.potential_per_second for _,f in active if f.resource==name) for name,row in definitions.items()}
+            rates={name:rate-definitions[name].degeneration_per_second for name,rate in recovery_rates.items()}
             delta=stamp-cursor
             # Split exactly when mana becomes full, including in the middle
             # of an interval, before granting copied ES recovery afterwards.
@@ -162,9 +164,14 @@ def integrate(request: RecoveryRequest, expires_at_full: bool) -> RecoveryCase:
                 ended.update(linked)
                 continue
             for name,row in definitions.items():
-                potential=rates[name]*delta
-                recovered=min(max(0.0,row.maximum-current[name]),potential)
-                current[name]+=recovered;effective[name]+=recovered;wasted[name]+=potential-recovered
+                potential=recovery_rates[name]*delta
+                degeneration=row.degeneration_per_second*delta
+                recovered=min(max(0.0,row.maximum-current[name]+degeneration),potential)
+                if rates[name]<0 and depleted[name] is None and current[name]+rates[name]*delta<=0:
+                    depleted[name]=cursor+current[name]/-rates[name]
+                overflow[name]+=max(0.,degeneration-current[name]-potential)
+                current[name]=max(0.,min(row.maximum,current[name]+potential-degeneration))
+                effective[name]+=recovered;wasted[name]+=potential-recovered
                 if row.recharge_per_second>0 and cursor>=recharge_ready[name]:recharge_time[name]+=delta
             cursor+=delta
         # A hit at the same timestamp precedes a planned attack. This ordering

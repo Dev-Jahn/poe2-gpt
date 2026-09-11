@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from .builds import DTO, Counts
+from .builds import DTO, Counts, ClassName, BuildEquipment, BuildReader, BuildError, bounded_dto
 from .inspection import InspectionRecord
 from .catalog_models import NativeCatalog
 
@@ -92,3 +92,34 @@ class BuildProfile(DTO):
     calculated_metrics_available: Literal[False] = False
     raw_payload_exposed: Literal[False] = False
     next_action: Literal['select_discovered_skill_instance_for_calculation'] = 'select_discovered_skill_instance_for_calculation'
+
+
+class SavedProfileFallback(DTO):
+    build_id: BuildRef
+    status: Literal['partial_saved_projection'] = 'partial_saved_projection'
+    source: Literal['immutable_import_projection_without_native_interpretation'] = 'immutable_import_projection_without_native_interpretation'
+    imported_at_epoch: int
+    class_name: ClassName
+    level: int
+    counts: Counts
+    equipment: BuildEquipment | None
+    native_unavailable_reason: Literal['not_configured','engine_busy','engine_unavailable','engine_timeout','engine_calculation_failed']
+    unavailable: list[str]
+    content_is_live_state: Literal[False] = False
+    calculated_metrics_available: Literal[False] = False
+    raw_payload_exposed: Literal[False] = False
+    next_action: Literal['configure_private_engine','retry_static_profile_after_worker_recovers']
+    equipment_detail_tool: Literal['get_saved_build_equipment'] = 'get_saved_build_equipment'
+
+
+def saved_fallback(reader: BuildReader, request: ProfileRequest, reason) -> SavedProfileFallback:
+    summary=reader.summary(request.build_id)
+    unavailable=['native_skill_instances','effective_modifiers','snapshot_digest','derived_metrics','changed_since_comparison']
+    try: equipment=reader.equipment(request.build_id,limit=5)
+    except BuildError as exc:
+        if str(exc)!='equipment_projection_unavailable':raise
+        equipment=None;unavailable.append('equipment_projection')
+    return bounded_dto(SavedProfileFallback(build_id=request.build_id,imported_at_epoch=summary.imported_at_epoch,
+        class_name=summary.class_name,level=summary.level,counts=summary.counts,equipment=equipment,
+        native_unavailable_reason=reason,unavailable=unavailable,
+        next_action='configure_private_engine' if reason=='not_configured' else 'retry_static_profile_after_worker_recovers'))

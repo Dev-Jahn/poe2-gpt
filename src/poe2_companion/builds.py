@@ -25,7 +25,7 @@ StatName = Literal['ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSeco
                    "FireResistTotal", "ColdResistTotal", "LightningResistTotal", "ChaosResistTotal",
                    "FireResistOverCap", "ColdResistOverCap", "LightningResistOverCap", "ChaosResistOverCap",
                    "PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken",
-                   "LifeRegen", "ManaRegen", "EnergyShieldRegen", "LifeLeechRate", "ManaLeechRate", "EnergyShieldLeechRate", "TotalEHP",
+                   "LifeRegen", "ManaRegen", "EnergyShieldRegen", "LifeRegenRecovery", "ManaRegenRecovery", "EnergyShieldRegenRecovery", "LifeLeechRate", "ManaLeechRate", "EnergyShieldLeechRate", "TotalEHP",
                    "FireResist", "ColdResist", "LightningResist", "ChaosResist", "BlockChance", "SpellBlockChance",
                    "Str", "Dex", "Int", "TotalDPS", "CombinedDPS", "FullDPS", "Speed", "CritChance", "CritMultiplier",
                    "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed", "DeflectionRating"]
@@ -36,7 +36,7 @@ OPTIONAL_DERIVED_STAT_NAMES = {
     'FireResistOverCap', 'ColdResistOverCap', 'LightningResistOverCap', 'ChaosResistOverCap',
     'PhysicalMaximumHitTaken', 'FireMaximumHitTaken', 'ColdMaximumHitTaken',
     'LightningMaximumHitTaken', 'ChaosMaximumHitTaken', 'TotalEHP',
-    'LifeRegen', 'ManaRegen', 'EnergyShieldRegen', 'LifeLeechRate', 'ManaLeechRate', 'EnergyShieldLeechRate',
+    'LifeRegen', 'ManaRegen', 'EnergyShieldRegen', 'LifeRegenRecovery', 'ManaRegenRecovery', 'EnergyShieldRegenRecovery', 'LifeLeechRate', 'ManaLeechRate', 'EnergyShieldLeechRate',
 }
 EquipmentSlot = Literal["helmet", "body_armour", "gloves", "boots", "belt", "amulet",
     "ring_left", "ring_right", "ring_third", "weapon_main", "weapon_off",

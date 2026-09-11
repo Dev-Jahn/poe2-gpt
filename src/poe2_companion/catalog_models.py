@@ -99,6 +99,7 @@ class PassiveRouteRequest(DTO):
     ordinary_points_available: Annotated[int, Field(ge=0, le=64)]
     ascendancy_points_available: Annotated[int, Field(ge=0, le=8)] = 0
     allocation_mode: Literal[0,1,2] = 0
+    weapon_set_points_available: Annotated[int,Field(ge=0,le=128)] | None = None
     offset: Annotated[int, Field(ge=0, le=10000)] = 0
     limit: Annotated[int, Field(ge=1, le=10)] = 8
 
@@ -112,13 +113,15 @@ class RouteStep(DTO):
     landmark: Annotated[str, Field(max_length=240)]
     point_pool: Literal['ordinary','ascendancy']
     attribute_choice_required: bool
+    allocation_mode: Literal[0,1,2] = 0
+    stats: Annotated[list[Annotated[str,Field(max_length=2000)]],Field(max_length=32)] = Field(default_factory=list)
 
 
 class PassiveRoute(DTO):
     build_id: BuildRef
     tree_revision: str
     data_revision: str
-    status: Literal['route_found','over_budget','disconnected_after_refund','no_route','unsupported_node_rule']
+    status: Literal['route_found','over_budget','disconnected_after_refund','no_route','unsupported_node_rule','weapon_point_budget_unreported']
     steps: Annotated[list[RouteStep], Field(max_length=10)]
     total_steps: int
     next_offset: int | None = None
@@ -126,6 +129,10 @@ class PassiveRoute(DTO):
     refund_node_ids: list[NodeID]
     ordinary_points_cost: int
     ascendancy_points_cost: int
+    ordinary_points_delta: int = 0
+    ascendancy_points_delta: int = 0
+    weapon_set_points_delta: int = 0
+    jewel_radius_effects: Literal['preserved_in_private_base_require_joint_native_experiment'] = 'preserved_in_private_base_require_joint_native_experiment'
     requested_targets: list[NodeID]
     algorithm: Literal['deterministic_shortest_path_per_target'] = 'deterministic_shortest_path_per_target'
     global_optimum_proven: Literal[False] = False

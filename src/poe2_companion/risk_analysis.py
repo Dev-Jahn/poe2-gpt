@@ -29,6 +29,7 @@ class RiskRequest(DTO):
     consumer: Actor = 'player'
     required_charge_events_per_second: Annotated[float,Field(ge=0,le=10000,allow_inf_nan=False)] | None = None
     event_evidence: Literal['hypothesis','user_reported'] = 'hypothesis'
+    automatic_checks: bool = True
 
     @model_validator(mode='after')
     def unique_rules(self) -> Self:
@@ -60,6 +61,9 @@ class RuleFinding(DTO):
         'validate_event_schedule','none']
     rule_revision: Literal['effect-graph-v1'] = 'effect-graph-v1'
     evidence_scope: Literal['native_snapshot','supplied_event_hypothesis','user_reported_event']
+    triggered_by: Literal['requested_goal','native_snapshot_condition'] = 'requested_goal'
+    native_rule_source: str = 'https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/tree/'+ENGINE_COMMIT+'/src/Modules'
+    supplied_event_conversion_verified_as_game_rule: Literal[False] = False
 
 
 class ScopedMetric(DTO):
@@ -95,11 +99,20 @@ def analyze(request: RiskRequest, snapshot: EngineSnapshot) -> RiskResult:
     values={s.name:s.value for s in snapshot.stats}
     mechanics={(m.mechanic,v.name):v.value for m in snapshot.mechanics for v in m.metrics}
     findings=[];edges=[]
+    rules=list(request.intended_rules)
+    if request.automatic_checks:
+        inferred: list[RuleID]=[]
+        if values.get('CritChance')==0:inferred.append('critical_event_requires_nonzero_chance')
+        if mechanics.get(('hit_effects','cannot_inflict_blind'))==1:inferred.append('self_blind_requires_infliction')
+        if any(m.mechanic in {'thrill_of_the_kill','behead'} for m in snapshot.mechanics):inferred.append('player_kill_requires_player_credit')
+        if any(m.mechanic in {'charge_regulation'} for m in snapshot.mechanics):inferred.append('charge_consumer_requires_matching_supply')
+        rules.extend(rule for rule in inferred if rule not in rules)
     evidence='user_reported_event' if request.event_evidence=='user_reported' else 'supplied_event_hypothesis'
     def add(rule,status,reason,action,scope=evidence):
         findings.append(RuleFinding(rule_id=rule,status=status,reason=reason,next_action=action,
-            affected_metrics=['TotalDPS','CombinedDPS'],evidence_scope=scope))
-    for rule in request.intended_rules:
+            affected_metrics=['TotalDPS','CombinedDPS'],evidence_scope=scope,
+            triggered_by='requested_goal' if rule in request.intended_rules else 'native_snapshot_condition'))
+    for rule in rules:
         if rule=='critical_event_requires_nonzero_chance':
             subject=snapshot.subject.evaluated if snapshot.subject else None
             chance=values.get('CritChance') if subject and subject.actor_ref=='player' else None

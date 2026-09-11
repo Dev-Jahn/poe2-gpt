@@ -130,6 +130,9 @@ class ExperimentVariantResult(DTO):
 class WorkerRequest(DTO):
     build_id: BuildID
     target: CalculationTarget | None = None
+    component_targets: Annotated[list[CalculationTarget],Field(max_length=6)] = Field(default_factory=list)
+    component_offset: Annotated[int,Field(ge=0,le=100)] = 0
+    component_limit: Annotated[int,Field(ge=1,le=6)] = 3
     variant_jobs: Annotated[list[ExperimentVariantJob], Field(max_length=6)] = Field(default_factory=list)
     experiment: ExperimentRequest | None = None
     experiment_items: dict[str, dict] | None = None
@@ -140,6 +143,8 @@ class WorkerRequest(DTO):
 
     @model_validator(mode='after')
     def distinct(self):
+        if self.component_targets and (self.target or self.variant_jobs or self.experiment or self.experiment_items or self.scenarios or self.inspection):
+            raise ValueError('component_context_mismatch')
         if self.variant_jobs:
             if self.experiment is not None or self.experiment_items is not None or self.scenarios or self.inspection:
                 raise ValueError('experiment_context_mismatch')
@@ -170,6 +175,11 @@ class WorkerRequest(DTO):
         return self
 
 
+class NativeComponentResult(DTO):
+    requested_index: Annotated[int,Field(ge=0,le=5)]
+    snapshot: EngineSnapshot
+
+
 class WorkerResult(DTO):
     # Added by the checked worker after reading its private Lua projection.
     # These internal pins must match exactly; they are not public MCP schemas.
@@ -179,6 +189,8 @@ class WorkerResult(DTO):
     engine_compatibility: Literal[ENGINE_COMPATIBILITY] = ENGINE_COMPATIBILITY  # type: ignore[valid-type]
     baseline: EngineSnapshot
     results: Annotated[list[EngineSnapshot],Field(max_length=64)]
+    components: Annotated[list[NativeComponentResult],Field(max_length=6)] = Field(default_factory=list)
+    component_total: Annotated[int,Field(ge=0,le=100)] = 0
     inspection: InspectionPage | None = None
     experiment_audit: ExperimentAudit | None = None
     experiment_variants: Annotated[list[ExperimentVariantResult], Field(max_length=6)] = Field(default_factory=list)

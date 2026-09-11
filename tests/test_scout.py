@@ -49,10 +49,16 @@ class Backend:
         if self.mode == "zero_price":
             raw["Items"][0]["CurrentPrice"] = 0
         if req.url.params["referenceCurrency"] == "divine":
-            divine = next(v["CurrentPrice"] for v in fixture("currency")["Items"] if v["ApiId"] == "divine")
+            reference = next(v for v in fixture("currency")["Items"] if v["ApiId"] == "divine")
+            divine = reference['CurrentPrice']
             for row in raw["Items"]:
                 if row["CurrentPrice"] is not None:
                     row["CurrentPrice"] /= divine
+                # Independent upstream EconomyCache.ConvertPriceLogMatrixFromBase:
+                # historical conversion uses each matching bucket, not today's FX.
+                for index,log in enumerate(row['PriceLogs']):
+                    ref=reference['PriceLogs'][index]
+                    if log is not None and ref is not None:log['Price']/=ref['Price']
         return httpx.Response(200, json=raw)
 
 

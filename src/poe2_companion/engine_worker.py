@@ -108,6 +108,10 @@ class PrivateEngine:
                 'combat_scenario':request.combat_scenario.model_dump(mode='json') if request.combat_scenario else None})
             if request.target is not None:
                 job['target']=request.target.model_dump(exclude_none=True)
+            if request.component_targets:
+                job['component_targets']=[t.model_dump(exclude_none=True) for t in request.component_targets]
+                job['component_offset']=request.component_offset
+                job['component_limit']=request.component_limit
             experiments = ([request.experiment] if request.experiment is not None else []) + [v.request for v in request.variant_jobs]
             for experiment in experiments:
                 import hashlib
@@ -163,10 +167,13 @@ class PrivateEngine:
                 origin_path=self.private_dir/(request.build_id+'.origin.json')
                 if origin_path.exists() or origin_path.is_symlink():
                     origin=BuildOrigin.model_validate_json(read_regular_file(origin_path,2048))
-                    for snapshot in [result.baseline,*result.results,*[v.snapshot for v in result.experiment_variants if v.snapshot is not None]]:
+                    for snapshot in [result.baseline,*result.results,*[v.snapshot for v in result.experiment_variants if v.snapshot is not None],*[p.snapshot for p in result.components]]:
                         snapshot.origin=origin
                 expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
                 if len(result.results)!=expected_count or len(result.experiment_variants)!=len(request.variant_jobs):
+                    raise EngineError('engine_protocol_error')
+                expected_components=min(request.component_limit,max(0,result.component_total-request.component_offset)) if request.component_targets else 0
+                if len(result.components)!=expected_components:
                     raise EngineError('engine_protocol_error')
                 return result
             except TimeoutError:

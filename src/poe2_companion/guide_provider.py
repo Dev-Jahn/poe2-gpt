@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 import re
 import secrets
 import time
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 from urllib.parse import urlsplit, urlunsplit
 import httpx
 from pydantic import Field, field_validator
@@ -43,6 +43,7 @@ def guide_url(value: str) -> str:
 class GuideRequest(DTO):
     url: Annotated[str, Field(max_length=1200)]
     requested_stage: Stage
+    requested_variant_label: Annotated[str,Field(min_length=1,max_length=120)] | None = None
     machine_build_id: Annotated[str, Field(pattern=r'^bld_[0-9a-f]{32}$')] | None = None
     persist_evidence: bool = False
     _url = field_validator('url')(guide_url)
@@ -51,6 +52,7 @@ class GuideRequest(DTO):
 class GuideBlock(DTO):
     index: int
     heading: Annotated[str, Field(max_length=200)]
+    heading_path: Annotated[list[Annotated[str,Field(max_length=200)]],Field(max_length=6)] = Field(default_factory=list)
     stage: Stage
     text: Annotated[str, Field(max_length=1600)]
 
@@ -62,13 +64,20 @@ class GuideClaim(DTO):
     excerpt: Annotated[str, Field(max_length=320)]
     author_uncertain: bool
     engine_rule_verified: Literal[False] = False
+    stated_amount: float | None = None
+    stated_unit: Literal['divine','exalted','chaos','spirit','native_gem_level'] | None = None
+    prerequisite_language: Literal['required','explicitly_not_required','uncertain_or_unspecified'] = 'uncertain_or_unspecified'
 
 
 class GuideDifference(DTO):
     claim_index: int
     source: Literal['visible_prose_vs_imported_machine_profile'] = 'visible_prose_vs_imported_machine_profile'
-    status: Literal['named_skill_present','named_skill_absent','not_machine_checked']
+    status: Literal['named_skill_present','named_skill_absent','not_machine_checked','ambiguous_skill_instances','native_level_mismatch','named_skill_disabled','negative_claim_conflict']
     skill_name: str | None = None
+    skill_instance_id: str | None = None
+    field: Literal['native_level','enabled'] | None = None
+    prose_value: float | bool | None = None
+    machine_value: float | bool | None = None
     required_change_proven: Literal[False] = False
 
 
@@ -76,6 +85,8 @@ class GuideEvidence(DTO):
     guide_id: GuideID
     url: str
     requested_stage: Stage
+    requested_variant_label: str | None = None
+    requested_variant_visible: bool | None = None
     fetched_at_epoch: int
     expires_at_epoch: int
     source_revision: Digest
@@ -142,6 +153,7 @@ class VisibleGuide(HTMLParser):
         self.heading = ''
         self.stage: Stage = 'unspecified'
         self.stage_headings: dict[int,Stage] = {}
+        self.heading_path: dict[int,str] = {}
         self.retained_characters = 0
         self.parts: list[str] = []
         self.blocks: list[GuideBlock] = []
@@ -159,13 +171,16 @@ class VisibleGuide(HTMLParser):
             inherited=self.stage_headings[max(self.stage_headings)] if self.stage_headings else 'unspecified'
             self.stage = matches[0] if len(matches) == 1 else inherited if not matches else 'unspecified'
             self.stage_headings[level]=self.stage
+            self.heading_path={key:text for key,text in self.heading_path.items() if key<level}
+            self.heading_path[level]=self.heading
         for offset in range(0,len(value),1600):
             if len(self.blocks) >= 128 or self.retained_characters >= 40000:
                 self.truncated = True
                 return
             part=value[offset:offset+min(1600,40000-self.retained_characters)]
             self.retained_characters+=len(part)
-            self.blocks.append(GuideBlock(index=len(self.blocks),heading=self.heading,stage=self.stage,text=part))
+            self.blocks.append(GuideBlock(index=len(self.blocks),heading=self.heading,
+                heading_path=[self.heading_path[k] for k in sorted(self.heading_path)],stage=self.stage,text=part))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str,str | None]]) -> None:
         if tag in {'script','style','noscript','template','svg'}:
@@ -208,26 +223,56 @@ def extract(request: GuideRequest, html: str, now: int, profile: BuildProfile | 
             topic = next((name for name,words in TOPICS.items() if any(word in lower for word in words)),None)
             if topic is None: continue
             if len(claims) >= 64: parser.truncated = True; break
-            claims.append(GuideClaim(block_index=block.index,stage=block.stage,topic=topic,excerpt=sentence[:320],
-                author_uncertain=bool(re.search(r'\b(may|might|uncertain|unconfirmed|unknown|possibly|not tested)\b|불확실|미확인|추정|가능성',lower))))
+            uncertain=bool(re.search(r'\b(may|might|uncertain|unconfirmed|unknown|possibly|not tested)\b|불확실|미확인|추정|가능성',lower))
+            claim=GuideClaim(block_index=block.index,stage=block.stage,topic=topic,excerpt=sentence[:320],author_uncertain=uncertain)
+            if re.search(r'\b(not required|do not need|no need)\b|필요 없|필수가 아',lower):claim.prerequisite_language='explicitly_not_required'
+            elif not uncertain and re.search(r'\b(required|requires|must|need)\b|필수|필요',lower):claim.prerequisite_language='required'
+            amount=re.search(r'\b(\d+(?:\.\d+)?)\s*(divine|exalted|chaos|spirit)\b',lower)
+            level=re.search(r'\blevel\s*(\d{1,3})\b',lower)
+            if amount:
+                claim.stated_amount=float(amount[1]);claim.stated_unit=cast(Literal['divine','exalted','chaos','spirit'],amount[2])
+            elif topic=='skills' and level:
+                claim.stated_amount=float(level[1]);claim.stated_unit='native_gem_level'
+            claims.append(claim)
     stages: list[Stage] = sorted({b.stage for b in parser.blocks if b.stage != 'unspecified'})
     available = request.requested_stage != 'unspecified' and any(b.stage == request.requested_stage and b.text != b.heading for b in parser.blocks)
     gaps = ['dynamic_or_other_variants_not_retrieved','prose_claims_are_not_game_rules']
     if not available: gaps.append('requested_stage_content_missing_or_ambiguous')
     if parser.truncated: gaps.append('visible_content_or_claims_truncated')
+    variant_blocks=[b for b in parser.blocks if request.requested_variant_label and any(h.casefold() in
+        {request.requested_variant_label.casefold(),'variant: '+request.requested_variant_label.casefold()} for h in b.heading_path)]
+    variant_visible=bool(variant_blocks) if request.requested_variant_label else None
+    if request.requested_variant_label and not variant_visible:
+        gaps.append('requested_variant_label_not_visible');available=False
+    elif request.requested_variant_label:
+        available=any(b.stage==request.requested_stage and b.text!=b.heading for b in variant_blocks)
+        if not available and 'requested_stage_content_missing_or_ambiguous' not in gaps:gaps.append('requested_stage_content_missing_or_ambiguous')
     if profile is None: gaps.append('machine_build_not_imported')
     else: gaps.append('machine_profile_is_separate_import_not_proven_same_guide_revision')
     differences: list[GuideDifference] = []
     if profile is not None:
         # Match exact native names, never infer absence from an incomplete page.
         for index,claim in enumerate(claims):
-            names = [skill.name for skill in profile.skill_instances if skill.name.casefold() in claim.excerpt.casefold()]
-            differences.append(GuideDifference(claim_index=index,status='named_skill_present' if names else 'not_machine_checked',skill_name=names[0] if names else None))
+            matches = [skill for skill in profile.skill_instances if skill.name.casefold() in claim.excerpt.casefold()]
+            difference=GuideDifference(claim_index=index,status='not_machine_checked')
+            if len(matches)>1:difference.status='ambiguous_skill_instances'
+            elif matches:
+                skill=matches[0]
+                difference.status='named_skill_present';difference.skill_name=skill.name;difference.skill_instance_id=skill.skill_instance_id
+                if claim.prerequisite_language=='required' and not skill.enabled:
+                    difference.status='named_skill_disabled';difference.field='enabled';difference.prose_value=True;difference.machine_value=False
+                elif skill.enabled and re.search(r'\b(do not use|must not use|disable)\b|사용하지 마|비활성화',claim.excerpt.casefold()):
+                    difference.status='negative_claim_conflict';difference.field='enabled';difference.prose_value=False;difference.machine_value=True
+                elif claim.stated_unit=='native_gem_level' and claim.stated_amount!=skill.native_level:
+                    difference.status='native_level_mismatch';difference.field='native_level';difference.prose_value=claim.stated_amount;difference.machine_value=float(skill.native_level)
+            differences.append(difference)
     value = GuideEvidence(guide_id='guide_'+secrets.token_hex(16),url=request.url,requested_stage=request.requested_stage,
+        requested_variant_label=request.requested_variant_label,requested_variant_visible=variant_visible,
         fetched_at_epoch=now,expires_at_epoch=now+(30*86400 if request.persist_evidence else 3600),source_revision=digest(html),
         artifact_digest='0'*64,blocks=parser.blocks,claims=claims,differences=differences,available_stages=stages,
         requested_stage_content_available=available,content_truncated=parser.truncated,machine_build_id=request.machine_build_id,
-        machine_snapshot_digest=profile.snapshot_digest if profile else None,machine_profile_complete=False,gaps=gaps)
+        machine_snapshot_digest=profile.snapshot_digest if profile else None,
+        machine_profile_complete=bool(profile and profile.next_offset is None and len(profile.skill_instances)==profile.total_skill_instances),gaps=gaps)
     value.artifact_digest = digest(value.model_dump(mode='json',exclude={'artifact_digest'}))
     return value
 

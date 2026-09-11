@@ -97,7 +97,7 @@ function M.solve(build,request,items,originals,slotKeys,slotName,selected,select
   return {actions=actions,done=done,key=stateKey(done),complete=complete(done)}
  end
  replay({})
- local queue={{actions={},done={}}};local seen={[stateKey({})]=true};local head=1;local evaluated=0;local found
+ local queue={{actions={},done={}}};local seen={[stateKey({})]=true};local head=1;local evaluated=0;local found;local depthLimited=false
  while head<=#queue and not found and evaluated<request.transition_state_budget do
   local current=queue[head];head=head+1
   local choices={}
@@ -122,7 +122,7 @@ function M.solve(build,request,items,originals,slotKeys,slotName,selected,select
    if ok and nextState and not seen[nextState.key] then
     seen[nextState.key]=true
     if nextState.complete then found=nextState.actions;break end
-    if #nextState.actions<32 then queue[#queue+1]=nextState end
+    if #nextState.actions<32 then queue[#queue+1]=nextState else depthLimited=true end
    end
   end
  end
@@ -135,7 +135,7 @@ function M.solve(build,request,items,originals,slotKeys,slotName,selected,select
  end
  -- Restore the exact joint candidate, independent of the last explored edge.
  load();edits.apply(build,request,items,slotName,selected,selectItem,true);refresh()
- local exhausted=not found and evaluated<request.transition_state_budget and head>#queue
+ local exhausted=not found and not depthLimited and evaluated<request.transition_state_budget and head>#queue
  return {status=found and 'verified' or exhausted and 'no_valid_order_within_choices' or 'search_budget_exhausted',
   actions=actions,states_evaluated=evaluated,search_exhausted=exhausted,
   optimality=found and 'fewest_actions_within_supplied_owned_choices' or 'unproven'}

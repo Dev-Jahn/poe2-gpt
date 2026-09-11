@@ -237,8 +237,22 @@ class EngineClient:
                     with span('validation'):
                         result=WorkerResult.model_validate(payload)
                     expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
-                    if len(result.results)!=expected_count:
+                    if len(result.results)!=expected_count or len(result.experiment_variants)!=len(request.variant_jobs):
                         raise EngineError('engine_protocol_error')
+                    expected_components=min(request.component_limit,max(0,result.component_total-request.component_offset)) if request.component_targets else 0
+                    if len(result.components)!=expected_components or (not request.component_targets and result.component_total):
+                        raise EngineError('engine_protocol_error')
+                    for part in result.components:
+                        if not 0 <= part.requested_index < len(request.component_targets):
+                            raise EngineError('engine_protocol_error')
+                        original=request.component_targets[part.requested_index]
+                        subject=part.snapshot.subject
+                        if subject is None or subject.requested is None:
+                            raise EngineError('engine_protocol_error')
+                        expected_target=original.model_copy(update={'aggregation':'single_skill',
+                            'component_ref':subject.requested.component_ref}) if original.aggregation=='component_breakdown' else original
+                        if subject.requested!=expected_target:
+                            raise EngineError('engine_protocol_error')
                     return result
             except httpx.TimeoutException:
                 raise EngineError('engine_timeout') from None

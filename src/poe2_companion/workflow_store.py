@@ -25,7 +25,7 @@ from .profiles import Digest
 from .observations import ObservationRecord
 
 PlanState = Literal['proposed','accepted','partially_applied','applied','observed','rejected','superseded']
-ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation','execution_plan','rollback_plan']
+ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation','execution_plan','rollback_plan','currency_allocation']
 ArtifactDTO = TypeVar('ArtifactDTO', bound=DTO)
 
 
@@ -42,6 +42,7 @@ class DecisionDocument(DTO):
     applied_edit_indices: Annotated[list[int], Field(max_length=32)] = Field(default_factory=list)
     observation_ids: Annotated[list[str], Field(max_length=32)] = Field(default_factory=list)
     source_confirmation: Literal['pending_source_confirmation','confirmed_by_source'] = 'pending_source_confirmation'
+    last_reported_application_at_epoch: int | None = None
 
 
 class WorkflowError(Exception):

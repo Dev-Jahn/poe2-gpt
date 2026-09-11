@@ -30,7 +30,8 @@ from .trade import (TradeClient, TradeError, SAFE_ERRORS, TradeSearchRequest, Tr
     TradeDetailRequest, TradeItemDetail)
 from .engine import EngineClient
 from .inspection import InspectionRequest, InspectionPage
-from .profiles import ProfileRequest, BuildProfile
+from .profiles import ProfileRequest, BuildProfile, SavedProfileFallback, saved_fallback
+from .passive_portfolio import PassivePortfolioRequest, PassivePortfolio, compare as compare_passive_portfolio
 from .capabilities import CapabilitiesRequest, Capabilities, SchemaRequest, SchemaPage, inventory, schema_page
 from .experiment_models import ExperimentRequest, ExperimentResult
 from .workflows import WorkflowService, PlanPageRequest, PlanPage, PlanTransition, DeleteDecisionRequest, DeletedDecision
@@ -38,6 +39,10 @@ from .workflow_store import DecisionStore, WorkflowError
 from .catalog_models import CatalogRequest, CatalogPage, PassiveRouteRequest, PassiveRoute
 from .recovery import RecoveryRequest, RecoveryResult, analyze as analyze_recovery
 from .native_recovery import NativeRecoveryRequest, NativeRecoveryResult, bind as bind_native_recovery
+from .skill_components import ComponentRequest, ComponentBreakdown, calculate as calculate_components
+from .plan_dependencies import DependencyRequest, DependencyResult, analyze as analyze_dependencies
+from .item_transforms import TransformRequest, TransformResult, analyze as analyze_transform
+from .economy_analysis import AllocationRequest, AllocationResult, AllocationPageRequest, AllocationPage, AllocationReference, plan as plan_allocation, page as allocation_page
 from .risk_analysis import RiskRequest, RiskResult, analyze as analyze_risks
 from .observations import (ObservationRequest,ObservationRecord,ObservationPageRequest,ObservationPage,
     DeleteObservationRequest,record as record_observation,page as observation_page)
@@ -79,7 +84,7 @@ from .engine_models import (EngineRequest, CompareRequest, EngineTradeRequest, E
 DEFAULT_LEAGUE = "Forbidden Rites"
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 PRIVATE_READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
-BUILD_TOOLS = {"get_build_summary", "get_build_passive_nodes", "get_build_equipment"}
+BUILD_TOOLS = {"get_build_summary", "get_build_passive_nodes", "get_build_equipment", "get_saved_build_equipment"}
 EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'get_capabilities': CapabilitiesRequest,
     'describe_tool_schema': SchemaRequest,
@@ -90,8 +95,15 @@ EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'delete_build_plan': DeleteDecisionRequest,
     'search_game_catalog': CatalogRequest,
     'plan_passive_route': PassiveRouteRequest,
+    'compare_passive_paths': PassivePortfolioRequest,
     'analyze_recovery_scenario': RecoveryRequest,
     'analyze_native_recovery_scenario': NativeRecoveryRequest,
+    'calculate_skill_components': ComponentRequest,
+    'analyze_plan_dependencies': DependencyRequest,
+    'compare_item_transformations': TransformRequest,
+    'plan_currency_allocation': AllocationRequest,
+    'get_currency_allocation': AllocationPageRequest,
+    'delete_currency_allocation': AllocationReference,
     'analyze_build_risks': RiskRequest,
     'get_build_requirements': RequirementsRequest,
     'plan_build_progression': ProgressionRequest,
@@ -289,7 +301,7 @@ class ProjectionMCP(FastMCP):
         # Before FastMCP/Pydantic validation: reject extra fields and bad IDs
         # without letting validation errors echo any raw input into context/logs.
         allowed = ({"build_id"} if name == "get_build_summary" else
-            {"build_id", "slot", "saved_item_id", "offset", "limit"} if name == "get_build_equipment" else
+            {"build_id", "slot", "saved_item_id", "offset", "limit"} if name in {"get_build_equipment","get_saved_build_equipment"} else
             {"build_id", "spec_index", "offset", "limit"})
         valid = isinstance(arguments, dict) and set(arguments) <= allowed
         valid = valid and isinstance(arguments.get("build_id"), str) and bool(BUILD_ID_RE.fullmatch(arguments["build_id"]))
@@ -297,7 +309,7 @@ class ProjectionMCP(FastMCP):
             for key, low, high, default in (("spec_index", 0, 99, 0), ("offset", 0, 2000, 0), ("limit", 1, 100, 50)):
                 value = arguments.get(key, default)
                 valid = valid and type(value) is int and low <= value <= high
-        if name == "get_build_equipment" and valid:
+        if name in {"get_build_equipment","get_saved_build_equipment"} and valid:
             slot = arguments.get("slot")
             valid = slot is None or (isinstance(slot, str) and slot in EQUIPMENT_SLOTS)
             item_id=arguments.get('saved_item_id')
@@ -506,9 +518,19 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             return bind_native_recovery(request,engine.receipts.snapshot(request.calculation_id,request.side))
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def calculate_skill_components(request: ComponentRequest) -> ComponentBreakdown:
+            """Calculate a paginated breakdown of discovered skill instances and actors in one private worker. Use aggregation=component_breakdown to discover a gem's native components, or single_skill for explicit components/copies. Each row has an independent retained calculation receipt. Player, Hollow, Vessel and minion numbers never become an unproved sum, rotation DPS or another actor's leech."""
+            return await calculate_components(request,engine)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def search_game_catalog(request: CatalogRequest) -> CatalogPage:
             """Search the full pinned passive graph, native gem levels/requirements or rune identities. Always select entity_type. Use node_ids or catalog_id for exact details; page gem levels with level_offset. Korean names are verified catalog translations with English fallback. Game data presence is not proof that every mechanic calculates correctly."""
             return await engine.static_request('/catalog',request,CatalogPage)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def compare_passive_paths(request: PassivePortfolioRequest, ctx: Context) -> PassivePortfolio:
+            """Compare up to six complete paths including all travel points, ordinary/weapon pools and existing jewel effects. Supply discovered target IDs/modes and attribute choices; template edits are optional common non-tree changes. Same explicit skill/weapon/scenario for every endpoint, one native batch. Reports full-path marginal gains and covered ranks only; not a global tree optimum or priced purchase recommendation."""
+            return await compare_passive_portfolio(request,workflow,workflow_owner(ctx))
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def plan_passive_route(request: PassiveRouteRequest) -> PassiveRoute:
@@ -522,6 +544,32 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             # Authenticated HTTP is enforced by the outer Access middleware;
             # stdio/in-memory sessions have one local principal.
             return 'local'
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def analyze_plan_dependencies(request: DependencyRequest, ctx: Context) -> DependencyResult:
+            """Explain the joint plan's lost Strength/resistances/Spirit/resource recovery and a corrective bill of required stats. Native attribute deficits and user-specified metric floors stay separate; no universal resistance cap or corrective item price is guessed. Recalculate the complete gear/gem/passive correction together before purchase."""
+            return analyze_dependencies(request,workflow.store,workflow_owner(ctx))
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=True), structured_output=True)
+        async def plan_currency_allocation(request: AllocationRequest, ctx: Context) -> AllocationResult:
+            """Compare a game-currency allocation with current reported holdings and qualified equipment packages. Preserve exact currency tier/league/reference and historical bucket times. Spread and depth require explicit observed exchange quotes; aggregate prices never imply executable liquidity. Report downside and user-supplied future price scenarios without invented probabilities. Retain evidence with optional encryption; never spend or trade automatically."""
+            return await plan_allocation(request,workflow.store,workflow_owner(ctx),scout)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_currency_allocation(request: AllocationPageRequest, ctx: Context) -> AllocationPage:
+            """Recover exact allocation inputs, quote, history source and equipment opportunity-cost evidence. Changed portfolio revisions remain visible; a saved proposal never debits the game-currency ledger."""
+            return allocation_page(request,workflow.store,workflow_owner(ctx))
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False), structured_output=True)
+        async def delete_currency_allocation(request: AllocationReference, ctx: Context) -> DeletedDecision:
+            """Delete this owner's retained game-currency allocation and quote evidence."""
+            workflow.store.delete_artifact(workflow_owner(ctx),'currency_allocation',request.allocation_id)
+            return DeletedDecision()
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def compare_item_transformations(request: TransformRequest, ctx: Context) -> TransformResult:
+            """Link original and effective glove experiments with explicit user-reported transformation provenance. Distinguish actual transformed rolls loaded by PoB from unresolved original gloves. Unknown rolls remain intervals under supplied hypothetical bounds; no midpoint, seed reconstruction or untransformed-value ranking. Conditional interval dominance is not a verified purchase recommendation."""
+            return analyze_transform(request,workflow.store,workflow_owner(ctx))
 
         @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
         async def begin_workflow_trace(request: BeginTrace, ctx: Context) -> TraceSummary:
@@ -751,11 +799,6 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             return DeletedDecision()
 
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
-        async def get_build_profile(request: ProfileRequest) -> BuildProfile:
-            """Inspect active sets and stable skill instance IDs with the pinned native loaders, without combat calculation. Includes immutable source digest and an optional explicit comparison to an earlier build. Saved main selection, user observation and live character state are different. Page through all instances before selecting an ambiguous skill."""
-            return await engine.profile(request)
-
-        @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def get_build_diagnostics(request: DiagnosticRequest) -> DiagnosticPage:
             """Recover complete issues, mechanics, stats, metric coverage, deltas, supplied inputs, combat results or candidate evaluations from a calculation_id. section=candidates maps each index to slot/actions/listing_ref, cost, violations and rank; excluded_listings explains prefilter rejection; inputs retains objective/constraints/FX. Choose baseline/result or candidate_index for snapshot sections, and follow next_offset. Receipts are immutable, isolated per user instance, retained up to one hour / 64 calculations, and lost on restart. On calculation_expired_or_unavailable, recalculate; never guess omitted diagnostics."""
             return engine.receipts.page(request)
@@ -844,11 +887,34 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             """Compare replacement combinations within a user-imported candidate set. Maximize explicit weighted item-stat improvement under budget, or minimize cost subject to explicit item-total/gain constraints. Includes keeping current gear; prohibits buying the same candidate twice; supports budget reserve, score caps and max changes. Exact within eligible candidates, at most 200000 combinations. No PoB recalculation, final character stats, equip-requirement validation, resale credit, live availability or automatic purchasing."""
             return await run(equipment.optimize(request))
 
+    if engine is not None or build_reader is not None:
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_profile(request: ProfileRequest) -> BuildProfile | SavedProfileFallback:
+            """Inspect active sets and stable skill identities without combat calculation. Page all native instances before selecting a skill. If the native loader is disabled or temporarily unavailable, return available saved metadata/equipment with explicit missing fields and next action. Saved import data is never live state; fallback cannot select a native skill or establish a raw snapshot digest."""
+            reason='not_configured'
+            if engine is not None:
+                try:return await engine.profile(request)
+                except EngineError as exc:
+                    reason=str(exc)
+                    if build_reader is None or reason not in {'engine_busy','engine_unavailable','engine_timeout','engine_calculation_failed'}:raise
+            assert build_reader is not None
+            return saved_fallback(build_reader,request,reason)
+
     if build_reader is not None:
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def get_build_summary(build_id: Annotated[str, Field(pattern=r"^bld_[0-9a-f]{32}$", max_length=36)]) -> BuildSummary:
             """Read a small numeric/canonical summary of a build already imported outside ChatGPT. Accept only its opaque build_id. Never ask for or submit PoB/Base64/XML. Stats were saved by PoB and are not recalculated or live. Arbitrary item/gem text, notes, URLs and payloads are omitted."""
             return build_reader.summary(build_id)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_saved_build_equipment(
+            build_id: Annotated[str, Field(pattern=r'^bld_[0-9a-f]{32}$',max_length=36)],
+            slot: EquipmentSlot | None = None,
+            offset: Annotated[int,Field(ge=0,le=1000)] = 0,
+            limit: Annotated[int,Field(ge=1,le=10)] = 5,
+        ) -> BuildEquipment:
+            """Read the import-time equipped projection even while the native worker is unavailable. Follow its cursor for saved properties/modifier text; this cannot establish effective items, native skill identities or calculated stats. Use native inspect_build when available."""
+            return build_reader.equipment(build_id,slot,offset,limit)
 
         async def get_build_equipment(
             build_id: Annotated[str, Field(pattern=r"^bld_[0-9a-f]{32}$", max_length=36)],

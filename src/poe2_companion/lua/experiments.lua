@@ -32,7 +32,24 @@ local function graphConnected(build,index)
  end
 end
 function M.apply(build,request,items,slotName,selected,selectItem,deferOrder)
- local used,ascUsed=build.spec:CountAllocNodes()
+ local function points()
+  local used,ascUsed,_,_,weapon1,weapon2=build.spec:CountAllocNodes()
+  -- Native Build.EstimatePlayerProgress: shared ordinary points pay for the
+  -- larger weapon branch, rather than charging both weapon sets twice.
+  return used-math.min(weapon1,weapon2),ascUsed,weapon1,weapon2
+ end
+ local used,ascUsed,weapon1Used,weapon2Used=points()
+ local function budget(index)
+  local now,ascNow,weapon1,weapon2=points()
+  if now-used>request.ordinary_points_available or ascNow-ascUsed>request.ascendancy_points_available then fail(index,'point_budget') end
+  for set,delta in ipairs({weapon1-weapon1Used,weapon2-weapon2Used}) do
+   if delta>0 then
+    local available=request['weapon_set_'..set..'_points_available']
+    if available==nil then fail(index,'weapon_point_budget_unreported') end
+    if delta>available then fail(index,'point_budget') end
+   end
+  end
+ end
  local audit={status='valid_changeset',failures=array(),applied_edits=array(),base_unchanged=true,
   transition_validation='no_equipment_transition'}
  local supportChecks={}
@@ -42,6 +59,7 @@ function M.apply(build,request,items,slotName,selected,selectItem,deferOrder)
    local effect=gem.grantedEffect or gem.gemData and gem.gemData.grantedEffect
    if not effect or not effect.levels[edit.native_level] or gem.fromItem or gem.fromTree then fail(index,'invalid_level') end
    gem.level=edit.native_level;gem.quality=edit.quality
+   if edit.enabled~=nil then gem.enabled=edit.enabled end
    build.skillsTab:ProcessSocketGroup(group)
    if gem.level~=edit.native_level then fail(index,'invalid_level') end
   elseif edit.type=='set_supports' then
@@ -87,8 +105,7 @@ function M.apply(build,request,items,slotName,selected,selectItem,deferOrder)
    end
    if not deferOrder then graphConnected(build,index) end
    build.spec:BuildAllDependsAndPaths()
-   local now,ascNow=build.spec:CountAllocNodes()
-   if not deferOrder and (now-used>request.ordinary_points_available or ascNow-ascUsed>request.ascendancy_points_available) then fail(index,'point_budget') end
+   if not deferOrder then budget(index) end
   elseif edit.type=='equip_item' or edit.type=='unequip_item' then
    local id=0
    if edit.type=='equip_item' then
@@ -126,12 +143,13 @@ function M.apply(build,request,items,slotName,selected,selectItem,deferOrder)
   else fail(index,'entity_not_found') end
   audit.applied_edits[#audit.applied_edits+1]={edit_index=index-1,type=edit.type,status='applied_to_private_clone'}
  end
- local now,ascNow=build.spec:CountAllocNodes()
+ local now,ascNow,weapon1,weapon2=points()
  if deferOrder then
   graphConnected(build,#request.edits)
-  if now-used>request.ordinary_points_available or ascNow-ascUsed>request.ascendancy_points_available then fail(#request.edits,'point_budget') end
+  budget(#request.edits)
  end
  audit.ordinary_points_delta=now-used;audit.ascendancy_points_delta=ascNow-ascUsed
+ audit.weapon_set_1_points_delta=weapon1-weapon1Used;audit.weapon_set_2_points_delta=weapon2-weapon2Used
  return audit,supportChecks
 end
 function M.validateSupports(checks)

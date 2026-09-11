@@ -34,3 +34,12 @@ def test_converted_supply_cannot_feed_original_charge_consumer():
     assert result.findings[0].reason=='charge_supply_missing'
     assert result.effect_graph[0].resource_after=='endurance'
     assert result.findings[0].evidence_scope=='supplied_event_hypothesis'
+
+
+def test_native_self_conflicts_are_reported_without_manually_requesting_rules():
+    result=analyze(RiskRequest(calculation_id='calc_'+'1'*32),snapshot())
+    assert {f.rule_id for f in result.findings}=={'critical_event_requires_nonzero_chance','self_blind_requires_infliction'}
+    assert all(f.triggered_by=='native_snapshot_condition' for f in result.findings)
+    blind=next(f for f in result.findings if f.rule_id=='self_blind_requires_infliction')
+    assert blind.reason=='blind_source_unknown' and blind.status=='conditional'
+    assert next(m for m in result.metrics if m.name=='EnergyShield').coverage=='certified_for_snapshot'

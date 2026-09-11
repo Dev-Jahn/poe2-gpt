@@ -202,6 +202,7 @@ class WorkflowService:
             raise WorkflowError('partial_requires_subset')
         if request.state in {'partially_applied','applied'}:
             document.applied_edit_indices=sorted(indices)
+            document.last_reported_application_at_epoch=int(time.time())
         elif indices: raise WorkflowError('state_cannot_apply_edits')
         document.state=request.state;document.revision+=1
         self.store.save(owner,document,expected_revision=request.expected_revision)

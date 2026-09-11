@@ -104,7 +104,9 @@ function M.bind(build,target,saved,selectionError,scenarioDigest)
  local reason=selectionError
  if target and not reason then
   local main=build.calcsTab.mainEnv.player.mainSkill
-  if not evaluated or evaluated.skill_instance_id~=target.skill_instance_id or
+  if main.skillTypes and main.skillTypes[SkillType.Totem] then
+   reason='actor_not_supported'
+  elseif not evaluated or evaluated.skill_instance_id~=target.skill_instance_id or
    evaluated.weapon_set_id~=target.weapon_set_id or main.disableReason or
    (target.actor_owner_instance_id and evaluated.actor_owner_instance_id~=target.actor_owner_instance_id) or
    (target.component_ref and evaluated.component_ref~=target.component_ref) then
@@ -118,5 +120,29 @@ function M.bind(build,target,saved,selectionError,scenarioDigest)
  return {saved=saved,requested=target,evaluated=not reason and evaluated or nil,
   status=reason and 'unavailable' or target and 'matched' or 'saved_default',
   reason=reason,scenario_digest=scenarioDigest,next_action=nextAction}
+end
+function M.components(build,target)
+ local s,g,n=target.skill_instance_id:match('^skill:s(%d+):g(%d+):n(%d+)$')
+ local set=build.skillsTab.skillSets[tonumber(s)]
+ local group=set and set.socketGroupList[tonumber(g)]
+ local gem=group and group.gemList[tonumber(n)]
+ local rows={}
+ local function add(component)
+  local copy={};for key,value in pairs(target) do copy[key]=value end
+  copy.aggregation='single_skill';copy.component_ref=component or target.component_ref
+  rows[#rows+1]=copy
+ end
+ if target.aggregation=='component_breakdown' and group and gem and target.actor_ref~='spirit_vessel' then
+  local seen={}
+  for _,skill in ipairs(group.displaySkillList or {}) do
+   local effect=skill.activeEffect
+   if effect and effect.srcInstance==gem and (not target.component_ref or target.component_ref==effect.grantedEffect.id)
+    and not seen[effect.grantedEffect.id] then
+    seen[effect.grantedEffect.id]=true;add(effect.grantedEffect.id)
+   end
+  end
+ end
+ if #rows==0 then add() end
+ return rows
 end
 return M

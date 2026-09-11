@@ -40,6 +40,7 @@ local slotKeys = {'helmet','body_armour','gloves','boots','belt','amulet','ring_
 local statKeys = {'ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage','Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
 for _,key in ipairs({'FireResistTotal','ColdResistTotal','LightningResistTotal','ChaosResistTotal','FireResistOverCap','ColdResistOverCap','LightningResistOverCap','ChaosResistOverCap','PhysicalMaximumHitTaken','FireMaximumHitTaken','ColdMaximumHitTaken','LightningMaximumHitTaken','ChaosMaximumHitTaken','LifeRegen','ManaRegen','EnergyShieldRegen','LifeLeechRate','ManaLeechRate','EnergyShieldLeechRate','TotalEHP'}) do statKeys[#statKeys+1]=key end
 local function array(t) return setmetatable(t or {}, {__jsontype='array'}) end
+for _,key in ipairs({'LifeRegenRecovery','ManaRegenRecovery','EnergyShieldRegenRecovery'}) do statKeys[#statKeys+1]=key end
 local function refresh()
  build.buildFlag = true
  runCallback('OnFrame')
@@ -440,4 +441,18 @@ for _,changes in ipairs(job.scenarios) do
  if ok then results[#results+1]=value
  else results[#results+1]={stats=array(),equipped=array(),issues=array({{code='scenario_calculation_failed'}}),issue_count=1,validation='indeterminate',equip_order=array(),active_weapon_set=baseline.active_weapon_set,main_skill_group=baseline.main_skill_group} end
 end
-io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection,experiment_audit=experimentAudit,experiment_variants=experimentVariants}))
+local components=array();local componentTargets={}
+for index,target in ipairs(job.component_targets or {}) do
+ local single={};for key,value in pairs(target) do single[key]=value end
+ single.aggregation='single_skill';job.target=single;load()
+ for _,component in ipairs(subjects.components(build,target)) do
+  assert(#componentTargets<100)
+  componentTargets[#componentTargets+1]={requested_index=index-1,target=component}
+ end
+end
+for index=(job.component_offset or 0)+1,math.min(#componentTargets,(job.component_offset or 0)+(job.component_limit or 3)) do
+ local component=componentTargets[index];job.target=component.target;load()
+ components[#components+1]={requested_index=component.requested_index,snapshot=inspect()}
+end
+io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection,experiment_audit=experimentAudit,experiment_variants=experimentVariants,
+ components=components,component_total=#componentTargets}))

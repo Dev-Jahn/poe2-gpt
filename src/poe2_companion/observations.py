@@ -121,6 +121,11 @@ def record(store: DecisionStore, owner: str, request: ObservationRequest) -> Obs
             raise WorkflowError('plan_observation_limit_exceeded')
         previous=plan.revision
         plan.observation_ids.append(value.observation_id);plan.revision+=1
+        if (plan.state in {'applied','partially_applied'} and plan.last_reported_application_at_epoch is not None
+                and request.observed_at_epoch>=plan.last_reported_application_at_epoch
+                and any(isinstance(v,ResourceObservation) for v in request.values)):
+            # This is a user-observed outcome, not upstream/live confirmation.
+            plan.state='observed'
         try: store.save(owner,plan,expected_revision=previous)
         except Exception:
             store.delete_observation(owner,value.observation_id)

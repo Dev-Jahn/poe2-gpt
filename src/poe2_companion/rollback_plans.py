@@ -90,7 +90,7 @@ def fields(document: DecisionDocument) -> dict[str,Any]:
     result: dict[str,Any]={}
     for index in document.applied_edit_indices:
         edit=document.request.edits[index]
-        if edit.type=='set_gem':result['gem:'+edit.skill_instance_id]={'native_level':edit.native_level,'quality':edit.quality}
+        if edit.type=='set_gem':result['gem:'+edit.skill_instance_id]={'native_level':edit.native_level,'quality':edit.quality,**({'enabled':edit.enabled} if edit.enabled is not None else {})}
         elif edit.type=='set_supports':result['supports:'+edit.skill_instance_id.rsplit(':n',1)[0]]=sorted(edit.support_gem_ids)
         elif edit.type=='equip_item':result['equipment:'+edit.slot]=edit.source.model_dump(mode='json')
         elif edit.type=='unequip_item':result['equipment:'+edit.slot]=None

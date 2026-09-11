@@ -63,19 +63,20 @@ def bind(request: NativeRecoveryRequest,snapshot: EngineSnapshot) -> NativeRecov
     values: dict[str,float]={s.name:s.value for s in snapshot.stats}
     certified={r.stat for r in snapshot.metric_coverage if r.status=='pass'}
     bindings=[];missing=[]
-    def value(parameter: str,metric: str) -> float:
+    def value(parameter: str,metric: str,allow_negative: bool=False) -> float:
         number=values.get(metric)
-        if number is None or number<0:missing.append(metric);return 0.
+        if number is None or (number<0 and not allow_negative):missing.append(metric);return 0.
         bindings.append(ParameterBinding(parameter=parameter,metric=metric,value=number,evidence=
             'certified_for_snapshot' if metric in certified else 'native_estimate_unresolved_dependencies'))
         return number
     states=[]
     for row in request.resources:
-        capacity,regen={'life':('LifeUnreserved','LifeRegen'),'mana':('ManaUnreserved','ManaRegen'),
-            'energy_shield':('EnergyShield','EnergyShieldRegen')}[row.resource]
+        capacity,regen={'life':('LifeUnreserved','LifeRegenRecovery'),'mana':('ManaUnreserved','ManaRegenRecovery'),
+            'energy_shield':('EnergyShield','EnergyShieldRegenRecovery')}[row.resource]
         maximum=value(row.resource+'.maximum',capacity)
+        net_regen=value(row.resource+'.net_regeneration_per_second',regen,True)
         state={'resource':row.resource,'maximum':maximum,'initial':maximum*row.fraction_of_capacity,
-            'regeneration_per_second':value(row.resource+'.regeneration_per_second',regen),
+            'regeneration_per_second':max(0.,net_regen),'degeneration_per_second':max(0.,-net_regen),
             'initial_recharge_delay_remaining':row.initial_recharge_delay_remaining}
         if row.resource=='energy_shield':
             state.update(recharge_per_second=value('energy_shield.recharge_per_second','EnergyShieldRecharge'),

@@ -18,6 +18,7 @@ class SetGem(DTO):
     skill_instance_id: SkillInstanceID
     native_level: Annotated[int, Field(ge=1, le=100)]
     quality: Annotated[int, Field(ge=0, le=100)]
+    enabled: bool | None = None
 
 
 class SetSupports(DTO):
@@ -128,6 +129,8 @@ class ExperimentRequest(DTO):
     edits: Annotated[list[Edit], Field(min_length=1, max_length=32)]
     ordinary_points_available: Annotated[int, Field(ge=0, le=128)] = 0
     ascendancy_points_available: Annotated[int, Field(ge=0, le=8)] = 0
+    weapon_set_1_points_available: Annotated[int,Field(ge=0,le=128)] | None = None
+    weapon_set_2_points_available: Annotated[int,Field(ge=0,le=128)] | None = None
     point_budget_evidence: Literal['user_reported'] = 'user_reported'
     temporary_equipment: Annotated[list[OwnedHelper], Field(max_length=8)] = Field(default_factory=list)
     transition_state_budget: Annotated[int, Field(ge=1, le=64)] = 32
@@ -154,7 +157,7 @@ class EditFailure(DTO):
     edit_index: Annotated[int, Field(ge=0, le=31)]
     code: Literal['entity_not_found', 'invalid_level', 'support_incompatible', 'socket_capacity',
         'graph_disconnected', 'point_budget', 'wrong_point_pool', 'attribute_choice_required',
-        'rune_incompatible', 'instill_recipe_unverified', 'unsupported_node_rule', 'immutable_source_mismatch']
+        'rune_incompatible', 'instill_recipe_unverified', 'unsupported_node_rule', 'immutable_source_mismatch', 'weapon_point_budget_unreported']
 
 
 class EditAudit(DTO):
@@ -169,6 +172,8 @@ class ExperimentAudit(DTO):
     applied_edits: Annotated[list[EditAudit], Field(max_length=32)]
     ordinary_points_delta: int = 0
     ascendancy_points_delta: int = 0
+    weapon_set_1_points_delta: int = 0
+    weapon_set_2_points_delta: int = 0
     base_unchanged: Literal[True] = True
     equipment_transition: EquipmentTransition | None = None
     transition_validation: Literal['requires_order_validation', 'no_equipment_transition', 'verified'] = 'requires_order_validation'
