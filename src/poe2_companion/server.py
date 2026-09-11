@@ -359,6 +359,13 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *(allowed_hosts or [])],
             allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *["https://"+h for h in (allowed_hosts or [])]]),
         instructions=("Use market tools for PoE2 market prices instead of web snippets. "
+            "For build workflows, first use get_capabilities and describe_tool_schema when available; distinguish server configuration from tools the host actually exposes. "
+            "Use get_build_profile to discover stable skill instances and sets before choosing an explicit target; saved main skill, requested actor and evaluated subject are separate. "
+            "Use create_build_experiment for joint gem, passive and equipment changes, and compare complete same-scenario purchase plans including preparation costs. "
+            "Keep coverage-qualified recommendations separate from conditional research candidates. Do not replace unknown costs, rules, unlocks or observations with favorable defaults. "
+            "Present one primary execution route with prerequisites, names, landmarks, resource checkpoints and rollback; recover all relevant pages before claiming completeness. "
+            "A proposed, accepted or partly applied plan is not current character state. Record explicit user reports and source confirmation separately; adverse observations should lead to the smallest relevant rollback experiment. "
+            "Generate downloadable execution tables and machine plans from the retained execution object using export_build_execution_plan, and preserve its hash and expiry. "
             "Account tools retain per-user account labels and connections; register_game_account never proves ownership. "
             "Only official login can verify account ownership. Never request or submit passwords, cookies, OAuth tokens or client secrets in chat. "
             "begin_game_account_link returns the authenticated account management page. Authentication can expire; report next_action. "
