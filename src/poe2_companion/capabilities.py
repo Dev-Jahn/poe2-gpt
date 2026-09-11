@@ -43,6 +43,7 @@ class Capabilities(DTO):
     inventory_pagination: Literal['same_offset_pages_configured_and_missing_tool_lists'] = 'same_offset_pages_configured_and_missing_tool_lists'
     features: list[Feature]
     max_tool_result_bytes: Literal[8192] = 8192
+    result_limit_scope: Literal['bounded_build_workflow_and_runtime_dtos; legacy_market_tools_have_separate_row_limits'] = 'bounded_build_workflow_and_runtime_dtos; legacy_market_tools_have_separate_row_limits'
     max_equipment_candidates: Literal[64] = 64
     max_equipment_changes: Literal[3] = 3
     schema_discovery_tool: Literal['describe_tool_schema'] = 'describe_tool_schema'

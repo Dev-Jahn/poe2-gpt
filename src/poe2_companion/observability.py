@@ -1,7 +1,7 @@
 """Bounded operational counters. No payloads, identities, paths or raw errors."""
 from typing import Annotated, Literal
 from pydantic import Field
-from .builds import DTO
+from .builds import DTO, bounded_dto, tool_json_bytes
 
 
 class ToolCounters(DTO):
@@ -17,6 +17,10 @@ class RuntimeStatus(DTO):
     recent_errors: Annotated[list['ErrorTrace'], Field(max_length=16)] = Field(default_factory=list)
     process_local: bool = True
     raw_payloads_logged: bool = False
+    total_tools: int = 0
+    total_recent_errors: int = 0
+    next_offset: int | None = None
+    pagination: Literal['same_offset_pages_live_tools_and_recent_errors'] = 'same_offset_pages_live_tools_and_recent_errors'
 
 
 class ErrorTrace(DTO):
@@ -25,6 +29,18 @@ class ErrorTrace(DTO):
     code: Annotated[str, Field(pattern=r'^[a-z][a-z0-9_]+$', max_length=100)]
     category: Literal['arguments', 'retryable', 'user_input', 'operator_action', 'unavailable']
     occurred_at_epoch: int
+
+
+def runtime_page(counters: list[ToolCounters], errors: list[ErrorTrace], offset: int, limit: int) -> RuntimeStatus:
+    """Page both bounded lists without dropping diagnostics to fit the wire cap."""
+    end = offset + limit
+    while True:
+        page = RuntimeStatus(tools=counters[offset:end], recent_errors=errors[offset:end],
+            total_tools=len(counters), total_recent_errors=len(errors),
+            next_offset=end if end < max(len(counters), len(errors)) else None)
+        if tool_json_bytes(page) <= 8192 or end <= offset + 1:
+            return bounded_dto(page)
+        end -= 1
 
 
 def recovery(code):

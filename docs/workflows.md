@@ -54,6 +54,6 @@ Map/reward/crafting tools evaluate typed inputs and observed costs, distinguishi
 
 ## Operations and evidence
 
-`begin_workflow_trace` and typed workflow steps record calls, bytes, token estimates, phase timings and explicit goal evidence within deadlines and budgets. Successful HTTP responses alone do not complete a task. Tracing is opt-in; host reasoning time, billed tokens and gameplay success are not inferred. Cancellation stops waiting/queued work; it does not promise immediate termination of already admitted native CPU work.
+`begin_workflow_trace` and typed workflow steps record calls, bytes, token estimates, phase timings and explicit goal evidence within deadlines and budgets. Successful HTTP responses alone do not complete a task. Tracing is opt-in; host reasoning time, billed tokens and gameplay success are not inferred. Runtime counters and recent errors are losslessly paged within 8192 ordinary JSON bytes. The advertised byte cap covers bounded build/workflow/runtime DTOs; legacy market endpoints retain their separate row limits. Cancellation stops waiting/queued work; it does not promise immediate termination of already admitted native CPU work.
 
 The release compatibility marker is `forbidden-rites-0.5.5-v5`, with the existing pinned upstream engine/data commits. Server and worker must be updated together. Main remains unprotected unless a repository administrator enables required checks; CI success is evidence, not branch-protection enforcement.

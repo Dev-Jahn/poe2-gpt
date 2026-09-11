@@ -444,9 +444,11 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             return await characters.call("refresh_character", request)
 
     @server.tool(annotations=PRIVATE_READ, structured_output=True)
-    async def get_tool_runtime_status() -> RuntimeStatus:
-        """Read process-local tool counts, errors and latency totals. No raw request, build/account identity or exception payload is retained. Counters reset on restart."""
-        return RuntimeStatus(tools=list(server.counters.values()),recent_errors=list(server.error_traces))
+    async def get_tool_runtime_status(offset: Annotated[int, Field(ge=0, le=128)] = 0,
+            limit: Annotated[int, Field(ge=1, le=32)] = 16) -> RuntimeStatus:
+        """Page live process-local tool counts, errors and latency totals within 8192 JSON bytes. Follow next_offset for both lists; counts can change between calls. No raw request, build/account identity or exception payload is retained. Counters reset on restart."""
+        from .observability import runtime_page
+        return runtime_page(list(server.counters.values()),list(server.error_traces),offset,limit)
 
     @server.tool(annotations=PRIVATE_READ, structured_output=True)
     async def get_capabilities(request: CapabilitiesRequest) -> Capabilities:

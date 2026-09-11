@@ -500,7 +500,8 @@
       "case_id": "MCP-018-T02",
       "tests": [
         "tests/test_workflow_market.py::test_same_failed_query_stops_after_two_attempts",
-        "tests/test_workflow_telemetry.py::test_bounded_identical_retry_admission_cancellation_and_deadline"
+        "tests/test_workflow_telemetry.py::test_bounded_identical_retry_admission_cancellation_and_deadline",
+        "tests/test_workflow_telemetry.py::test_runtime_pages_all_tool_counters_and_errors_within_mcp_wire_limit"
       ],
       "execution_evidence": "requires_exact_tree_test_run",
       "historical_private_fixture_replayed": false

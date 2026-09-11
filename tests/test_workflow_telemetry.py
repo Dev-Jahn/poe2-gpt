@@ -101,3 +101,31 @@ async def test_actual_mcp_trace_wraps_empty_inspection_without_schema_loss(clien
         status=await session.call_tool('get_workflow_trace',{'request':{'trace_id':trace}})
         assert status.structuredContent['goal_evidence_available']
         assert status.structuredContent['next_action']=='stop_exploration_and_review_evidence'
+
+
+async def test_runtime_pages_all_tool_counters_and_errors_within_mcp_wire_limit(client):
+    from poe2_companion.observability import ToolCounters,ErrorTrace
+    scout,_,_=client
+    server=build_server(scout)
+    for i in range(100):
+        name=f'tool_{i:03d}_'+'x'*71
+        server.counters[name]=ToolCounters(tool=name,calls=10**12,elapsed_ms=1e12,max_elapsed_ms=1e9)
+    for i in range(16):
+        server.error_traces.append(ErrorTrace(trace_id=f'{i:024x}',tool='x'*80,code='e'*100,
+            category='operator_action',occurred_at_epoch=1800000000+i))
+    async with create_connected_server_and_client_session(server) as session:
+        schema=next(t.outputSchema for t in (await session.list_tools()).tools if t.name=='get_tool_runtime_status')
+        names=[];errors=[];offset=0
+        while True:
+            response=await session.call_tool('get_tool_runtime_status',{'offset':offset,'limit':32})
+            assert not response.isError
+            page=response.structuredContent
+            Draft202012Validator(schema).validate(page)
+            assert len(json.dumps(page,allow_nan=False).encode())<=8192
+            names.extend(row['tool'] for row in page['tools']);errors.extend(row['trace_id'] for row in page['recent_errors'])
+            if page['next_offset'] is None:break
+            assert page['next_offset']>offset;offset=page['next_offset']
+        assert len(names)==101 and len(set(names))==101
+        assert errors==[f'{i:024x}' for i in range(16)]
+        empty=await session.call_tool('get_tool_runtime_status',{'offset':128})
+        assert not empty.isError and empty.structuredContent['tools']==[] and empty.structuredContent['recent_errors']==[]
