@@ -186,8 +186,14 @@ def check_id(value: str):
 ProjectionDTO = TypeVar('ProjectionDTO', bound=DTO)
 
 
+def tool_json_bytes(value: DTO) -> int:
+    # Account for ordinary host JSON rendering, including ASCII escapes and
+    # separators. Compact wire JSON alone underestimates the public contract.
+    return len(json.dumps(value.model_dump(mode='json'),allow_nan=False).encode('utf-8'))
+
+
 def bounded_dto(value: ProjectionDTO) -> ProjectionDTO:
-    if len(value.model_dump_json().encode("utf-8")) > MAX_TOOL_JSON_BYTES:
+    if tool_json_bytes(value) > MAX_TOOL_JSON_BYTES:
         raise BuildError("projection_response_too_large")
     return value
 
@@ -273,6 +279,6 @@ class BuildReader:
         page = BuildEquipment(build_id=build_id, items=result, total=total, detail=detail,
             page_scope="properties_then_modifiers" if detail else "items", page_total=page_total,
             next_offset=offset+limit if offset+limit < page_total else None)
-        if len(page.model_dump_json().encode("utf-8")) > MAX_TOOL_JSON_BYTES and limit > 1:
+        if tool_json_bytes(page) > MAX_TOOL_JSON_BYTES and limit > 1:
             return self.equipment(build_id, slot, offset, max(1, limit // 2))
         return bounded_dto(page)

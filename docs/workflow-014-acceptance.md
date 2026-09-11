@@ -8,9 +8,9 @@ Status labels distinguish implementation, contract tests, real-engine tests, hos
 |---|---|---|---|---|
 | MCP-001 | P0 | 호스트에서 실제 사용 가능한 기능·스키마를 자기 기술 | MCP-001-T01, MCP-001-T02, MCP-001-T03 | Partial: runtime inventory and schema pages; final host replay pending |
 | MCP-002 | P0 | 정적 inspection을 계산 엔진 실패에서 분리하고 한 번에 요약 | MCP-002-T01, MCP-002-T02, MCP-002-T03 | Partial: native calculation-free loader/cache verified; complete profile/fallback acceptance pending |
-| MCP-003 | P0 | 주력 스킬·행위자·계산 문맥을 명시적으로 선택 | MCP-003-T01, MCP-003-T02, MCP-003-T03 | Partial: player/minion instance targeting verified; copy/component coverage pending |
+| MCP-003 | P0 | 주력 스킬·행위자·계산 문맥을 명시적으로 선택 | MCP-003-T01, MCP-003-T02, MCP-003-T03 | Partial: player/minion and Hollow-copy instance targeting verified; Vessel/component coverage pending |
 | MCP-004 | P0 | 원본 보존형 젬·패시브·장비 공동 changeset 평가 | MCP-004-T01, MCP-004-T02, MCP-004-T03 | Partial: immutable typed edits; transition solver and full edit acceptance pending |
-| MCP-005 | P0 | 검증 범위를 분리하고 조건부 추천을 구조화 | MCP-005-T01, MCP-005-T02, MCP-005-T03 | Partial: scoped metric explanations; sensitivity/frontier pending |
+| MCP-005 | P0 | 검증 범위를 분리하고 조건부 추천을 구조화 | MCP-005-T01, MCP-005-T02, MCP-005-T03 | Partial: scoped metric explanations; stored same-scenario frontier/crossing comparison verified; complete real-engine sensitivity acceptance pending |
 | MCP-006 | P0 | 스냅샷·사용자 변경·추천 실행 상태의 revision 관리 | MCP-006-T01, MCP-006-T02, MCP-006-T03 | Partial: revision-locked decision lifecycle; encrypted observations, conflicts and source distinction verified; source reconciliation pending |
 | MCP-007 | P0 | 게임 조건/보조 호환/자원 공급원 linter | MCP-007-T01, MCP-007-T02, MCP-007-T03, MCP-007-T04 | Partial: typed condition/event linter; automatic full-build facts and independent game-rule oracles pending |
 | MCP-008 | P0 | 의식·지속 피격에서 실제 회복 가능성을 평가 | MCP-008-T01, MCP-008-T02, MCP-008-T03, MCP-008-T04 | Partial: deficit/event integrator verified; native parameter binding and acceptance replay pending |
@@ -18,8 +18,8 @@ Status labels distinguish implementation, contract tests, real-engine tests, hos
 | MCP-010 | P1 | 새 소켓과 보조젬 포트폴리오 비교 | MCP-010-T01, MCP-010-T02, MCP-010-T03 | Partial: native gem catalog and joint support portfolio verified in one worker; full socket/BOM and condition acceptance pending |
 | MCP-011 | P1 | 원본→변환 장비 비교와 미확정 롤 처리 | MCP-011-T01, MCP-011-T02, MCP-011-T03 | Pending |
 | MCP-012 | P1 | 요구치·재장착·전환 순서 통합 solver | MCP-012-T01, MCP-012-T02, MCP-012-T03 | Partial: native requirement sources and owned bridge order verified; mixed edit transitions and correction BOM pending |
-| MCP-013 | P1 | 시장 검색·환율·rate-limit을 하나의 계획으로 조율 | MCP-013-T01, MCP-013-T02, MCP-013-T03, MCP-013-T04 | Pending |
-| MCP-014 | P1 | 검증 가능한 장비·젬·패시브 통합 구매안 | MCP-014-T01, MCP-014-T02, MCP-014-T03 | Pending |
+| MCP-013 | P1 | 시장 검색·환율·rate-limit을 하나의 계획으로 조율 | MCP-013-T01, MCP-013-T02, MCP-013-T03, MCP-013-T04 | Partial: one FX comparison batch, retained cooldown pages, bounded failed queries and explicit zero-match scope; full currency identity acceptance pending |
+| MCP-014 | P1 | 검증 가능한 장비·젬·패시브 통합 구매안 | MCP-014-T01, MCP-014-T02, MCP-014-T03 | Partial: complete-cost evidence and joint decision/frontier comparison; automatic portfolio generation and final acceptance pending |
 | MCP-015 | P1 | 영속 evidence receipts·보고서·산출물 일관성 | MCP-015-T01, MCP-015-T02, MCP-015-T03 | Partial: opt-in encrypted decisions and shared artifact digest; complete artifact acceptance pending |
 | MCP-016 | P1 | 한국어 명칭·랜드마크·typed entity navigation | MCP-016-T01, MCP-016-T02, MCP-016-T03 | Partial: typed catalog, verified Korean fallback and route landmarks; final navigation replay pending |
 | MCP-017 | P1 | 한 경로·단계별 실행·원복 중심 계획 UX | MCP-017-T01, MCP-017-T02, MCP-017-T03 | Partial: plan steps and lifecycle; actionable consolidated route/rollback pending |

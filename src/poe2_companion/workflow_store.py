@@ -13,7 +13,7 @@ from pathlib import Path
 import secrets
 import sqlite3
 import time
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeVar
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import Field
@@ -25,6 +25,8 @@ from .profiles import Digest
 from .observations import ObservationRecord
 
 PlanState = Literal['proposed','accepted','partially_applied','applied','observed','rejected','superseded']
+ArtifactKind = Literal['purchase_comparison','currency_portfolio','workflow_trace','guide_evidence','encounter_observation']
+ArtifactDTO = TypeVar('ArtifactDTO', bound=DTO)
 
 
 class DecisionDocument(DTO):
@@ -55,6 +57,7 @@ class DecisionStore:
         self.member=member
         self.memory: OrderedDict[tuple[str,str],DecisionDocument] = OrderedDict()
         self.observations: OrderedDict[tuple[str,str],ObservationRecord] = OrderedDict()
+        self.artifacts: OrderedDict[tuple[str,str,str],tuple[int,bytes]] = OrderedDict()
         self.db: sqlite3.Connection | None = None
         self.cipher: AESGCM | None = None
         if directory is not None:
@@ -72,7 +75,9 @@ class DecisionStore:
                 CREATE TABLE IF NOT EXISTS decisions(owner TEXT NOT NULL,id TEXT NOT NULL,expires INTEGER NOT NULL,
                     size INTEGER NOT NULL,revision INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,id));
                 CREATE TABLE IF NOT EXISTS observations(owner TEXT NOT NULL,id TEXT NOT NULL,expires INTEGER NOT NULL,
-                    size INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,id));''')
+                    size INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,id));
+                CREATE TABLE IF NOT EXISTS artifacts(owner TEXT NOT NULL,kind TEXT NOT NULL,id TEXT NOT NULL,
+                    expires INTEGER NOT NULL,size INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(owner,kind,id));''')
             stored=self.db.execute("SELECT value FROM metadata WHERE key='member'").fetchone()
             if stored and stored[0]!=member: raise ValueError('workflow_member_mismatch')
             self.db.execute("INSERT OR IGNORE INTO metadata VALUES ('member',?)",(member,))
@@ -86,9 +91,59 @@ class DecisionStore:
             if document.expires_at_epoch<=now: self.memory.pop(key)
         for key,observation in list(self.observations.items()):
             if observation.expires_at_epoch<=now: self.observations.pop(key)
+        for artifact_key,(expires,_) in list(self.artifacts.items()):
+            if expires<=now: self.artifacts.pop(artifact_key)
         if self.db:
             self.db.execute('DELETE FROM decisions WHERE expires<=?',(now,))
             self.db.execute('DELETE FROM observations WHERE expires<=?',(now,))
+            self.db.execute('DELETE FROM artifacts WHERE expires<=?',(now,))
+
+    def save_artifact(self, owner: str, kind: ArtifactKind, identifier: str,
+            value: DTO, expires: int, persist: bool) -> None:
+        """Internal callers supply a closed DTO; there is no arbitrary JSON tool."""
+        self.purge()
+        raw=value.model_dump_json().encode()
+        if len(raw)>self.MAX_RECORD_BYTES or not int(time.time())<expires<=int(time.time())+90*86400:
+            raise WorkflowError('artifact_limit_exceeded')
+        key=(self.owner_key(owner),kind,identifier)
+        if persist:
+            if self.db is None or self.cipher is None: raise WorkflowError('workflow_persistence_unconfigured')
+            nonce=secrets.token_bytes(12)
+            sealed=nonce+self.cipher.encrypt(nonce,raw,'\0'.join((self.member,'artifacts',*key)).encode())
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                count,size=self.db.execute('SELECT COUNT(*),COALESCE(SUM(size),0) FROM artifacts WHERE owner=?',(key[0],)).fetchone()
+                if count>=self.MAX_RECORDS or size+len(raw)>self.MAX_BYTES: raise WorkflowError('artifact_quota_exceeded')
+                self.db.execute('INSERT INTO artifacts VALUES (?,?,?,?,?,?)',(*key,expires,len(raw),sealed))
+                self.db.execute('COMMIT')
+            except Exception:
+                self.db.execute('ROLLBACK')
+                raise
+        else:
+            if key in self.artifacts: raise WorkflowError('artifact_already_exists')
+            size=sum(len(payload) for _,payload in self.artifacts.values())
+            while self.artifacts and (len(self.artifacts)>=self.MAX_RECORDS or size+len(raw)>self.MAX_BYTES):
+                _,(_,payload)=self.artifacts.popitem(last=False);size-=len(payload)
+            self.artifacts[key]=(expires,raw)
+
+    def get_artifact(self, owner: str, kind: ArtifactKind, identifier: str, model: type[ArtifactDTO]) -> ArtifactDTO:
+        self.purge()
+        key=(self.owner_key(owner),kind,identifier)
+        if key in self.artifacts: return model.model_validate_json(self.artifacts[key][1])
+        if self.db is not None and self.cipher is not None:
+            row=self.db.execute('SELECT payload FROM artifacts WHERE owner=? AND kind=? AND id=?',key).fetchone()
+            if row:
+                raw=row[0]
+                try:
+                    payload=self.cipher.decrypt(raw[:12],raw[12:],'\0'.join((self.member,'artifacts',*key)).encode())
+                    return model.model_validate_json(payload)
+                except Exception: raise WorkflowError('artifact_integrity_failure') from None
+        raise WorkflowError('artifact_expired_or_unavailable')
+
+    def delete_artifact(self, owner: str, kind: ArtifactKind, identifier: str) -> None:
+        key=(self.owner_key(owner),kind,identifier)
+        self.artifacts.pop(key,None)
+        if self.db: self.db.execute('DELETE FROM artifacts WHERE owner=? AND kind=? AND id=?',key)
 
     def save_observation(self, owner: str, record: ObservationRecord) -> None:
         self.purge()

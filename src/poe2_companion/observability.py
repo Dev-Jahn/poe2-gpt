@@ -28,6 +28,8 @@ class ErrorTrace(DTO):
 
 
 def recovery(code):
+    if code=='trade_repeated_query_failed':
+        return 'arguments','use_retained_results_or_review_query_before_retry'
     if code in {'engine_busy','engine_timeout','engine_unavailable','trade_timeout','trade_rate_limited','trade_cooldown','internal_tool_error','tool_request_failed'}:
         return 'retryable','wait_then_retry_once'
     if 'authentication' in code or 'challenge' in code or code in {'trade_forbidden','trade_unauthorized'}:

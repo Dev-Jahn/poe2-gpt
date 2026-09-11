@@ -150,7 +150,7 @@ local function inspect(expected, order, sequenceOk)
  -- Resolve identity from immutable engine data; saved labels are private.
  local canonicalEffect=effect and effect.id and build.data.skills[effect.id]
  if canonicalEffect then
-  selectedSkill={skill_id=effect.id,name=canonicalEffect.name,actor=mainSkill.minion and 'minion' or 'player'}
+  selectedSkill={skill_id=effect.id,name=canonicalEffect.name,actor=subjects.actor(mainSkill)}
   local gem=mainSkill.activeEffect.srcInstance and mainSkill.activeEffect.srcInstance.gemData
   if gem and type(gem.name)=='string' then selectedSkill.gem_name=gem.name end
  end

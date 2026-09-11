@@ -1,4 +1,8 @@
 local M={}
+function M.actor(skill)
+ if skill and skill.skillTypes and skill.skillTypes[SkillType.SupportedByHollowForm] then return 'hollow_image' end
+ return skill and skill.minion and 'minion' or 'player'
+end
 function M.resolve(build)
  local env=build.calcsTab.mainEnv
  local skill=env and env.player.mainSkill
@@ -15,12 +19,12 @@ function M.resolve(build)
    end
   end
  end
- return {skill_instance_id=instance,skill_id=effect.id,actor_ref=skill.minion and 'minion' or 'player',
+ return {skill_instance_id=instance,skill_id=effect.id,actor_ref=M.actor(skill),
   component_ref=effect.id,weapon_set_id=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1}
 end
 function M.select(build,target,refresh)
  if not target then return nil end
- if target.actor_ref~='player' and target.actor_ref~='minion' then return 'actor_not_supported' end
+ if target.actor_ref~='player' and target.actor_ref~='minion' and target.actor_ref~='hollow_image' then return 'actor_not_supported' end
  local s,g,n=target.skill_instance_id:match('^skill:s(%d+):g(%d+):n(%d+)$')
  s,g,n=tonumber(s),tonumber(g),tonumber(n)
  local set=build.skillsTab.skillSets[s]

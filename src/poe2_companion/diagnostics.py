@@ -7,7 +7,7 @@ from typing import Annotated, Any, Iterable, Literal, Self
 
 from pydantic import Field, model_validator
 
-from .builds import DTO, MAX_TOOL_JSON_BYTES, PlayerStat, StatName
+from .builds import DTO, tool_json_bytes, MAX_TOOL_JSON_BYTES, PlayerStat, StatName
 from .engine_models import EngineCalculation, EngineError, RequirementIssue, MechanicResult, MetricCoverage, EngineRequest, EngineTradeRequest, EngineSnapshot, TradeChange
 from .equipment import FX, Price
 from .combat_models import CombatScenarioResult
@@ -203,7 +203,7 @@ class CalculationReceipts:
                 next_offset=end if end < len(records) else None, expires_at_epoch=expiry,
                 input_guidance=input_guidance({n for m in selected for n in m.required_inputs}) if request.section=='mechanics' else [],
                 **{str(request.section): selected})
-            if len(page.model_dump_json().encode()) <= MAX_TOOL_JSON_BYTES:
+            if tool_json_bytes(page) <= MAX_TOOL_JSON_BYTES:
                 return page
             if len(selected) <= 1:
                 raise EngineError('engine_protocol_error')

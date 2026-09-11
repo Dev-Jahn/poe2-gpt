@@ -40,6 +40,8 @@ from .recovery import RecoveryRequest, RecoveryResult, analyze as analyze_recove
 from .risk_analysis import RiskRequest, RiskResult, analyze as analyze_risks
 from .observations import (ObservationRequest,ObservationRecord,ObservationPageRequest,ObservationPage,
     DeleteObservationRequest,record as record_observation,page as observation_page)
+from .purchase_models import (PurchaseComparisonRequest, PurchaseSummary, PurchasePageRequest, PurchasePage, DeletePurchaseComparison)
+from .purchases import compare as compare_purchases, page as purchase_page
 from .support_portfolio import SupportPortfolioRequest, SupportPortfolio, compare as support_portfolio
 from .progression import ProgressionRequest, ProgressionPlan, plan as progression_plan
 from .requirements import RequirementsRequest, RequirementsPage, page as requirements_page
@@ -76,6 +78,9 @@ EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
     'get_build_requirements': RequirementsRequest,
     'plan_build_progression': ProgressionRequest,
     'compare_support_portfolio': SupportPortfolioRequest,
+    'compare_build_purchase_plans': PurchaseComparisonRequest,
+    'get_purchase_comparison': PurchasePageRequest,
+    'delete_purchase_comparison': DeletePurchaseComparison,
     'record_build_observation': ObservationRequest,
     'get_build_observations': ObservationPageRequest,
     'delete_build_observation': DeleteObservationRequest,
@@ -466,6 +471,22 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             profile=await engine.profile(ProfileRequest(build_id=request.base_build_id))
             if profile.snapshot_digest!=request.base_snapshot_digest: raise WorkflowError('observation_snapshot_mismatch')
             return record_observation(workflow.store,workflow_owner(ctx),request)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=True), structured_output=True)
+        async def compare_build_purchase_plans(request: PurchaseComparisonRequest, ctx: Context) -> PurchaseSummary:
+            """Compare retained whole changesets under identical explicit scenarios. Price every item, support, socket upgrade, quality, rune, instill and refund component; missing prices keep the total unknown. Uses one Scout FX snapshot for the entire comparison, distinguishes liquid currency and gold, and retains exact per-candidate bills. Reports robust cost/metric frontiers and actual rank crossings without invented probabilities or a global-best claim. A proposal never spends currency."""
+            return await compare_purchases(request,workflow,workflow_owner(ctx),scout)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_purchase_comparison(request: PurchasePageRequest, ctx: Context) -> PurchasePage:
+            """Recover the exact comparison JSON, complete bill, scenario metrics, or at most one primary preparation/execution route. All representations bind one artifact hash; follow character offsets. Retained estimates and listing asks are not realized purchases or a live character state."""
+            return purchase_page(request,workflow,workflow_owner(ctx))
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False), structured_output=True)
+        async def delete_purchase_comparison(request: DeletePurchaseComparison, ctx: Context) -> DeletedDecision:
+            """Delete this user's requested comparison evidence. Other users' artifacts and the underlying character remain separate."""
+            workflow.store.delete_artifact(workflow_owner(ctx),'purchase_comparison',request.comparison_id)
+            return DeletedDecision()
 
         @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
         async def compare_support_portfolio(request: SupportPortfolioRequest, ctx: Context) -> SupportPortfolio:

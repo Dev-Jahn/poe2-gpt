@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 import httpx
 
-from .builds import bounded_dto, PlayerStat, MAX_TOOL_JSON_BYTES
+from .builds import bounded_dto, tool_json_bytes, PlayerStat, MAX_TOOL_JSON_BYTES
 from .engine_models import (ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError, SAFE_ENGINE_ERRORS, EngineStatus, EngineRequest, CompareRequest,
     EngineCalculation, EngineTradeRequest, EngineTradeResult, TradeChange, EngineSlot)
 from .engine_protocol import WorkerRequest, WorkerResult, private_trade_item
@@ -65,7 +65,7 @@ def bounded_engine_dto(value):
     snapshots=[calculation.baseline]+([calculation.result] if calculation.result else [])
     primary={'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier','MinionTotalDPS','MinionCombinedDPS','MinionSpeed'}
     primary.update(calculation.requested_metrics)
-    while len(value.model_dump_json().encode('utf-8'))>MAX_TOOL_JSON_BYTES:
+    while tool_json_bytes(value)>MAX_TOOL_JSON_BYTES:
         details=[s for s in snapshots if s.requirements is not None]
         if details:
             details[0].requirements=None
@@ -157,10 +157,10 @@ class EngineClient:
     async def inspect(self, request):
         from .inspection import InspectionPage
         page = await self.static_request('/inspect', request, InspectionPage)
-        while len(page.model_dump_json(exclude_none=True).encode()) > MAX_TOOL_JSON_BYTES and len(page.records) > 1:
+        while tool_json_bytes(page) > MAX_TOOL_JSON_BYTES and len(page.records) > 1:
             page.records.pop()
             page.next_offset = request.offset + len(page.records)
-        if len(page.model_dump_json(exclude_none=True).encode()) > MAX_TOOL_JSON_BYTES:
+        if tool_json_bytes(page) > MAX_TOOL_JSON_BYTES:
             raise EngineError('engine_protocol_error')
         return page
 

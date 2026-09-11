@@ -173,7 +173,7 @@ class SelectedSkill(DTO):
     gem_name: Annotated[str, Field(min_length=1, max_length=120)] | None = None
     name_ko: Annotated[str, Field(max_length=160)] | None = None
     name_source_ko: Annotated[str, Field(max_length=1024)] | None = None
-    actor: Literal["player", "minion"]
+    actor: Literal["player", "minion", "hollow_image"]
 
 
 class MetricCoverage(DTO):
