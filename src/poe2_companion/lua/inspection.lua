@@ -23,7 +23,7 @@ function M.project(build, query, saved, aliases)
   for _,id in ipairs(keys(build.itemsTab.itemSets)) do add{kind='item_set',set_id=id,selected=build.itemsTab.itemSets[id]==build.itemsTab.activeItemSet} end
   for _,id in ipairs(keys(build.skillsTab.skillSets)) do add{kind='skill_set',set_id=id,selected=build.skillsTab.skillSets[id].socketGroupList==build.skillsTab.socketGroupList} end
   for _,id in ipairs(keys(build.configTab.configSets)) do add{kind='configuration_set',set_id=id,selected=id==build.configTab.activeConfigSetId} end
-  for id,spec in ipairs(build.specList or {}) do add{kind='tree_set',set_id=id,selected=spec==build.spec} end
+  for id,spec in ipairs(build.treeTab.specList or {}) do add{kind='tree_set',set_id=id,selected=spec==build.spec} end
  elseif query.section=='equipment' then
   -- Resolve the selector inside this one private request, including swap sets.
   local slotMap={['Helmet']='helmet',['Body Armour']='body_armour',['Gloves']='gloves',
@@ -104,9 +104,10 @@ function M.project(build, query, saved, aliases)
       selected=active and build.mainSocketGroup==groupId,selected_active_skill=group.mainActiveSkill or 1,name=label(group.slot)}
      for gemId,gem in ipairs(group.gemList or {}) do
       local effect=build.data.skills[gem.skillId or '']
-      add{kind='gem',set_id=setId,skill_group=groupId,gem_index=gemId,canonical_id=effect and effect.id or nil,
+      add{kind='gem',set_id=setId,skill_group=groupId,gem_index=gemId,
+       skill_instance_id='skill:s'..setId..':g'..groupId..':n'..gemId,canonical_id=effect and effect.id or nil,
        name=effect and label(effect.name) or nil,level=gem.level,quality=gem.quality,enabled=gem.enabled~=false,
-       support=effect and not not effect.support or nil,status=effect and 'known' or 'unknown'}
+       support=effect~=nil and not not effect.support,status=effect and 'known' or 'unknown'}
      end
     end
    end

@@ -6,6 +6,8 @@ local job = assert(json.decode(io.stdin:read('*a')))
 dofile('HeadlessWrapper.lua')
 assert(build and not __mainObject__.promptMsg)
 local companionRoot = assert(arg[0]:match('^(.*[/\\])'))
+local subjects=dofile(companionRoot..'subjects.lua')
+local savedSubject,selectionError
 local stonefist = dofile(companionRoot..'stonefist.lua')
 local companions = dofile(companionRoot..'companions.lua')
 local skillCoverage = dofile(companionRoot..'skill_coverage.lua')
@@ -48,6 +50,7 @@ local function load()
  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
  loadBuildFromXML(job.xml, '')
  assert(build and build.savers and build.targetVersion==liveTargetVersion and build.calcsTab and build.calcsTab.mainOutput and not __mainObject__.promptMsg)
+ savedSubject=subjects.resolve(build)
  if beastMetadata.apply(build,job.beast_metadata) then
   if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
   refresh()
@@ -93,6 +96,7 @@ local function load()
    refresh()
   end
  end
+ selectionError=subjects.select(build,job.target,refresh)
 end
 local function slotName(key)
  local name = slots[key]
@@ -277,6 +281,10 @@ local function inspect(expected, order, sequenceOk)
   if not uncertain[v.code] then status='fail';break end
   status='indeterminate'
  end
+ local binding=subjects.bind(build,job.target,savedSubject,selectionError,job.scenario_digest)
+ if binding.status=='unavailable' then
+  issue(issues,'target_unavailable');status='indeterminate';stats=array();mechanics=array();selectedSkill=nil
+ end
  local count=#issues
  local uniqueIssues,seenIssues=array(),{}
  for _,v in ipairs(issues) do
@@ -287,7 +295,7 @@ local function inspect(expected, order, sequenceOk)
  local mechanicCount=#mechanics
  local combat=job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
  local equipmentValidity,coverage=dofile(companionRoot..'metric_coverage.lua').inspect(env,out,stats,uniqueIssues,mechanics,status)
- return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
+ return {subject=binding,stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
 end
 local function scenario(changes)
  load()
@@ -373,9 +381,28 @@ load()
 local baseline=inspect()
 local inspection=job.inspection and dofile(companionRoot..'inspection.lua').project(build,job.inspection,savedConfig,configurationAliases) or nil
 local results=array()
+local experimentAudit
+if job.experiment then
+ local function experiment()
+  load()
+  local edits=dofile(companionRoot..'experiments.lua')
+  local audit,checks=edits.apply(build,job.experiment,job.experiment_items,slotName,selected,selectItem)
+  refresh()
+  selectionError=subjects.select(build,job.target,refresh)
+  edits.validateSupports(checks)
+  local result=inspect(nil,nil,audit.transition_validation~='requires_order_validation')
+  return {audit=audit,result=result}
+ end
+ local ok,value=pcall(experiment)
+ if ok then experimentAudit=value.audit;results[1]=value.result
+ else
+  if type(value)~='table' or not value.code then value={edit_index=0,code='entity_not_found'} end
+  experimentAudit={status='rejected_atomically',failures=array{value},applied_edits=array(),base_unchanged=true}
+ end
+end
 for _,changes in ipairs(job.scenarios) do
  local ok,value=pcall(scenario,changes)
  if ok then results[#results+1]=value
  else results[#results+1]={stats=array(),equipped=array(),issues=array({{code='scenario_calculation_failed'}}),issue_count=1,validation='indeterminate',equip_order=array(),active_weapon_set=baseline.active_weapon_set,main_skill_group=baseline.main_skill_group} end
 end
-io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection}))
+io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection,experiment_audit=experimentAudit}))

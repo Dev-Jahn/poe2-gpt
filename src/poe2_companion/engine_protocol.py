@@ -6,6 +6,8 @@ from .builds import DTO
 from .calculation_config import CalculationConfiguration
 from .combat_models import CombatScenario
 from .inspection import InspectionRequest, InspectionPage
+from .subjects import CalculationTarget
+from .experiment_models import ExperimentRequest, ExperimentAudit
 from .engine_models import (EngineError, EngineSlot, BuildID, EngineSnapshot,
     ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY)
 
@@ -104,6 +106,9 @@ class WorkerChange(DTO):
 
 class WorkerRequest(DTO):
     build_id: BuildID
+    target: CalculationTarget | None = None
+    experiment: ExperimentRequest | None = None
+    experiment_items: dict[str, dict] | None = None
     inspection: InspectionRequest | None = None
     configuration: CalculationConfiguration | None = None
     combat_scenario: CombatScenario | None = None
@@ -111,6 +116,16 @@ class WorkerRequest(DTO):
 
     @model_validator(mode='after')
     def distinct(self):
+        if self.experiment is not None:
+            if self.experiment.base_build_id!=self.build_id or self.scenarios or self.inspection is not None:
+                raise ValueError('experiment_context_mismatch')
+            if (self.target!=self.experiment.target or self.configuration!=self.experiment.configuration
+                    or self.combat_scenario!=self.experiment.combat_scenario):
+                raise ValueError('experiment_context_mismatch')
+        if self.experiment_items is not None:
+            if self.experiment is None or len(self.experiment_items)>32:
+                raise ValueError('invalid_experiment_items')
+            self.experiment_items={key:private_trade_item(item) for key,item in self.experiment_items.items()}
         if self.inspection is not None and (self.inspection.build_id!=self.build_id or self.inspection.configuration!=self.configuration):
             raise ValueError('inspection_context_mismatch')
         for changes in self.scenarios:
@@ -133,3 +148,4 @@ class WorkerResult(DTO):
     baseline: EngineSnapshot
     results: Annotated[list[EngineSnapshot],Field(max_length=64)]
     inspection: InspectionPage | None = None
+    experiment_audit: ExperimentAudit | None = None

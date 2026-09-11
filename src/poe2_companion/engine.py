@@ -40,6 +40,14 @@ async def verify_character_league(origin, requested, declared, scout):
 
 
 def deltas(before,after):
+    if before.subject is not None or after.subject is not None:
+        if (before.subject is None or after.subject is None
+                or before.subject.status=='unavailable' or after.subject.status=='unavailable'
+                or before.subject.evaluated!=after.subject.evaluated
+                or before.subject.scenario_digest!=after.subject.scenario_digest):
+            return []
+    elif before.selected_skill!=after.selected_skill or before.active_weapon_set!=after.active_weapon_set:
+        return []
     b={s.name:s.value for s in before.stats}
     return [PlayerStat(name=s.name,value=s.value-b[s.name]) for s in after.stats if s.name in b]
 
@@ -142,17 +150,38 @@ class EngineClient:
         await self.http.aclose()
 
     async def inspect(self, request):
-        result = await self.batch(WorkerRequest(build_id=request.build_id,
-            configuration=request.configuration, inspection=request))
-        page = result.inspection
-        if page is None:
-            raise EngineError('engine_protocol_error')
+        from .inspection import InspectionPage
+        page = await self.static_request('/inspect', request, InspectionPage)
         while len(page.model_dump_json(exclude_none=True).encode()) > MAX_TOOL_JSON_BYTES and len(page.records) > 1:
             page.records.pop()
             page.next_offset = request.offset + len(page.records)
         if len(page.model_dump_json(exclude_none=True).encode()) > MAX_TOOL_JSON_BYTES:
             raise EngineError('engine_protocol_error')
         return page
+
+    async def static_request(self, path, request, result_type):
+        # Static queries have their own bounded private queue and remain usable
+        # while the expensive combat calculation lock is held.
+        try:
+            async with self.http.stream('POST', path, content=request.model_dump_json(exclude_none=True),
+                    headers={'content-type': 'application/json'}) as response:
+                data=bytearray()
+                async for chunk in response.aiter_bytes():
+                    data.extend(chunk)
+                    if len(data)>128*1024:
+                        raise EngineError('engine_protocol_error')
+                if response.status_code!=200:
+                    code=json.loads(data).get('code')
+                    raise EngineError(code if code in SAFE_ENGINE_ERRORS else 'engine_protocol_error')
+                return result_type.model_validate_json(data)
+        except EngineError:
+            raise
+        except Exception:
+            raise EngineError('engine_protocol_error') from None
+
+    async def profile(self, request):
+        from .profiles import BuildProfile
+        return bounded_dto(await self.static_request('/profile', request, BuildProfile))
 
     async def equipment(self, build_id, slot=None, saved_item_id=None, offset=0, limit=5):
         from .inspection import InspectionRequest
@@ -193,7 +222,8 @@ class EngineClient:
                     if any(payload.get(key)!=pin for key,pin in expected.items()):
                         raise EngineError('engine_version_mismatch')
                     result=WorkerResult.model_validate(payload)
-                    if len(result.results)!=len(request.scenarios):
+                    expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
+                    if len(result.results)!=expected_count:
                         raise EngineError('engine_protocol_error')
                     return result
             except httpx.TimeoutException:
@@ -206,7 +236,7 @@ class EngineClient:
     async def calculate(self, request: EngineRequest | CompareRequest):
         scenarios=[[v.model_dump() for v in request.replacements]] if isinstance(request,CompareRequest) else []
         result=await self.batch(WorkerRequest.model_validate(dict(build_id=request.build_id,scenarios=scenarios,
-            configuration=request.configuration,combat_scenario=request.combat_scenario)))
+            target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario)))
         after=result.results[0] if result.results else None
         calculation=EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
             result=after,deltas=deltas(result.baseline,after) if after else [],**calculation_context(request))
@@ -225,7 +255,7 @@ class EngineClient:
         # Resolve occupied slots from the same immutable build/configuration.
         # Empty-slot removals are no-ops and must not consume the plan budget.
         initial=await self.batch(WorkerRequest(build_id=request.build_id,
-            configuration=request.configuration,combat_scenario=request.combat_scenario))
+            target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario))
         await verify_character_league(initial.baseline.origin, request.league, request.declared_character_league, scout)
         occupied={item.slot for item in initial.baseline.equipped}
         removable=occupied if request.unequip_slots is None else occupied & set(request.unequip_slots)
@@ -277,7 +307,7 @@ class EngineClient:
                     TradeChange(slot=slot,listing_ref=ref,normalized_cost=float(cost),original_price=price),cost))
         plans=enumerate_plans(pool,removable,request.max_changes,spend)
         result=(await self.batch(WorkerRequest(build_id=request.build_id,scenarios=[p.changes for p in plans[1:]],
-            configuration=request.configuration,combat_scenario=request.combat_scenario))) if len(plans)>1 else initial
+            target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario))) if len(plans)>1 else initial
         snapshots=[result.baseline,*result.results]
         origin=result.baseline.origin
         await verify_character_league(origin, request.league, request.declared_character_league, scout)
@@ -291,6 +321,13 @@ class EngineClient:
             return sum((min(v[w.stat],w.cap) if w.cap is not None else v[w.stat])*w.weight for w in request.weights)
         base_score=score(baseline) if request.mode!='restore_validity' else 0.0
         def covered(snapshot):
+            if request.target is not None or need & {'TotalDPS','CombinedDPS','FullDPS','MinionTotalDPS','MinionCombinedDPS'}:
+                subject,base_subject=snapshot.subject,result.baseline.subject
+                if subject is not None or base_subject is not None:
+                    if (subject is None or base_subject is None or subject.status=='unavailable'
+                            or subject.evaluated!=base_subject.evaluated
+                            or subject.scenario_digest!=base_subject.scenario_digest):
+                        return False
             if snapshot.metric_coverage:
                 verified={c.stat for c in snapshot.metric_coverage if c.status=='pass'}
                 return need <= verified

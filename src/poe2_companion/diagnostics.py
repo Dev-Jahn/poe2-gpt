@@ -128,6 +128,15 @@ class CalculationReceipts:
         self.rows: OrderedDict[str, Receipt] = OrderedDict()
         self.capacity, self.ttl = capacity, ttl
 
+    def snapshot(self, calculation_id: str, side: str) -> EngineSnapshot:
+        row=self.rows.get(calculation_id)
+        if row is None or row.expiry<=int(time.time()):
+            raise EngineError('calculation_expired_or_unavailable')
+        snapshot=row.calculation.baseline if side=='baseline' else row.calculation.result
+        if snapshot is None:
+            raise EngineError('calculation_target_unavailable')
+        return snapshot.model_copy(deep=True)
+
     def retain(self, calculation: EngineCalculation, request: EngineRequest | None = None,
                candidates: list[EngineSnapshot] | None = None,
                evaluations: list[CandidateEvaluation] | None = None,
@@ -145,7 +154,7 @@ class CalculationReceipts:
             elif isinstance(value, list):
                 for index, child in enumerate(value): flatten(child, path+'.'+str(index))
             else: inputs.append(InputValue(path=path, value=value))
-        for field in ('configuration', 'combat_scenario'):
+        for field in ('target', 'configuration', 'combat_scenario'):
             value=getattr(request, field, None)
             if value is not None: flatten(value.model_dump(exclude_none=True), field)
         if isinstance(request, EngineTradeRequest):

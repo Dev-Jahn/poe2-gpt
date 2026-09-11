@@ -9,7 +9,7 @@ import re
 MEMBER_ID = re.compile(r"[a-z][a-z0-9-]{0,23}")
 EMAIL = re.compile(r"[A-Za-z0-9._+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}")
 PRIVATE_VOLUMES = {"engine-socket", "private-builds", "build-projections", "character-socket", "character-state",
-                   "account-socket", "account-state", "account-keys", "account-config"}
+                   "account-socket", "account-state", "account-keys", "account-config", "workflow-state", "workflow-keys"}
 
 
 def validate_members(members, owner_email):

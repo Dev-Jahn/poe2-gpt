@@ -30,6 +30,14 @@ from .trade import (TradeClient, TradeError, SAFE_ERRORS, TradeSearchRequest, Tr
     TradeDetailRequest, TradeItemDetail)
 from .engine import EngineClient
 from .inspection import InspectionRequest, InspectionPage
+from .profiles import ProfileRequest, BuildProfile
+from .capabilities import CapabilitiesRequest, Capabilities, SchemaRequest, SchemaPage, inventory, schema_page
+from .experiment_models import ExperimentRequest, ExperimentResult
+from .workflows import WorkflowService, PlanPageRequest, PlanPage, PlanTransition, DeleteDecisionRequest, DeletedDecision
+from .workflow_store import DecisionStore, WorkflowError
+from .catalog_models import CatalogRequest, CatalogPage, PassiveRouteRequest, PassiveRoute
+from .recovery import RecoveryRequest, RecoveryResult, analyze as analyze_recovery
+from .risk_analysis import RiskRequest, RiskResult, analyze as analyze_risks
 from .diagnostics import DiagnosticRequest, DiagnosticPage
 from .observability import ToolCounters, RuntimeStatus, ErrorTrace, recovery
 from .currency_models import Envelope, Leagues, Categories, PriceResponse, CurrencySearch, CurrencyQuote
@@ -49,6 +57,17 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotent
 PRIVATE_READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 BUILD_TOOLS = {"get_build_summary", "get_build_passive_nodes", "get_build_equipment"}
 EQUIPMENT_INPUTS: dict[str,type[BaseModel]] = {
+    'get_capabilities': CapabilitiesRequest,
+    'describe_tool_schema': SchemaRequest,
+    'get_build_profile': ProfileRequest,
+    'create_build_experiment': ExperimentRequest,
+    'get_build_plan': PlanPageRequest,
+    'update_build_plan': PlanTransition,
+    'delete_build_plan': DeleteDecisionRequest,
+    'search_game_catalog': CatalogRequest,
+    'plan_passive_route': PassiveRouteRequest,
+    'analyze_recovery_scenario': RecoveryRequest,
+    'analyze_build_risks': RiskRequest,
     "get_trade_item_details": TradeDetailRequest,
     "get_build_diagnostics": DiagnosticRequest,
     "inspect_build": InspectionRequest,
@@ -179,6 +198,8 @@ class ProjectionMCP(FastMCP):
                         "code": "invalid_arguments", "next_action": "correct_arguments_using_tool_schema"}))])
                 cause = error
                 for _ in range(6):
+                    if isinstance(cause, WorkflowError) and re.fullmatch(r'[a-z][a-z0-9_]{1,79}',str(cause)):
+                        return CallToolResult(isError=True, content=[TextContent(type='text',text=str(cause))])
                     if isinstance(cause, EngineError) and str(cause) in SAFE_ENGINE_ERRORS:
                         return CallToolResult(isError=True, content=[TextContent(type="text",text=str(cause))])
                     if isinstance(cause, TradeError) and cause.code in SAFE_ERRORS:
@@ -232,7 +253,7 @@ class QuoteItem(BaseModel):
     quantity: Annotated[float, Field(gt=0, le=1e9, allow_inf_nan=False)] = 1
 
 
-def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp", characters: CharacterClient | None = None, accounts: AccountClient | None = None):
+def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[str] | None = None, build_reader: BuildReader | None = None, equipment: EquipmentService | None = None, trade: TradeClient | None = None, engine: EngineClient | None = None, mcp_path: str = "/mcp", characters: CharacterClient | None = None, accounts: AccountClient | None = None, decisions: DecisionStore | None = None):
     if not re.fullmatch(r"/(?:u/[a-z][a-z0-9-]{0,23}/)?mcp", mcp_path):
         raise ValueError("MCP path must be /mcp or /u/<member-id>/mcp")
     server = ProjectionMCP("POE2 GPT", host=host, port=port, stateless_http=True, json_response=True,
@@ -324,6 +345,18 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
         """Read process-local tool counts, errors and latency totals. No raw request, build/account identity or exception payload is retained. Counters reset on restart."""
         return RuntimeStatus(tools=list(server.counters.values()),recent_errors=list(server.error_traces))
 
+    @server.tool(annotations=PRIVATE_READ, structured_output=True)
+    async def get_capabilities(request: CapabilitiesRequest) -> Capabilities:
+        """Discover the actual configured tools, engine pins, schema hash and disabled feature reasons. Optionally compare an explicitly reported host inventory. An unknown host inventory is never evidence of a stale connector. Hideout execution is deferred."""
+        return await inventory(server, request, {'private_engine':engine is not None,
+            'character_import':characters is not None,'account_broker':accounts is not None,
+            'trade_search':trade is not None,'saved_build_projection':build_reader is not None})
+
+    @server.tool(annotations=PRIVATE_READ, structured_output=True)
+    async def describe_tool_schema(request: SchemaRequest) -> SchemaPage:
+        """Read the complete input/output JSON schema, including every nested definition, in lossless bounded pages. Concatenate fragments before parsing; follow next_offset. Schema examples use synthetic placeholder IDs, never a user's current build."""
+        return await schema_page(server, request)
+
     @server.tool(annotations=READ_ONLY, structured_output=True)
     async def list_leagues() -> Envelope[Leagues]:
         """Use when choosing or checking the PoE2 league. Returns exact names and URL slugs; never infer the current season."""
@@ -382,6 +415,61 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
         return prepare_search(request)
 
     if engine is not None:
+        workflow=WorkflowService(engine,decisions or DecisionStore(mcp_path),trade)
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def analyze_build_risks(request: RiskRequest) -> RiskResult:
+            """Explain separate identity, equipment, requirement, mechanic and metric coverage for a retained calculation. Lint explicit critical-event, player-kill, self-blind or charge-supply goals. Effects retain producer/owner/recipient and evidence; hypothetical charge conversion is not a verified game rule. Unknown unrelated mechanics do not erase a proven resource metric. No global confidence score or guaranteed uptime."""
+            return analyze_risks(request,engine.receipts.snapshot(request.calculation_id,request.side))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def analyze_recovery_scenario(request: RecoveryRequest) -> RecoveryResult:
+            """Evaluate a finite user-supplied damage/attack/recovery schedule against the exact actor in a retained calculation. Clips recovery to real deficits, resets recharge after hits, and reports unaffordable attacks. Unknown full-mana leech expiry yields both assumptions. Inputs are explicit scenario parameters, not inferred game observations. Never import another skill's leech or claim guaranteed sustain/max-hit from this timeline."""
+            return analyze_recovery(request,engine.receipts.snapshot(request.calculation_id,request.side))
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def search_game_catalog(request: CatalogRequest) -> CatalogPage:
+            """Search the full pinned passive graph, native gem levels/requirements or rune identities. Always select entity_type. Use node_ids or catalog_id for exact details; page gem levels with level_offset. Korean names are verified catalog translations with English fallback. Game data presence is not proof that every mechanic calculates correctly."""
+            return await engine.static_request('/catalog',request,CatalogPage)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def plan_passive_route(request: PassiveRouteRequest) -> PassiveRoute:
+            """Find complete paths from all connected allocated nodes, including the selected weapon-set cluster. Counts every travel node and separates ordinary/ascendancy budgets. Checks whole-tree connectivity after refunds. Paginated shortest paths are deterministic, not a globally optimal build. Evaluate the entire returned path in one changeset before recommending it."""
+            return await engine.static_request('/passive-route',request,PassiveRoute)
+
+        def workflow_owner(ctx: Context) -> str:
+            request=ctx.request_context.request
+            value=request.scope.get('state',{}).get('principal') if isinstance(request,Request) else None
+            if isinstance(value,Principal): return value.issuer+'\0'+value.subject
+            # Authenticated HTTP is enforced by the outer Access middleware;
+            # stdio/in-memory sessions have one local principal.
+            return 'local'
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
+        async def create_build_experiment(request: ExperimentRequest, ctx: Context) -> ExperimentResult:
+            """Apply a typed changeset to an immutable private clone and calculate the complete final plan for the exact discovered skill/actor/set and supplied assumptions. Never changes the source or game. Rejects stale digests and invalid edits atomically. Explicit persist_decision retains an encrypted decision for 30 days; default decisions expire after one hour. Check all validation and transition statuses before accepting. Retrieve the identical plan and complete saved calculation with get_build_plan."""
+            return await workflow.create(workflow_owner(ctx),request)
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_plan(request: PlanPageRequest, ctx: Context) -> PlanPage:
+            """Recover a decision's exact JSON, execution steps, validation or saved calculation. All formats share the plan/artifact digest. Follow next_offset. A stored historical calculation is not a new engine run, and a proposed/accepted plan is not current character state."""
+            return workflow.page(workflow_owner(ctx),request)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False), structured_output=True)
+        async def update_build_plan(request: PlanTransition, ctx: Context) -> PlanPage:
+            """Record the user's explicit acceptance, rejection or applied step indices against the exact plan revision and digest. Never infer applied state from a recommendation. Applied steps remain user reports pending source confirmation; this sends no game actions."""
+            return workflow.transition(workflow_owner(ctx),request)
+
+        @server.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=False), structured_output=True)
+        async def delete_build_plan(request: DeleteDecisionRequest, ctx: Context) -> DeletedDecision:
+            """Delete this user's retained decision when requested. Does not alter a character, source snapshot or another user's decision."""
+            workflow.store.delete(workflow_owner(ctx),request.experiment_id)
+            return DeletedDecision()
+
+        @server.tool(annotations=PRIVATE_READ, structured_output=True)
+        async def get_build_profile(request: ProfileRequest) -> BuildProfile:
+            """Inspect active sets and stable skill instance IDs with the pinned native loaders, without combat calculation. Includes immutable source digest and an optional explicit comparison to an earlier build. Saved main selection, user observation and live character state are different. Page through all instances before selecting an ambiguous skill."""
+            return await engine.profile(request)
+
         @server.tool(annotations=PRIVATE_READ, structured_output=True)
         async def get_build_diagnostics(request: DiagnosticRequest) -> DiagnosticPage:
             """Recover complete issues, mechanics, stats, metric coverage, deltas, supplied inputs, combat results or candidate evaluations from a calculation_id. section=candidates maps each index to slot/actions/listing_ref, cost, violations and rank; excluded_listings explains prefilter rejection; inputs retains objective/constraints/FX. Choose baseline/result or candidate_index for snapshot sections, and follow next_offset. Receipts are immutable, isolated per user instance, retained up to one hour / 64 calculations, and lost on restart. On calculation_expired_or_unavailable, recalculate; never guess omitted diagnostics."""
@@ -620,7 +708,10 @@ def main():
     account_path = args.mcp_path.removesuffix("/mcp") + "/accounts"
     member = args.mcp_path.split("/")[2] if args.mcp_path.startswith("/u/") else "owner"
     account_cookie = "__Secure-poe2-account-" + member
-    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path, characters, accounts)
+    decision_dir=os.environ.get('POE2_DECISION_DIR')
+    decision_key=os.environ.get('POE2_DECISION_KEY_FILE')
+    decisions=DecisionStore(member,Path(decision_dir) if decision_dir else None,Path(decision_key) if decision_key else None)
+    server = build_server(scout, args.host, args.port, args.allowed_host, build_reader, equipment, trade, engine, args.mcp_path, characters, accounts, decisions)
     async def serve():
         verifier = AccessVerifier(access_config) if access_config else None
         # Stateless HTTP opens an MCP session per request. Shared HTTP/cache resources
@@ -640,6 +731,7 @@ def main():
                 await uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port,
                     log_level="info", access_log=False, proxy_headers=False)).serve()
         finally:
+            decisions.close()
             if verifier:
                 await verifier.close()
             await scout.close()

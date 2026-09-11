@@ -9,6 +9,7 @@ from .equipment import Price, LeagueName, unique
 from . import __version__
 from .calculation_config import CalculationConfiguration, ConfigurationField
 from .combat_models import CombatScenario, CombatScenarioResult
+from .subjects import CalculationTarget, SubjectBinding
 
 ENGINE_COMMIT = "fd4c1acb7f9f5ffd13372f5387ae16f8e6278c15"
 ENGINE_DATA_COMMIT = "b3282b7a9111ed6c4ec6be643edf0806d7beb675"
@@ -27,12 +28,13 @@ IssueCode = Literal["level_requirement", "attribute_requirement", "class_require
     "skill_unusable", "scenario_calculation_failed", "duplicate_physical_item", "unparsed_passive", "unknown_passive", "unknown_rune", "unsupported_skill_stat",
     "unsupported_item_transformation", "stonefist_passive_missing", "charge_sustain_unverified", "ally_charge_state_unverified", "conditional_recoup_unverified",
     "companion_limit_exceeded", "duplicate_companion_type", "unique_companion_limit_exceeded", "unique_companion_not_allowed",
-    "companion_identity_unverified", "unsupported_companion_mechanic", "missing_companion_data", "missing_combat_assumption", "unsupported_weapon_context", "granted_skill_source_unresolved"]
+    "companion_identity_unverified", "unsupported_companion_mechanic", "missing_companion_data", "missing_combat_assumption", "unsupported_weapon_context", "granted_skill_source_unresolved", "target_unavailable"]
 CanonicalSkillID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$", min_length=1, max_length=120)]
 
 
 class EngineRequest(DTO):
     build_id: BuildID
+    target: CalculationTarget | None = None
     configuration: CalculationConfiguration | None = None
     combat_scenario: CombatScenario | None = None
 
@@ -180,6 +182,7 @@ class MetricCoverage(DTO):
 
 
 class EngineSnapshot(DTO):
+    subject: SubjectBinding | None = None
     origin: BuildOrigin | None = None
     stats: Annotated[list[PlayerStat], Field(max_length=64)]
     stat_count: int | None = None

@@ -224,7 +224,7 @@ async def test_mcp_never_exposes_raw_tools_resources_or_payload_errors(tmp_path,
         async with create_connected_server_and_client_session(server) as session:
             tools = (await session.list_tools()).tools
             private = [v for v in tools if v.name.startswith("get_build_")]
-            assert len(tools) == 12 and len(private) == 3
+            assert len(tools) == 14 and len(private) == 3
             for tool in private:
                 assert set(tool.inputSchema["properties"]) <= {"build_id","spec_index","offset","limit","slot","saved_item_id"}
                 assert tool.outputSchema

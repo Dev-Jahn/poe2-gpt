@@ -13,7 +13,7 @@ class ToolCounters(DTO):
 
 
 class RuntimeStatus(DTO):
-    tools: Annotated[list[ToolCounters], Field(max_length=64)]
+    tools: Annotated[list[ToolCounters], Field(max_length=128)]
     recent_errors: Annotated[list['ErrorTrace'], Field(max_length=16)] = Field(default_factory=list)
     process_local: bool = True
     raw_payloads_logged: bool = False

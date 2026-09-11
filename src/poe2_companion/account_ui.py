@@ -72,11 +72,12 @@ class AccountUI:
             if data.get("status") != "ok":
                 return self.page("계정 정보를 읽을 수 없습니다.", 403)
             csrf = data["csrf"]
-            body = "<p>연결 정보는 계속 보관합니다. 인증이 만료되거나 철회되면 다시 로그인해 주세요.</p>"
+            body = "<p>등록한 계정 이름과 연결 설정을 보관합니다. 실제 로그인 인증은 만료되거나 철회될 수 있으며, 그때는 재로그인이 필요합니다.</p>"
             if data["oauth_configured"]:
                 body += self.form("/start", csrf, "Path of Exile 계정 연결 / 재로그인")
             else:
-                body += "<p>이 서버에는 공식 API 앱이 설정되지 않았습니다. 등록한 계정 정보는 보관되며 공식 계정 연결은 설정 후 사용할 수 있습니다.</p>"
+                body += "<p>공식 계정 로그인은 아직 사용할 수 없습니다. 서버 운영자가 GGG에 등록한 공식 API 앱과 콜백 주소를 설정해야 연결 버튼이 표시됩니다. 지금은 ChatGPT에서 계정 이름을 등록할 수 있습니다. 계정 이름 등록은 로그인이나 소유권 확인이 아닙니다.</p>"
+            body += "<p>게임 은신처 이동은 향후 추가 기능입니다. 계정 연결과 poe.ninja 갱신, 게임 온라인 상태는 각각 별도이며, 현재 거래소 링크는 웹페이지를 엽니다.</p>"
             for raw in data["records"]:
                 account = AccountView.model_validate(raw)
                 body += f"<article><strong>{escape(account.display_name)}</strong> ({escape(account.provider)})<br>{STATES[account.session_status]}"

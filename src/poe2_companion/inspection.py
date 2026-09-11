@@ -58,6 +58,7 @@ class InspectionRecord(DTO):
     set_id: int | None = None
     skill_group: int | None = None
     gem_index: int | None = None
+    skill_instance_id: Annotated[str, Field(pattern=r'^skill:s[1-9][0-9]{0,3}:g[1-9][0-9]{0,3}:n[1-9][0-9]{0,3}$')] | None = None
     node_id: int | None = None
     name: Label | None = None
     base_type: Label | None = None

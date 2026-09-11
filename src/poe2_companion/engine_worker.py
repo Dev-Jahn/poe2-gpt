@@ -46,6 +46,8 @@ class PrivateEngine:
         self.luajit,self.timeout=luajit,timeout
         self.lock=asyncio.Lock()
         self.lock_file = lock_file
+        from .private_inspection import StaticInspector
+        self.inspector = StaticInspector(self)
 
     @contextmanager
     def compute_lease(self):
@@ -98,6 +100,19 @@ class PrivateEngine:
             node_ids=next((t.node_ids for t in trees if t.index==active-1),[])
             job: dict={'xml':xml.decode('utf-8-sig'),'expected_node_ids':node_ids,
                  'scenarios':[[c.model_dump(exclude_none=True) for c in s] for s in request.scenarios]}
+            from .capabilities import digest
+            job['scenario_digest']=digest({'configuration':request.configuration.model_dump(mode='json') if request.configuration else None,
+                'combat_scenario':request.combat_scenario.model_dump(mode='json') if request.combat_scenario else None})
+            if request.target is not None:
+                job['target']=request.target.model_dump(exclude_none=True)
+            if request.experiment is not None:
+                import hashlib
+                if (hashlib.sha256(code).hexdigest()!=request.experiment.base_snapshot_digest
+                        or request.experiment.engine_data_commit!=ENGINE_DATA_COMMIT
+                        or tree is None or tree.findall('Spec')[active-1].get('treeVersion')!=request.experiment.tree_revision):
+                    raise EngineError('engine_invalid_request')
+                job['experiment']=request.experiment.model_dump(exclude_none=True)
+                job['experiment_items']=request.experiment_items
             if request.inspection is not None:
                 if request.inspection.build_id != request.build_id:
                     raise EngineError('engine_invalid_request')
@@ -143,7 +158,8 @@ class PrivateEngine:
                     origin=BuildOrigin.model_validate_json(read_regular_file(origin_path,2048))
                     for snapshot in [result.baseline,*result.results]:
                         snapshot.origin=origin
-                if len(result.results)!=len(request.scenarios):
+                expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
+                if len(result.results)!=expected_count:
                     raise EngineError('engine_protocol_error')
                 return result
             except TimeoutError:
@@ -182,7 +198,34 @@ def worker_app(engine: PrivateEngine):
         except Exception as exc:
             code=str(exc) if isinstance(exc,EngineError) and str(exc) in SAFE_ENGINE_ERRORS else 'engine_invalid_request'
             return JSONResponse({'code':code},status_code=400)
-    return Starlette(routes=[Route('/health',health),Route('/batch',batch,methods=['POST'])])
+    async def static(request: Request):
+        from .inspection import InspectionRequest
+        from .profiles import ProfileRequest
+        from .catalog_models import CatalogRequest, PassiveRouteRequest
+        try:
+            result: DTO
+            data=bytearray()
+            async for chunk in request.stream():
+                data.extend(chunk)
+                if len(data)>65536:
+                    raise EngineError('engine_invalid_request')
+            if request.url.path in {'/catalog','/passive-route'}:
+                from .catalog import page, route
+                query=(CatalogRequest if request.url.path=='/catalog' else PassiveRouteRequest).model_validate_json(data)
+                document,_=await engine.inspector.document(query.build_id,catalog=True)
+                if document.catalog is None: raise EngineError('engine_protocol_error')
+                result=page(document.catalog,query) if isinstance(query,CatalogRequest) else route(document.catalog,query)
+            elif request.url.path == '/profile':
+                result = await engine.inspector.profile(ProfileRequest.model_validate_json(data))
+            else:
+                result = await engine.inspector.inspect(InspectionRequest.model_validate_json(data))
+            return JSONResponse(result.model_dump(mode='json'))
+        except Exception as exc:
+            code=str(exc) if isinstance(exc,EngineError) and str(exc) in SAFE_ENGINE_ERRORS else 'engine_invalid_request'
+            return JSONResponse({'code':code},status_code=400)
+    return Starlette(routes=[Route('/health',health),Route('/batch',batch,methods=['POST']),
+        Route('/inspect',static,methods=['POST']),Route('/profile',static,methods=['POST']),
+        Route('/catalog',static,methods=['POST']),Route('/passive-route',static,methods=['POST'])])
 
 
 def main():
