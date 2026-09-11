@@ -20,6 +20,7 @@ from .engine_models import ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILI
 from .inspection import InspectionPage, InspectionRequest
 from .pob_io import MAX_CODE_BYTES, decode_pob, project_pob
 from .profiles import BuildProfile, ProfileRequest, StaticDocument
+from .workflow_metrics import span, measured, count
 
 CACHE_BYTES = 32 * 1024 * 1024
 CACHE_TTL = 600
@@ -46,6 +47,15 @@ class StaticInspector:
         selector = query.model_dump(exclude={'offset', 'limit', 'build_id'}, exclude_none=True) if query else None
         key = hashlib.sha256(json.dumps([digest, ENGINE_COMMIT, ENGINE_DATA_COMMIT,
             ENGINE_COMPATIBILITY, 'static-v2', selector, catalog], sort_keys=True).encode()).hexdigest()
+        entry=self.cache.get(key)
+        if entry and entry[0]>time.monotonic():
+            count('cache_hit')
+            self.cache.move_to_end(key)
+            with span('validation'):
+                return StaticDocument.model_validate_json(entry[1]),digest
+        if self.lock.locked():
+            count('queue_rejected')
+            raise EngineError('engine_busy')
         # The owner boundary is the worker's private directory; no global cache.
         # Recheck after acquiring the lock to collapse identical cold requests.
         try:
@@ -58,8 +68,10 @@ class StaticInspector:
                             self.cache_bytes -= len(data)
                     entry = self.cache.get(key)
                     if entry:
+                        count('cache_hit')
                         self.cache.move_to_end(key)
                         return StaticDocument.model_validate_json(entry[1]), digest
+                    count('cache_miss')
                     xml = decode_pob(code)
                     projection = project_pob(xml, build_id)
                     if projection.summary.target_version != [0, 1]:
@@ -87,6 +99,7 @@ class StaticInspector:
         except Exception:
             raise EngineError('engine_invalid_build') from None
 
+    @measured('worker_execution')
     async def execute(self, job: dict) -> StaticDocument:
         from .engine_worker import limits, MAX_RESULT
         with tempfile.TemporaryDirectory(prefix='pob-static-') as directory:

@@ -23,13 +23,13 @@ Status labels distinguish implementation, contract tests, real-engine tests, hos
 | MCP-015 | P1 | 영속 evidence receipts·보고서·산출물 일관성 | MCP-015-T01, MCP-015-T02, MCP-015-T03 | Partial: opt-in encrypted decisions and shared artifact digest; complete artifact acceptance pending |
 | MCP-016 | P1 | 한국어 명칭·랜드마크·typed entity navigation | MCP-016-T01, MCP-016-T02, MCP-016-T03 | Partial: typed catalog, verified Korean fallback and route landmarks; final navigation replay pending |
 | MCP-017 | P1 | 한 경로·단계별 실행·원복 중심 계획 UX | MCP-017-T01, MCP-017-T02, MCP-017-T03 | Partial: plan steps and lifecycle; actionable consolidated route/rollback pending |
-| MCP-018 | P1 | 작업 단위 관측·성능예산·오류 복구 | MCP-018-T01, MCP-018-T02, MCP-018-T03 | Pending |
-| MCP-019 | P1 | 가이드의 variant·단계·전제조건 추출 | MCP-019-T01, MCP-019-T02, MCP-019-T03 | Pending |
+| MCP-018 | P1 | 작업 단위 관측·성능예산·오류 복구 | MCP-018-T01, MCP-018-T02, MCP-018-T03 | Partial: opt-in typed workflow execution, deduplication/retry/call/byte/deadline budgets, cancellation and separate goal evidence; unit/actual MCP/private timing contracts verified; final host replay pending |
+| MCP-019 | P1 | 가이드의 variant·단계·전제조건 추출 | MCP-019-T01, MCP-019-T02, MCP-019-T03 | Partial: bounded allowlisted public guide extraction, stage gaps/uncertainty/inert external text and retained evidence; complete machine/prose comparison pending |
 | MCP-020 | P2 | 계정·로그인·거래소 이동 handoff 가시성 | MCP-020-T01, MCP-020-T02, MCP-020-T03 | Partial: UI setup action and deferred travel distinction; complete account capability tests pending |
-| MCP-021 | P2 | 지도·의식·서판 조건별 위험/수익 보조 | MCP-021-T01, MCP-021-T02, MCP-021-T03 | Pending |
+| MCP-021 | P2 | 지도·의식·서판 조건별 위험/수익 보조 | MCP-021-T01, MCP-021-T02, MCP-021-T03 | Partial: typed modifier/scenario analysis and owner-scoped observed-run profit ranges verified; current source has no declared patch, so patch certification and unknown tablet effects remain unavailable |
 | MCP-022 | P2 | 레벨업·전직·해금 milestone planner | MCP-022-T01, MCP-022-T02, MCP-022-T03 | Partial: observation-backed milestones, unknown unlocks and separate point pools; complete native/effective/socket acceptance pending |
-| MCP-023 | P2 | 판매·제작·콘텐츠 선택의 가치 평가 | MCP-023-T01, MCP-023-T02, MCP-023-T03 | Pending |
-| MCP-024 | P2 | 커런시 보유·투자·환전 계획 | MCP-024-T01, MCP-024-T02, MCP-024-T03 | Pending |
+| MCP-023 | P2 | 판매·제작·콘텐츠 선택의 가치 평가 | MCP-023-T01, MCP-023-T02, MCP-023-T03 | Partial: retained ask/roll comparisons, unknown-odds break-even/max-loss and exact offered reward identities verified; verified game mod/drop pool coverage remains explicit unknown |
+| MCP-024 | P2 | 커런시 보유·투자·환전 계획 | MCP-024-T01, MCP-024-T02, MCP-024-T03 | Partial: encrypted revision-locked balance ledger, idempotent reported execution, proposal separation, valuation and repricing confirmation verified; spread/history/opportunity-cost planning pending |
 | MCP-025 | P1 | 호스트 실제 사용 회귀 평가와 독립 oracle | MCP-025-T01, MCP-025-T02, MCP-025-T03 | Partial: initial unit/native/MCP regressions; complete 79-case mapping and host replay pending |
 
 ## Release gates
@@ -40,3 +40,14 @@ Status labels distinguish implementation, contract tests, real-engine tests, hos
 - [ ] Actual MCP schema/owner isolation/empty-value contracts.
 - [ ] Complete final tree CI before merge and deployment.
 - [ ] Production and external MCP verification after deployment.
+
+## WIP verification checkpoints
+
+- `177a7f6cc60326798d001d06605a74474cc1fa4e`, tree `54dab55e4250b97fab3caf921eaa4516e8a81f72`: Mini reported isolated ARM 469 passed, zero skipped, no private mounts/network. The two previous ordinary-JSON 8192-byte failures pass. This is not final release/host replay evidence.
+- Currency/guide/economics/market unit contracts: 12 passed. Workflow tracing: 3 passed, including an actual in-memory MCP session with empty inspection records and output-schema validation.
+- Native private timing and hot static cache while the loader is busy: 3 passed locally. CPU timing is not measured; worker execution and IPC round-trip are separate inclusive spans.
+- General Python suite before the final private telemetry header changes: 274 passed, 207 skipped. Native execution is a separate gate; these skips are not counted as native passes.
+
+## Independent rule source boundary
+
+The public [Waystone data](https://poe2db.tw/us/Waystones), checked 2026-09-11, supports the meanings of reduced Life/ES recovery, cooldown recovery, extra critical damage and maximum resistance modifiers. Its roll ranges differ from the pinned hand-written `src/Data/ModMap.lua`; this implementation does not reuse that table as a current-game oracle. The page does not declare an exact patch revision. Responses preserve this limitation and do not certify map safety, patch coverage, reflection rules or future drop probabilities.

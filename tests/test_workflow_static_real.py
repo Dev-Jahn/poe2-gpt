@@ -26,9 +26,10 @@ async def test_static_load_busy_worker_unknown_modifier_and_hot_pages(real_engin
         assert any(r.status=='unparsed' for r in page.records)
         assert MARKER not in page.model_dump_json()
         count=real_engine.inspector.process_runs
-        for offset in range(10):
-            paged=await real_engine.inspector.inspect(InspectionRequest(build_id=BID,section='equipment',saved_item_id=1,offset=offset,limit=1))
-            assert paged.records==page.records[offset:offset+1]
+        async with real_engine.inspector.lock:
+            for offset in range(10):
+                paged=await real_engine.inspector.inspect(InspectionRequest(build_id=BID,section='equipment',saved_item_id=1,offset=offset,limit=1))
+                assert paged.records==page.records[offset:offset+1]
         assert real_engine.inspector.process_runs==count
         profile=await real_engine.inspector.profile(ProfileRequest(build_id=BID,changed_since_build_id=BID))
     assert profile.snapshot_digest==hashlib.sha256(raw).hexdigest()

@@ -145,6 +145,44 @@ class DecisionStore:
         self.artifacts.pop(key,None)
         if self.db: self.db.execute('DELETE FROM artifacts WHERE owner=? AND kind=? AND id=?',key)
 
+    def update_portfolio(self, owner: str, identifier: str, value: DTO, expected_revision: int) -> None:
+        self.update_mutable_artifact(owner,'currency_portfolio',identifier,value,expected_revision)
+
+    def update_mutable_artifact(self, owner: str, kind: Literal['currency_portfolio','workflow_trace'],
+            identifier: str, value: DTO, expected_revision: int) -> None:
+        """Closed internal mutable artifacts; immutable decision receipts stay immutable."""
+        self.purge()
+        key=(self.owner_key(owner),kind,identifier)
+        conflict='portfolio_revision_conflict' if kind=='currency_portfolio' else 'workflow_trace_revision_conflict'
+        raw=value.model_dump_json().encode()
+        if len(raw)>self.MAX_RECORD_BYTES: raise WorkflowError('artifact_limit_exceeded')
+        if key in self.artifacts:
+            expires,previous=self.artifacts[key]
+            current=type(value).model_validate_json(previous)
+            if current.model_dump()['revision']!=expected_revision: raise WorkflowError(conflict)
+            size=sum(len(payload) for _,payload in self.artifacts.values())-len(previous)+len(raw)
+            if size>self.MAX_BYTES: raise WorkflowError('artifact_quota_exceeded')
+            self.artifacts[key]=(expires,raw)
+            return
+        if self.db is None or self.cipher is None: raise WorkflowError('artifact_expired_or_unavailable')
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            row=self.db.execute('SELECT payload,size FROM artifacts WHERE owner=? AND kind=? AND id=?',key).fetchone()
+            if not row: raise WorkflowError('artifact_expired_or_unavailable')
+            old,size=row
+            aad='\0'.join((self.member,'artifacts',*key)).encode()
+            current=type(value).model_validate_json(self.cipher.decrypt(old[:12],old[12:],aad))
+            if current.model_dump()['revision']!=expected_revision: raise WorkflowError(conflict)
+            total=self.db.execute('SELECT COALESCE(SUM(size),0) FROM artifacts WHERE owner=?',(key[0],)).fetchone()[0]
+            if total-size+len(raw)>self.MAX_BYTES: raise WorkflowError('artifact_quota_exceeded')
+            nonce=secrets.token_bytes(12)
+            sealed=nonce+self.cipher.encrypt(nonce,raw,aad)
+            self.db.execute('UPDATE artifacts SET payload=?,size=? WHERE owner=? AND kind=? AND id=?',(sealed,len(raw),*key))
+            self.db.execute('COMMIT')
+        except Exception:
+            self.db.execute('ROLLBACK')
+            raise
+
     def save_observation(self, owner: str, record: ObservationRecord) -> None:
         self.purge()
         key=(self.owner_key(owner),record.observation_id)

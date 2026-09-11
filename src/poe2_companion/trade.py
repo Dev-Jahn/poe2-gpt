@@ -24,6 +24,7 @@ from pydantic import Field, field_validator, model_validator
 
 from .builds import DTO, BuildError, bounded_dto
 from .game_terms import name_fields
+from .workflow_metrics import measured, span, count
 from .equipment import (Currency, DatasetID, LeagueName, Number, OptimizeRequest, Price, Stat,
                         Candidate, Dataset, EquipmentService, UpgradeResult, unique, Slot, Metric)
 
@@ -388,6 +389,7 @@ class TradeClient:
     async def request(self, method: str, path: str, body=None):
         return await self._request(method,path,body)
 
+    @measured('network')
     async def _request(self, method: str, path: str, body=None, *, korean=False):
         # All paths are constructed by this module; there is no URL-taking MCP tool.
         # The Korean host is used only for its fixed public stat-name catalog.
@@ -404,9 +406,11 @@ class TradeClient:
                 if delay > 5:
                     raise TradeError("trade_rate_limited",math.ceil(delay))
                 if delay:
-                    await asyncio.sleep(delay)
+                    with span('rate_wait'):
+                        await asyncio.sleep(delay)
                 gate.consume()
                 try:
+                    count('upstream_request')
                     async with self.client.stream(method,endpoint+path,json=body) as response:
                         gate.observe(response.headers)
                         if response.status_code in (401,403):
@@ -432,7 +436,8 @@ class TradeClient:
                                 raise TradeError("trade_response_too_large")
                             chunks.append(chunk)
                         try:
-                            data = json.loads(b"".join(chunks))
+                            with span('parse'):
+                                data = json.loads(b"".join(chunks))
                         except (ValueError,RecursionError):
                             raise TradeError("trade_schema_changed") from None
                         if isinstance(data,dict) and isinstance(data.get("error"),dict):

@@ -19,6 +19,7 @@ from .diagnostics import CalculationReceipts, CandidateEvaluation, ConstraintVio
 from .recommendation import Option, enumerate_plans
 from .engine_protocol import WorkerChange
 from .scout import ScoutError
+from .workflow_metrics import measured, span, count, observe_header, absorb_worker_header
 
 
 async def verify_character_league(origin, requested, declared, scout):
@@ -164,12 +165,14 @@ class EngineClient:
             raise EngineError('engine_protocol_error')
         return page
 
+    @measured('worker_round_trip')
     async def static_request(self, path, request, result_type):
         # Static queries have their own bounded private queue and remain usable
         # while the expensive combat calculation lock is held.
         try:
             async with self.http.stream('POST', path, content=request.model_dump_json(exclude_none=True),
-                    headers={'content-type': 'application/json'}) as response:
+                    headers={'content-type': 'application/json',**observe_header()}) as response:
+                absorb_worker_header(response.headers.get('x-poe2-workflow-timing'))
                 data=bytearray()
                 async for chunk in response.aiter_bytes():
                     data.extend(chunk)
@@ -178,7 +181,8 @@ class EngineClient:
                 if response.status_code!=200:
                     code=json.loads(data).get('code')
                     raise EngineError(code if code in SAFE_ENGINE_ERRORS else 'engine_protocol_error')
-                return result_type.model_validate_json(data)
+                with span('validation'):
+                    return result_type.model_validate_json(data)
         except EngineError:
             raise
         except Exception:
@@ -202,13 +206,16 @@ class EngineClient:
             available=False
         return EngineStatus(enabled=True,reachable=available)
 
+    @measured('worker_round_trip')
     async def batch(self, request: WorkerRequest):
         # Prevent an agent spawning concurrent expensive PoB calculations.
         if self.lock.locked():
+            count('queue_rejected')
             raise EngineError('engine_busy')
         async with self.lock:
             try:
-                async with self.http.stream('POST','/batch',content=request.model_dump_json(exclude_none=True),headers={'content-type':'application/json'}) as r:
+                async with self.http.stream('POST','/batch',content=request.model_dump_json(exclude_none=True),headers={'content-type':'application/json',**observe_header()}) as r:
+                    absorb_worker_header(r.headers.get('x-poe2-workflow-timing'))
                     data=bytearray()
                     async for chunk in r.aiter_bytes():
                         data.extend(chunk)
@@ -217,7 +224,8 @@ class EngineClient:
                     if r.status_code!=200:
                         code=json.loads(data).get('code')
                         raise EngineError(code if code in SAFE_ENGINE_ERRORS else 'engine_unavailable')
-                    payload=json.loads(data)
+                    with span('parse'):
+                        payload=json.loads(data)
                     if not isinstance(payload,dict):
                         raise EngineError('engine_protocol_error')
                     # Never default an old worker's missing provenance to the
@@ -226,7 +234,8 @@ class EngineClient:
                               'engine_compatibility':ENGINE_COMPATIBILITY}
                     if any(payload.get(key)!=pin for key,pin in expected.items()):
                         raise EngineError('engine_version_mismatch')
-                    result=WorkerResult.model_validate(payload)
+                    with span('validation'):
+                        result=WorkerResult.model_validate(payload)
                     expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
                     if len(result.results)!=expected_count:
                         raise EngineError('engine_protocol_error')

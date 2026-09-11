@@ -30,6 +30,7 @@ from .engine_models import ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILI
 MAX_REQUEST = 2 * 1024 * 1024
 MAX_RESULT = 16 * 1024 * 1024
 from .engine_protocol import WorkerRequest, WorkerResult
+from .workflow_metrics import CURRENT, Measurements, measured, count
 
 
 def limits():
@@ -78,11 +79,13 @@ class PrivateEngine:
     async def calculate(self, request: WorkerRequest) -> WorkerResult:
         self.check_version()
         if self.lock.locked():
+            count('queue_rejected')
             raise EngineError('engine_busy')
         async with self.lock:
             with self.compute_lease():
                 return await self._calculate(request)
 
+    @measured('worker_execution')
     async def _calculate(self, request: WorkerRequest) -> WorkerResult:
         try:
             code=read_regular_file(self.private_dir/(request.build_id+'.pob'),MAX_CODE_BYTES)
@@ -227,9 +230,19 @@ def worker_app(engine: PrivateEngine):
         except Exception as exc:
             code=str(exc) if isinstance(exc,EngineError) and str(exc) in SAFE_ENGINE_ERRORS else 'engine_invalid_request'
             return JSONResponse({'code':code},status_code=400)
-    return Starlette(routes=[Route('/health',health),Route('/batch',batch,methods=['POST']),
-        Route('/inspect',static,methods=['POST']),Route('/profile',static,methods=['POST']),
-        Route('/catalog',static,methods=['POST']),Route('/passive-route',static,methods=['POST'])])
+    async def observed(request: Request):
+        handler=batch if request.url.path=='/batch' else static
+        if request.headers.get('x-poe2-observe')!='1': return await handler(request)
+        metrics=Measurements();token=CURRENT.set(metrics)
+        try:
+            response=await handler(request)
+            response.headers['x-poe2-workflow-timing']=json.dumps({'milliseconds':metrics.milliseconds,
+                'counts':dict(metrics.counts)},separators=(',',':'),allow_nan=False)
+            return response
+        finally: CURRENT.reset(token)
+    return Starlette(routes=[Route('/health',health),Route('/batch',observed,methods=['POST']),
+        Route('/inspect',observed,methods=['POST']),Route('/profile',observed,methods=['POST']),
+        Route('/catalog',observed,methods=['POST']),Route('/passive-route',observed,methods=['POST'])])
 
 
 def main():
