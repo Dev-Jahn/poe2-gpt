@@ -6,6 +6,8 @@ from .builds import DTO
 from .calculation_config import CalculationConfiguration
 from .combat_models import CombatScenario
 from .inspection import InspectionRequest, InspectionPage
+from .subjects import CalculationTarget
+from .experiment_models import ExperimentRequest, ExperimentAudit
 from .engine_models import (EngineError, EngineSlot, BuildID, EngineSnapshot,
     ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY)
 
@@ -102,8 +104,38 @@ class WorkerChange(DTO):
         return self
 
 
+class ExperimentVariantJob(DTO):
+    request: ExperimentRequest
+    items: dict[str, dict] | None = None
+
+    @model_validator(mode='after')
+    def validated_items(self):
+        if self.items is not None:
+            if len(self.items) > 32: raise ValueError('invalid_experiment_items')
+            self.items = {key:private_trade_item(item) for key,item in self.items.items()}
+        return self
+
+
+class ExperimentVariantResult(DTO):
+    audit: ExperimentAudit
+    snapshot: EngineSnapshot | None = None
+
+    @model_validator(mode='after')
+    def consistent(self):
+        if (self.audit.status == 'valid_changeset') != (self.snapshot is not None):
+            raise ValueError('experiment_variant_result_mismatch')
+        return self
+
+
 class WorkerRequest(DTO):
     build_id: BuildID
+    target: CalculationTarget | None = None
+    component_targets: Annotated[list[CalculationTarget],Field(max_length=6)] = Field(default_factory=list)
+    component_offset: Annotated[int,Field(ge=0,le=100)] = 0
+    component_limit: Annotated[int,Field(ge=1,le=6)] = 3
+    variant_jobs: Annotated[list[ExperimentVariantJob], Field(max_length=6)] = Field(default_factory=list)
+    experiment: ExperimentRequest | None = None
+    experiment_items: dict[str, dict] | None = None
     inspection: InspectionRequest | None = None
     configuration: CalculationConfiguration | None = None
     combat_scenario: CombatScenario | None = None
@@ -111,6 +143,26 @@ class WorkerRequest(DTO):
 
     @model_validator(mode='after')
     def distinct(self):
+        if self.component_targets and (self.target or self.variant_jobs or self.experiment or self.experiment_items or self.scenarios or self.inspection):
+            raise ValueError('component_context_mismatch')
+        if self.variant_jobs:
+            if self.experiment is not None or self.experiment_items is not None or self.scenarios or self.inspection:
+                raise ValueError('experiment_context_mismatch')
+            for variant in self.variant_jobs:
+                value = variant.request
+                if (value.base_build_id != self.build_id or value.target != self.target
+                        or value.configuration != self.configuration or value.combat_scenario != self.combat_scenario):
+                    raise ValueError('experiment_context_mismatch')
+        if self.experiment is not None:
+            if self.experiment.base_build_id!=self.build_id or self.scenarios or self.inspection is not None:
+                raise ValueError('experiment_context_mismatch')
+            if (self.target!=self.experiment.target or self.configuration!=self.experiment.configuration
+                    or self.combat_scenario!=self.experiment.combat_scenario):
+                raise ValueError('experiment_context_mismatch')
+        if self.experiment_items is not None:
+            if self.experiment is None or len(self.experiment_items)>32:
+                raise ValueError('invalid_experiment_items')
+            self.experiment_items={key:private_trade_item(item) for key,item in self.experiment_items.items()}
         if self.inspection is not None and (self.inspection.build_id!=self.build_id or self.inspection.configuration!=self.configuration):
             raise ValueError('inspection_context_mismatch')
         for changes in self.scenarios:
@@ -123,6 +175,11 @@ class WorkerRequest(DTO):
         return self
 
 
+class NativeComponentResult(DTO):
+    requested_index: Annotated[int,Field(ge=0,le=5)]
+    snapshot: EngineSnapshot
+
+
 class WorkerResult(DTO):
     # Added by the checked worker after reading its private Lua projection.
     # These internal pins must match exactly; they are not public MCP schemas.
@@ -132,4 +189,8 @@ class WorkerResult(DTO):
     engine_compatibility: Literal[ENGINE_COMPATIBILITY] = ENGINE_COMPATIBILITY  # type: ignore[valid-type]
     baseline: EngineSnapshot
     results: Annotated[list[EngineSnapshot],Field(max_length=64)]
+    components: Annotated[list[NativeComponentResult],Field(max_length=6)] = Field(default_factory=list)
+    component_total: Annotated[int,Field(ge=0,le=100)] = 0
     inspection: InspectionPage | None = None
+    experiment_audit: ExperimentAudit | None = None
+    experiment_variants: Annotated[list[ExperimentVariantResult], Field(max_length=6)] = Field(default_factory=list)

@@ -16,6 +16,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic.alias_generators import to_camel
 from .game_terms import english_query, name_fields
+from .workflow_metrics import measured, span, count
 
 API = "https://api.poe2scout.com"
 CATEGORIES = tuple("currency fragments runes essences ultimatum expedition ritual vaultkeys breach abyss uncutgems lineagesupportgems delirium incursion idol verisium vaal".split())
@@ -175,6 +176,7 @@ class Scout:
         await self.client.aclose()
         self.cache.close()
 
+    @measured('network')
     async def _request(self, path: str, params: dict | None = None):
         url = str(httpx.URL(API + path, params=params))
         for attempt in range(3):
@@ -183,9 +185,11 @@ class Scout:
                     raise ScoutError("rate_limited", "Scout requested a cooldown; try again later.", True)
                 delay = self.next_request - time.monotonic()
                 if delay > 0:
-                    await asyncio.sleep(delay)
+                    with span('rate_wait'):
+                        await asyncio.sleep(delay)
                 self.next_request = time.monotonic() + self.interval
             try:
+                count('upstream_request')
                 async with self.client.stream("GET", path, params=params) as response:
                     if response.status_code == 429:
                         header = response.headers.get("Retry-After", "30")
@@ -213,7 +217,8 @@ class Scout:
                             raise ScoutError("response_too_large", "Scout response exceeded 8 MiB.")
                         chunks.append(part)
                     try:
-                        return json.loads(b"".join(chunks)), url
+                        with span('parse'):
+                            return json.loads(b"".join(chunks)), url
                     except ValueError as exc:
                         raise ScoutError("invalid_json", "Scout returned invalid JSON.") from exc
             except httpx.TransportError as exc:
@@ -232,7 +237,9 @@ class Scout:
             old = self.cache.get(key)
             now = self.clock()
             if old and 0 <= now - old[0] <= ttl:
+                count('cache_hit')
                 return self._envelope(old[1], old[0], "cache", False)
+            count('cache_miss')
             try:
                 body = await loader()
                 saved = self.clock()

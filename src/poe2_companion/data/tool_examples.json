@@ -1,0 +1,720 @@
+{
+  "search_game_terms": {
+    "request": {
+      "query": "example"
+    }
+  },
+  "list_account_characters": {
+    "request": {
+      "account_tag": "Example#1234"
+    }
+  },
+  "get_character": {
+    "request": {
+      "account_tag": "Example#1234",
+      "character_name": "example"
+    }
+  },
+  "import_pob_attachment": {
+    "file": {
+      "download_url": "example",
+      "file_id": "example"
+    }
+  },
+  "refresh_character": {
+    "request": {
+      "account_tag": "Example#1234",
+      "character_name": "example"
+    }
+  },
+  "get_tool_runtime_status": {},
+  "get_capabilities": {
+    "request": {}
+  },
+  "describe_tool_schema": {
+    "request": {
+      "tool_name": "a"
+    }
+  },
+  "list_leagues": {},
+  "list_currency_categories": {},
+  "get_currency_prices": {
+    "category": "example"
+  },
+  "search_currency_prices": {
+    "query": "example"
+  },
+  "quote_currency_items": {
+    "items": [
+      {
+        "item_id": 1,
+        "category": "example"
+      }
+    ]
+  },
+  "get_trade_integration_status": {},
+  "prepare_equipment_search": {
+    "request": {
+      "filters": {
+        "slot": "helmet"
+      }
+    }
+  },
+  "export_build_execution_plan": {
+    "request": {
+      "execution_id": "route_00000000000000000000000000000000"
+    }
+  },
+  "delete_build_plan_export": {
+    "request": {
+      "export_id": "export_00000000000000000000000000000000"
+    }
+  },
+  "get_build_requirements": {
+    "request": {
+      "calculation_id": "calc_00000000000000000000000000000000"
+    }
+  },
+  "analyze_build_risks": {
+    "request": {
+      "calculation_id": "calc_00000000000000000000000000000000"
+    }
+  },
+  "analyze_recovery_scenario": {
+    "request": {
+      "calculation_id": "calc_00000000000000000000000000000000",
+      "scenario": "no_hit",
+      "duration_seconds": 1,
+      "resources": [
+        {
+          "resource": "life",
+          "maximum": 0,
+          "initial": 0,
+          "regeneration_per_second": 0
+        }
+      ]
+    }
+  },
+  "analyze_native_recovery_scenario": {
+    "request": {
+      "calculation_id": "calc_00000000000000000000000000000000",
+      "target": {
+        "skill_instance_id": "skill:s1:g1:n1",
+        "actor_ref": "player",
+        "weapon_set_id": 1
+      },
+      "scenario": "no_hit",
+      "duration_seconds": 1,
+      "resources": [
+        {
+          "resource": "life"
+        }
+      ]
+    }
+  },
+  "calculate_skill_components": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "targets": [
+        {
+          "skill_instance_id": "skill:s1:g1:n1",
+          "actor_ref": "player",
+          "weapon_set_id": 1
+        }
+      ]
+    }
+  },
+  "search_game_catalog": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "entity_type": "passive"
+    }
+  },
+  "discover_passive_paths": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "tree_revision": "example",
+      "ordinary_points_available": 0
+    }
+  },
+  "compare_passive_paths": {
+    "request": {
+      "template": {
+        "base_build_id": "bld_00000000000000000000000000000000",
+        "base_snapshot_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tree_revision": "0_0",
+        "engine_data_commit": "0000000000000000000000000000000000000000",
+        "target": {
+          "skill_instance_id": "skill:s1:g1:n1",
+          "actor_ref": "player",
+          "weapon_set_id": 1
+        }
+      },
+      "alternatives": [
+        {
+          "target_node_ids": [
+            0
+          ]
+        }
+      ]
+    }
+  },
+  "plan_passive_route": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "tree_revision": "example",
+      "target_node_ids": [
+        0
+      ],
+      "ordinary_points_available": 0
+    }
+  },
+  "analyze_plan_dependencies": {
+    "request": {
+      "experiment_id": "exp_00000000000000000000000000000000"
+    }
+  },
+  "plan_currency_allocation": {
+    "request": {
+      "portfolio_id": "pf_00000000000000000000000000000000",
+      "expected_revision": 1,
+      "target_category": "a",
+      "target_item_id": 1,
+      "intended_spend": 0,
+      "history_start_epoch": 1789084800,
+      "history_end_epoch": 1789088400
+    }
+  },
+  "get_currency_allocation": {
+    "request": {
+      "allocation_id": "allocation_00000000000000000000000000000000"
+    }
+  },
+  "delete_currency_allocation": {
+    "request": {
+      "allocation_id": "allocation_00000000000000000000000000000000"
+    }
+  },
+  "compare_item_transformations": {
+    "request": {
+      "original_experiment_id": "exp_00000000000000000000000000000000",
+      "association_evidence": "user_reported_original_effective_relationship"
+    }
+  },
+  "begin_workflow_trace": {
+    "request": {
+      "goal": "inspect_build"
+    }
+  },
+  "run_workflow_step": {
+    "request": {
+      "trace_id": "wf_00000000000000000000000000000000",
+      "step_id": "a",
+      "step": {
+        "tool": "get_build_profile",
+        "request": {
+          "build_id": "bld_00000000000000000000000000000000"
+        }
+      }
+    }
+  },
+  "get_workflow_trace": {
+    "request": {
+      "trace_id": "wf_00000000000000000000000000000000"
+    }
+  },
+  "get_workflow_trace_page": {
+    "request": {
+      "trace_id": "wf_00000000000000000000000000000000"
+    }
+  },
+  "finish_workflow_trace": {
+    "request": {
+      "trace_id": "wf_00000000000000000000000000000000",
+      "user_reported_goal_completed": false
+    }
+  },
+  "cancel_workflow_trace": {
+    "request": {
+      "trace_id": "wf_00000000000000000000000000000000"
+    }
+  },
+  "delete_workflow_trace": {
+    "request": {
+      "trace_id": "wf_00000000000000000000000000000000"
+    }
+  },
+  "create_build_execution_plan": {
+    "request": {
+      "experiment_id": "exp_00000000000000000000000000000000"
+    }
+  },
+  "get_build_execution_plan": {
+    "request": {
+      "execution_id": "route_00000000000000000000000000000000"
+    }
+  },
+  "delete_build_execution_plan": {
+    "request": {
+      "execution_id": "route_00000000000000000000000000000000"
+    }
+  },
+  "plan_build_rollback": {
+    "request": {
+      "failed_experiment_id": "exp_00000000000000000000000000000000",
+      "last_successful_experiment_id": "exp_00000000000000000000000000000000"
+    }
+  },
+  "get_build_rollback": {
+    "request": {
+      "rollback_id": "rollback_00000000000000000000000000000000"
+    }
+  },
+  "delete_build_rollback": {
+    "request": {
+      "rollback_id": "rollback_00000000000000000000000000000000"
+    }
+  },
+  "record_build_observation": {
+    "request": {
+      "base_build_id": "bld_00000000000000000000000000000000",
+      "base_snapshot_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "observed_at_epoch": 0,
+      "values": [
+        {
+          "kind": "character_level",
+          "level": 1
+        }
+      ]
+    }
+  },
+  "create_currency_portfolio": {
+    "request": {
+      "league": "A",
+      "holdings": [
+        {
+          "category": "a",
+          "item_id": 1,
+          "quantity": 0
+        }
+      ],
+      "observed_at_epoch": 0
+    }
+  },
+  "record_currency_event": {
+    "request": {
+      "portfolio_id": "pf_00000000000000000000000000000000",
+      "expected_revision": 1,
+      "event_id": "00000000000000000000000000000000",
+      "kind": "proposed",
+      "transfers": [
+        {
+          "category": "a",
+          "item_id": 1,
+          "quantity": 1,
+          "direction": "debit"
+        }
+      ],
+      "evidence": "user_proposed",
+      "observed_at_epoch": 0
+    }
+  },
+  "get_currency_portfolio": {
+    "request": {
+      "portfolio_id": "pf_00000000000000000000000000000000"
+    }
+  },
+  "value_currency_portfolio": {
+    "request": {
+      "portfolio_id": "pf_00000000000000000000000000000000",
+      "expected_revision": 1
+    }
+  },
+  "delete_currency_portfolio": {
+    "request": {
+      "portfolio_id": "pf_00000000000000000000000000000000"
+    }
+  },
+  "review_purchase_quote": {
+    "request": {
+      "previous_comparison_id": "cmp_00000000000000000000000000000000",
+      "current_comparison_id": "cmp_00000000000000000000000000000000"
+    }
+  },
+  "import_build_guide": {
+    "request": {
+      "url": "https://maxroll.gg/poe2/build-guides/example",
+      "requested_stage": "minimum_viable"
+    }
+  },
+  "get_build_guide": {
+    "request": {
+      "guide_id": "guide_00000000000000000000000000000000"
+    }
+  },
+  "delete_build_guide": {
+    "request": {
+      "guide_id": "guide_00000000000000000000000000000000"
+    }
+  },
+  "analyze_map_encounter": {
+    "request": {
+      "tier": 1,
+      "encounter": "mapping",
+      "game_patch": "0.0.0"
+    }
+  },
+  "record_encounter_run": {
+    "request": {
+      "league": "A",
+      "encounter_key": "aa",
+      "scenario_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "observed_at_epoch": 0,
+      "duration_seconds": 1,
+      "deaths": 0,
+      "entry_and_consumable_cost": 0,
+      "realized_loot_proceeds": 0,
+      "evidence": "user_observed_completed_run"
+    }
+  },
+  "get_encounter_run": {
+    "request": {
+      "run_id": "run_00000000000000000000000000000000"
+    }
+  },
+  "delete_encounter_run": {
+    "request": {
+      "run_id": "run_00000000000000000000000000000000"
+    }
+  },
+  "analyze_encounter_profit": {
+    "request": {
+      "run_ids": [
+        "run_00000000000000000000000000000000"
+      ]
+    }
+  },
+  "analyze_crafting_value": {
+    "request": {
+      "base_opportunity_value": 0,
+      "currency_and_omen_cost": 0,
+      "success_net_sale_value": 1,
+      "failure_salvage_value": 0,
+      "available_risk_budget": 0
+    }
+  },
+  "analyze_reward_choices": {
+    "request": {
+      "league": "A",
+      "choices": [
+        {
+          "category": "A",
+          "item_id": 1
+        }
+      ],
+      "choice_source": "user_observed_reward_menu",
+      "game_patch": "0.0.0"
+    }
+  },
+  "analyze_sale_comparables": {
+    "request": {
+      "league": "A",
+      "subject": {
+        "base_type": "example",
+        "rarity": "normal",
+        "corrupted": false,
+        "evidence": "user_transcribed_item"
+      },
+      "comparables": [
+        {
+          "search_id": "ts_00000000000000000000000000000000",
+          "listing_ref": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  },
+  "compare_build_purchase_plans": {
+    "request": {
+      "league": "A",
+      "budget": {
+        "amount": 1,
+        "currency": "exalted"
+      },
+      "candidates": [
+        {
+          "key": "a",
+          "experiment_ids": [
+            "exp_00000000000000000000000000000000"
+          ]
+        }
+      ],
+      "weights": [
+        {
+          "stat": "ManaCost",
+          "weight": 1
+        }
+      ]
+    }
+  },
+  "get_purchase_comparison": {
+    "request": {
+      "comparison_id": "cmp_00000000000000000000000000000000"
+    }
+  },
+  "delete_purchase_comparison": {
+    "request": {
+      "comparison_id": "cmp_00000000000000000000000000000000"
+    }
+  },
+  "compare_support_portfolio": {
+    "request": {
+      "base_build_id": "bld_00000000000000000000000000000000",
+      "base_snapshot_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "tree_revision": "0_0",
+      "engine_data_commit": "0000000000000000000000000000000000000000",
+      "target": {
+        "skill_instance_id": "skill:s1:g1:n1",
+        "actor_ref": "player",
+        "weapon_set_id": 1
+      },
+      "observed_socket_capacity": 0,
+      "alternatives": [
+        {
+          "support_gem_ids": [],
+          "proposed_socket_capacity": 0
+        }
+      ]
+    }
+  },
+  "plan_build_progression": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "snapshot_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "milestones": [
+        {
+          "character_level": 1
+        }
+      ]
+    }
+  },
+  "get_build_observations": {
+    "request": {
+      "observation_ids": [
+        "obs_00000000000000000000000000000000"
+      ]
+    }
+  },
+  "delete_build_observation": {
+    "request": {
+      "observation_id": "obs_00000000000000000000000000000000"
+    }
+  },
+  "create_build_experiment": {
+    "request": {
+      "base_build_id": "bld_00000000000000000000000000000000",
+      "base_snapshot_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "tree_revision": "0_0",
+      "engine_data_commit": "0000000000000000000000000000000000000000",
+      "target": {
+        "skill_instance_id": "skill:s1:g1:n1",
+        "actor_ref": "player",
+        "weapon_set_id": 1
+      },
+      "edits": [
+        {
+          "type": "set_gem",
+          "skill_instance_id": "skill:s1:g1:n1",
+          "native_level": 1,
+          "quality": 0
+        }
+      ]
+    }
+  },
+  "get_build_plan": {
+    "request": {
+      "experiment_id": "exp_00000000000000000000000000000000"
+    }
+  },
+  "update_build_plan": {
+    "request": {
+      "experiment_id": "exp_00000000000000000000000000000000",
+      "expected_revision": 1,
+      "expected_plan_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "state": "accepted"
+    }
+  },
+  "delete_build_plan": {
+    "request": {
+      "experiment_id": "exp_00000000000000000000000000000000"
+    }
+  },
+  "get_build_diagnostics": {
+    "request": {
+      "calculation_id": "calc_00000000000000000000000000000000"
+    }
+  },
+  "inspect_build": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "section": "equipment"
+    }
+  },
+  "get_pob_engine_status": {},
+  "recalculate_build": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000"
+    }
+  },
+  "validate_build_equipment": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000"
+    }
+  },
+  "compare_build_equipment": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "replacements": [
+        {
+          "slot": "helmet",
+          "saved_item_id": 0
+        }
+      ]
+    }
+  },
+  "recommend_pob_trade_upgrades": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000",
+      "search_ids": [
+        "ts_00000000000000000000000000000000"
+      ],
+      "budget": {
+        "amount": 1,
+        "currency": "exalted"
+      },
+      "weights": [
+        {
+          "stat": "EnergyShield",
+          "weight": 1
+        }
+      ]
+    }
+  },
+  "get_trade_item_details": {
+    "request": {
+      "search_id": "ts_00000000000000000000000000000000",
+      "listing_ref": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "search_trade_stats": {
+    "request": {
+      "query": "A"
+    }
+  },
+  "search_trade_equipment": {
+    "request": {
+      "category": "armour.helmet"
+    }
+  },
+  "get_trade_search_results": {
+    "request": {
+      "search_id": "ts_00000000000000000000000000000000"
+    }
+  },
+  "recommend_trade_upgrades": {
+    "request": {
+      "optimization": {
+        "dataset_id": "gear_00000000000000000000000000000000",
+        "budget": {
+          "amount": 1,
+          "currency": "exalted"
+        },
+        "weights": [
+          {
+            "metric": "item_energy_shield",
+            "weight": 1
+          }
+        ]
+      },
+      "search_ids": [
+        "ts_00000000000000000000000000000000"
+      ]
+    }
+  },
+  "get_equipment_dataset": {
+    "request": {
+      "dataset_id": "gear_00000000000000000000000000000000"
+    }
+  },
+  "search_equipment_candidates": {
+    "request": {
+      "dataset_id": "gear_00000000000000000000000000000000",
+      "filters": {
+        "slot": "helmet"
+      }
+    }
+  },
+  "optimize_equipment_upgrades": {
+    "request": {
+      "dataset_id": "gear_00000000000000000000000000000000",
+      "budget": {
+        "amount": 1,
+        "currency": "exalted"
+      },
+      "weights": [
+        {
+          "metric": "item_energy_shield",
+          "weight": 1
+        }
+      ]
+    }
+  },
+  "get_build_profile": {
+    "request": {
+      "build_id": "bld_00000000000000000000000000000000"
+    }
+  },
+  "get_build_summary": {
+    "build_id": "bld_00000000000000000000000000000000"
+  },
+  "get_saved_build_equipment": {
+    "build_id": "bld_00000000000000000000000000000000"
+  },
+  "get_build_equipment": {
+    "build_id": "bld_00000000000000000000000000000000"
+  },
+  "get_build_passive_nodes": {
+    "build_id": "bld_00000000000000000000000000000000"
+  },
+  "get_game_accounts": {
+    "request": {}
+  },
+  "register_game_account": {
+    "request": {
+      "account_name": "a"
+    }
+  },
+  "begin_game_account_link": {
+    "request": {}
+  },
+  "set_default_game_account": {
+    "request": {
+      "account_id": "acct_00000000000000000000000000000000"
+    }
+  },
+  "get_game_connection_status": {
+    "request": {
+      "account_id": "acct_00000000000000000000000000000000"
+    }
+  },
+  "prepare_hideout_travel": {
+    "request": {
+      "search_id": "ts_00000000000000000000000000000000",
+      "listing_ref": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "get_hideout_travel_result": {
+    "request": {
+      "intent_id": "travel_00000000000000000000000000000000"
+    }
+  }
+}

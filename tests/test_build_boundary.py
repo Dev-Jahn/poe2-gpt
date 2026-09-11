@@ -223,10 +223,11 @@ async def test_mcp_never_exposes_raw_tools_resources_or_payload_errors(tmp_path,
     try:
         async with create_connected_server_and_client_session(server) as session:
             tools = (await session.list_tools()).tools
-            private = [v for v in tools if v.name.startswith("get_build_")]
-            assert len(tools) == 12 and len(private) == 3
+            private = [v for v in tools if v.name.startswith("get_build_") or v.name=='get_saved_build_equipment']
+            assert len(tools) == 16 and len(private) == 5
             for tool in private:
-                assert set(tool.inputSchema["properties"]) <= {"build_id","spec_index","offset","limit","slot","saved_item_id"}
+                assert set(tool.inputSchema["properties"]) <= ({'request'} if tool.name=='get_build_profile' else
+                    {"build_id","spec_index","offset","limit","slot","saved_item_id"})
                 assert tool.outputSchema
                 from jsonschema import Draft202012Validator
                 Draft202012Validator.check_schema(tool.outputSchema)

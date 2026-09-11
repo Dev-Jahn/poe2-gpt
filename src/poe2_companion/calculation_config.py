@@ -65,6 +65,7 @@ class CalculationConfiguration(DTO):
     tempest_bell_knockback_metres: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] | None = None
     enemy_maimed: bool | None = None
     enemy_blinded: bool | None = None
+    enemy_isolated: bool | None = None
     charged_mark_ground_active: bool | None = None
     rite_of_passage_spirit: Literal["none", "bear", "boar", "cat", "owl", "ox", "primate", "serpent", "stag", "wolf"] | None = None
     companion_aura_sources: Annotated[list[CompanionAuraSource], Field(max_length=8)] | None = None
@@ -98,6 +99,6 @@ ConfigurationField = Literal[
     "onslaught_active", "thrill_of_the_kill_active", "culling_strike_recent_cull",
     "wind_dancer_stages", "mountain_teachings", "refutation_active", "refutation_ward_spent",
     "tempest_bell_prior_hits", "tempest_bell_ailment_types", "tempest_bell_knockback_metres",
-    "enemy_maimed", "enemy_blinded", "charged_mark_ground_active", "rite_of_passage_spirit",
+    "enemy_maimed", "enemy_blinded", "enemy_isolated", "charged_mark_ground_active", "rite_of_passage_spirit",
     "companion_aura_sources",
 ]

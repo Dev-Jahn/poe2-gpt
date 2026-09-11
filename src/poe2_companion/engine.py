@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 import httpx
 
-from .builds import bounded_dto, PlayerStat, MAX_TOOL_JSON_BYTES
+from .builds import bounded_dto, tool_json_bytes, PlayerStat, MAX_TOOL_JSON_BYTES
 from .engine_models import (ENGINE_COMMIT, ENGINE_DATA_COMMIT, ENGINE_COMPATIBILITY, EngineError, SAFE_ENGINE_ERRORS, EngineStatus, EngineRequest, CompareRequest,
     EngineCalculation, EngineTradeRequest, EngineTradeResult, TradeChange, EngineSlot)
 from .engine_protocol import WorkerRequest, WorkerResult, private_trade_item
@@ -19,6 +19,7 @@ from .diagnostics import CalculationReceipts, CandidateEvaluation, ConstraintVio
 from .recommendation import Option, enumerate_plans
 from .engine_protocol import WorkerChange
 from .scout import ScoutError
+from .workflow_metrics import measured, span, count, observe_header, absorb_worker_header
 
 
 async def verify_character_league(origin, requested, declared, scout):
@@ -40,6 +41,14 @@ async def verify_character_league(origin, requested, declared, scout):
 
 
 def deltas(before,after):
+    if before.subject is not None or after.subject is not None:
+        if (before.subject is None or after.subject is None
+                or before.subject.status=='unavailable' or after.subject.status=='unavailable'
+                or before.subject.evaluated!=after.subject.evaluated
+                or before.subject.scenario_digest!=after.subject.scenario_digest):
+            return []
+    elif before.selected_skill!=after.selected_skill or before.active_weapon_set!=after.active_weapon_set:
+        return []
     b={s.name:s.value for s in before.stats}
     return [PlayerStat(name=s.name,value=s.value-b[s.name]) for s in after.stats if s.name in b]
 
@@ -57,7 +66,12 @@ def bounded_engine_dto(value):
     snapshots=[calculation.baseline]+([calculation.result] if calculation.result else [])
     primary={'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier','MinionTotalDPS','MinionCombinedDPS','MinionSpeed'}
     primary.update(calculation.requested_metrics)
-    while len(value.model_dump_json().encode('utf-8'))>MAX_TOOL_JSON_BYTES:
+    while tool_json_bytes(value)>MAX_TOOL_JSON_BYTES:
+        details=[s for s in snapshots if s.requirements is not None]
+        if details:
+            details[0].requirements=None
+            details[0].requirements_truncated=True
+            continue
         expanded=[s for s in snapshots if any(v.name not in primary for v in s.stats)]
         if expanded:
             snapshot=max(expanded,key=lambda s:len(s.stats))
@@ -142,17 +156,41 @@ class EngineClient:
         await self.http.aclose()
 
     async def inspect(self, request):
-        result = await self.batch(WorkerRequest(build_id=request.build_id,
-            configuration=request.configuration, inspection=request))
-        page = result.inspection
-        if page is None:
-            raise EngineError('engine_protocol_error')
-        while len(page.model_dump_json(exclude_none=True).encode()) > MAX_TOOL_JSON_BYTES and len(page.records) > 1:
+        from .inspection import InspectionPage
+        page = await self.static_request('/inspect', request, InspectionPage)
+        while tool_json_bytes(page) > MAX_TOOL_JSON_BYTES and len(page.records) > 1:
             page.records.pop()
             page.next_offset = request.offset + len(page.records)
-        if len(page.model_dump_json(exclude_none=True).encode()) > MAX_TOOL_JSON_BYTES:
+        if tool_json_bytes(page) > MAX_TOOL_JSON_BYTES:
             raise EngineError('engine_protocol_error')
         return page
+
+    @measured('worker_round_trip')
+    async def static_request(self, path, request, result_type):
+        # Static queries have their own bounded private queue and remain usable
+        # while the expensive combat calculation lock is held.
+        try:
+            async with self.http.stream('POST', path, content=request.model_dump_json(exclude_none=True),
+                    headers={'content-type': 'application/json',**observe_header()}) as response:
+                absorb_worker_header(response.headers.get('x-poe2-workflow-timing'))
+                data=bytearray()
+                async for chunk in response.aiter_bytes():
+                    data.extend(chunk)
+                    if len(data)>(4*1024*1024 if path=='/passive-order' else 128*1024):
+                        raise EngineError('engine_protocol_error')
+                if response.status_code!=200:
+                    code=json.loads(data).get('code')
+                    raise EngineError(code if code in SAFE_ENGINE_ERRORS else 'engine_protocol_error')
+                with span('validation'):
+                    return result_type.model_validate_json(data)
+        except EngineError:
+            raise
+        except Exception:
+            raise EngineError('engine_protocol_error') from None
+
+    async def profile(self, request):
+        from .profiles import BuildProfile
+        return bounded_dto(await self.static_request('/profile', request, BuildProfile))
 
     async def equipment(self, build_id, slot=None, saved_item_id=None, offset=0, limit=5):
         from .inspection import InspectionRequest
@@ -168,13 +206,16 @@ class EngineClient:
             available=False
         return EngineStatus(enabled=True,reachable=available)
 
+    @measured('worker_round_trip')
     async def batch(self, request: WorkerRequest):
         # Prevent an agent spawning concurrent expensive PoB calculations.
         if self.lock.locked():
+            count('queue_rejected')
             raise EngineError('engine_busy')
         async with self.lock:
             try:
-                async with self.http.stream('POST','/batch',content=request.model_dump_json(exclude_none=True),headers={'content-type':'application/json'}) as r:
+                async with self.http.stream('POST','/batch',content=request.model_dump_json(exclude_none=True),headers={'content-type':'application/json',**observe_header()}) as r:
+                    absorb_worker_header(r.headers.get('x-poe2-workflow-timing'))
                     data=bytearray()
                     async for chunk in r.aiter_bytes():
                         data.extend(chunk)
@@ -183,7 +224,8 @@ class EngineClient:
                     if r.status_code!=200:
                         code=json.loads(data).get('code')
                         raise EngineError(code if code in SAFE_ENGINE_ERRORS else 'engine_unavailable')
-                    payload=json.loads(data)
+                    with span('parse'):
+                        payload=json.loads(data)
                     if not isinstance(payload,dict):
                         raise EngineError('engine_protocol_error')
                     # Never default an old worker's missing provenance to the
@@ -192,9 +234,25 @@ class EngineClient:
                               'engine_compatibility':ENGINE_COMPATIBILITY}
                     if any(payload.get(key)!=pin for key,pin in expected.items()):
                         raise EngineError('engine_version_mismatch')
-                    result=WorkerResult.model_validate(payload)
-                    if len(result.results)!=len(request.scenarios):
+                    with span('validation'):
+                        result=WorkerResult.model_validate(payload)
+                    expected_count=(1 if result.experiment_audit and result.experiment_audit.status=='valid_changeset' else 0) if request.experiment else len(request.scenarios)
+                    if len(result.results)!=expected_count or len(result.experiment_variants)!=len(request.variant_jobs):
                         raise EngineError('engine_protocol_error')
+                    expected_components=min(request.component_limit,max(0,result.component_total-request.component_offset)) if request.component_targets else 0
+                    if len(result.components)!=expected_components or (not request.component_targets and result.component_total):
+                        raise EngineError('engine_protocol_error')
+                    for part in result.components:
+                        if not 0 <= part.requested_index < len(request.component_targets):
+                            raise EngineError('engine_protocol_error')
+                        original=request.component_targets[part.requested_index]
+                        subject=part.snapshot.subject
+                        if subject is None or subject.requested is None:
+                            raise EngineError('engine_protocol_error')
+                        expected_target=original.model_copy(update={'aggregation':'single_skill',
+                            'component_ref':subject.requested.component_ref}) if original.aggregation=='component_breakdown' else original
+                        if subject.requested!=expected_target:
+                            raise EngineError('engine_protocol_error')
                     return result
             except httpx.TimeoutException:
                 raise EngineError('engine_timeout') from None
@@ -206,7 +264,7 @@ class EngineClient:
     async def calculate(self, request: EngineRequest | CompareRequest):
         scenarios=[[v.model_dump() for v in request.replacements]] if isinstance(request,CompareRequest) else []
         result=await self.batch(WorkerRequest.model_validate(dict(build_id=request.build_id,scenarios=scenarios,
-            configuration=request.configuration,combat_scenario=request.combat_scenario)))
+            target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario)))
         after=result.results[0] if result.results else None
         calculation=EngineCalculation(build_id=request.build_id,calculated_at_epoch=int(time.time()),baseline=result.baseline,
             result=after,deltas=deltas(result.baseline,after) if after else [],**calculation_context(request))
@@ -225,7 +283,7 @@ class EngineClient:
         # Resolve occupied slots from the same immutable build/configuration.
         # Empty-slot removals are no-ops and must not consume the plan budget.
         initial=await self.batch(WorkerRequest(build_id=request.build_id,
-            configuration=request.configuration,combat_scenario=request.combat_scenario))
+            target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario))
         await verify_character_league(initial.baseline.origin, request.league, request.declared_character_league, scout)
         occupied={item.slot for item in initial.baseline.equipped}
         removable=occupied if request.unequip_slots is None else occupied & set(request.unequip_slots)
@@ -277,7 +335,7 @@ class EngineClient:
                     TradeChange(slot=slot,listing_ref=ref,normalized_cost=float(cost),original_price=price),cost))
         plans=enumerate_plans(pool,removable,request.max_changes,spend)
         result=(await self.batch(WorkerRequest(build_id=request.build_id,scenarios=[p.changes for p in plans[1:]],
-            configuration=request.configuration,combat_scenario=request.combat_scenario))) if len(plans)>1 else initial
+            target=request.target,configuration=request.configuration,combat_scenario=request.combat_scenario))) if len(plans)>1 else initial
         snapshots=[result.baseline,*result.results]
         origin=result.baseline.origin
         await verify_character_league(origin, request.league, request.declared_character_league, scout)
@@ -291,6 +349,13 @@ class EngineClient:
             return sum((min(v[w.stat],w.cap) if w.cap is not None else v[w.stat])*w.weight for w in request.weights)
         base_score=score(baseline) if request.mode!='restore_validity' else 0.0
         def covered(snapshot):
+            if request.target is not None or need & {'TotalDPS','CombinedDPS','FullDPS','MinionTotalDPS','MinionCombinedDPS'}:
+                subject,base_subject=snapshot.subject,result.baseline.subject
+                if subject is not None or base_subject is not None:
+                    if (subject is None or base_subject is None or subject.status=='unavailable'
+                            or subject.evaluated!=base_subject.evaluated
+                            or subject.scenario_digest!=base_subject.scenario_digest):
+                        return False
             if snapshot.metric_coverage:
                 verified={c.stat for c in snapshot.metric_coverage if c.status=='pass'}
                 return need <= verified

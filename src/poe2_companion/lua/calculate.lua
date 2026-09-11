@@ -6,6 +6,8 @@ local job = assert(json.decode(io.stdin:read('*a')))
 dofile('HeadlessWrapper.lua')
 assert(build and not __mainObject__.promptMsg)
 local companionRoot = assert(arg[0]:match('^(.*[/\\])'))
+local subjects=dofile(companionRoot..'subjects.lua')
+local savedSubject,selectionError
 local stonefist = dofile(companionRoot..'stonefist.lua')
 local companions = dofile(companionRoot..'companions.lua')
 local skillCoverage = dofile(companionRoot..'skill_coverage.lua')
@@ -35,9 +37,10 @@ modLib.parseModCache['Equipment has no Attribute Requirements']={{
  modLib.createMod('GlobalItemAttributeRequirements','MORE',-100,'PoE2Companion')},nil}
 local slots = {helmet='Helmet',body_armour='Body Armour',gloves='Gloves',boots='Boots',belt='Belt',amulet='Amulet',ring_left='Ring 1',ring_right='Ring 2',weapon_main='Weapon 1',weapon_off='Weapon 2'}
 local slotKeys = {'helmet','body_armour','gloves','boots','belt','amulet','ring_left','ring_right','weapon_main','weapon_off'}
-local statKeys = {'Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
+local statKeys = {'ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage','Life','LifeUnreserved','Mana','ManaUnreserved','EnergyShield','Armour','Evasion','DeflectionRating','FireResist','ColdResist','LightningResist','ChaosResist','BlockChance','SpellBlockChance','Str','Dex','Int','TotalDPS','CombinedDPS','FullDPS','Speed','CritChance','CritMultiplier'}
 for _,key in ipairs({'FireResistTotal','ColdResistTotal','LightningResistTotal','ChaosResistTotal','FireResistOverCap','ColdResistOverCap','LightningResistOverCap','ChaosResistOverCap','PhysicalMaximumHitTaken','FireMaximumHitTaken','ColdMaximumHitTaken','LightningMaximumHitTaken','ChaosMaximumHitTaken','LifeRegen','ManaRegen','EnergyShieldRegen','LifeLeechRate','ManaLeechRate','EnergyShieldLeechRate','TotalEHP'}) do statKeys[#statKeys+1]=key end
 local function array(t) return setmetatable(t or {}, {__jsontype='array'}) end
+for _,key in ipairs({'LifeRegenRecovery','ManaRegenRecovery','EnergyShieldRegenRecovery'}) do statKeys[#statKeys+1]=key end
 local function refresh()
  build.buildFlag = true
  runCallback('OnFrame')
@@ -48,6 +51,7 @@ local function load()
  if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
  loadBuildFromXML(job.xml, '')
  assert(build and build.savers and build.targetVersion==liveTargetVersion and build.calcsTab and build.calcsTab.mainOutput and not __mainObject__.promptMsg)
+ savedSubject=subjects.resolve(build)
  if beastMetadata.apply(build,job.beast_metadata) then
   if GlobalCache and GlobalCache.cachedData then wipeGlobalCache() end
   refresh()
@@ -63,7 +67,7 @@ local function load()
   local aliases={ghost_shroud_lost_recently='conditionLostGhostShroudRecently',
    refutation_active='conditionRefutationActive',refutation_ward_spent='refutationWardSpent',
    tempest_bell_prior_hits='tempestBellPriorHits',tempest_bell_knockback_metres='tempestBellKnockbackMetres',
-   enemy_maimed='conditionEnemyMaimed',enemy_blinded='conditionEnemyBlinded',
+   enemy_maimed='conditionEnemyMaimed',enemy_blinded='conditionEnemyBlinded',enemy_isolated='conditionEnemyIsolated',
    wind_dancer_stages='windDancerStacks',impale_magnitude='companionImpaleMagnitude',
    leech_resistance_percent='companionLeechResistance',onslaught_active='buffOnslaught',
    thrill_of_the_kill_active='companionThrillOfTheKillActive',
@@ -93,6 +97,7 @@ local function load()
    refresh()
   end
  end
+ selectionError=subjects.select(build,job.target,refresh)
 end
 local function slotName(key)
  local name = slots[key]
@@ -142,12 +147,24 @@ local function inspect(expected, order, sequenceOk)
  end
  local mainSkill=env.player.mainSkill
  local effect=mainSkill and mainSkill.activeEffect and mainSkill.activeEffect.grantedEffect
+ if subjects.actor(mainSkill)=='spirit_vessel' and mainSkill.minion.mainSkill then
+  effect=mainSkill.minion.mainSkill.activeEffect.grantedEffect
+  -- Generic player attack/cost numbers must not be mistaken for a copied
+  -- Vessel attack. Copy DPS uses the explicit Minion* metric namespace.
+  local personalOffence={TotalDPS=true,CombinedDPS=true,FullDPS=true,Speed=true,AverageDamage=true,CritChance=true,CritMultiplier=true,
+   LifeLeechRate=true,ManaLeechRate=true,EnergyShieldLeechRate=true,
+   HitChance=true,ManaCost=true,ESCost=true,LifeCost=true,ManaPerSecondCost=true,ESPerSecondCost=true,AreaOfEffectRadius=true}
+  local filtered=array()
+  for _,stat in ipairs(stats) do if not personalOffence[stat.name] then filtered[#filtered+1]=stat end end
+  stats=filtered
+ end
  local selectedSkill=nil
  -- Resolve identity from immutable engine data; saved labels are private.
  local canonicalEffect=effect and effect.id and build.data.skills[effect.id]
  if canonicalEffect then
-  selectedSkill={skill_id=effect.id,name=canonicalEffect.name,actor=mainSkill.minion and 'minion' or 'player'}
-  local gem=mainSkill.activeEffect.srcInstance and mainSkill.activeEffect.srcInstance.gemData
+  selectedSkill={skill_id=effect.id,name=canonicalEffect.name,actor=subjects.actor(mainSkill)}
+  local source=subjects.actor(mainSkill)=='spirit_vessel' and mainSkill.minion.mainSkill.activeEffect or mainSkill.activeEffect
+  local gem=source.srcInstance and source.srcInstance.gemData
   if gem and type(gem.name)=='string' then selectedSkill.gem_name=gem.name end
  end
  if mainSkill and mainSkill.minion and type(out.Minion)=='table' then
@@ -277,6 +294,10 @@ local function inspect(expected, order, sequenceOk)
   if not uncertain[v.code] then status='fail';break end
   status='indeterminate'
  end
+ local binding=subjects.bind(build,job.target,savedSubject,selectionError,job.scenario_digest)
+ if binding.status=='unavailable' then
+  issue(issues,'target_unavailable');status='indeterminate';stats=array();mechanics=array();selectedSkill=nil
+ end
  local count=#issues
  local uniqueIssues,seenIssues=array(),{}
  for _,v in ipairs(issues) do
@@ -287,7 +308,7 @@ local function inspect(expected, order, sequenceOk)
  local mechanicCount=#mechanics
  local combat=job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
  local equipmentValidity,coverage=dofile(companionRoot..'metric_coverage.lua').inspect(env,out,stats,uniqueIssues,mechanics,status)
- return {stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
+ return {requirements=dofile(companionRoot..'requirements.lua').project(build),subject=binding,stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
 end
 local function scenario(changes)
  load()
@@ -373,9 +394,65 @@ load()
 local baseline=inspect()
 local inspection=job.inspection and dofile(companionRoot..'inspection.lua').project(build,job.inspection,savedConfig,configurationAliases) or nil
 local results=array()
+local experimentAudit
+local experimentVariants=array()
+local function evaluateExperiment()
+ local function experiment()
+  load()
+  local originals={};for _,slot in ipairs(slotKeys) do originals[slot]=selected(slotName(slot)) end
+  local edits=dofile(companionRoot..'experiments.lua')
+  local gear,other=false,false
+  for _,edit in ipairs(job.experiment.edits) do
+   if edit.type=='equip_item' or edit.type=='unequip_item' then gear=true else other=true end
+  end
+  local mixed=gear and other
+  local audit,checks=edits.apply(build,job.experiment,job.experiment_items,slotName,selected,selectItem,mixed)
+  refresh()
+  selectionError=subjects.select(build,job.target,refresh)
+  edits.validateSupports(checks)
+  if audit.transition_validation=='requires_order_validation' then
+   if mixed then
+    audit.equipment_transition=dofile(companionRoot..'mixed_transition.lua').solve(build,job.experiment,job.experiment_items,originals,slotKeys,slotName,selected,selectItem,refresh,itemChecks,load,edits,dofile(companionRoot..'requirements.lua'))
+   else
+    audit.equipment_transition=dofile(companionRoot..'equipment_transition.lua').solve(build,job.experiment,originals,slotKeys,slotName,selected,selectItem,refresh,itemChecks)
+   end
+   if audit.equipment_transition.status=='verified' then audit.transition_validation='verified' end
+   selectionError=subjects.select(build,job.target,refresh)
+  end
+  local result=inspect(nil,nil,audit.transition_validation~='requires_order_validation')
+  return {audit=audit,result=result}
+ end
+ local ok,value=pcall(experiment)
+ if ok then return {audit=value.audit,snapshot=value.result}
+ else
+  if type(value)~='table' or not value.code then value={edit_index=0,code='entity_not_found'} end
+  return {audit={status='rejected_atomically',failures=array{value},applied_edits=array(),base_unchanged=true}}
+ end
+end
+if job.experiment then
+ local value=evaluateExperiment();experimentAudit=value.audit;results[1]=value.snapshot
+end
+for _,variant in ipairs(job.variant_jobs or {}) do
+ job.experiment=variant.request;job.experiment_items=variant.items
+ experimentVariants[#experimentVariants+1]=evaluateExperiment()
+end
 for _,changes in ipairs(job.scenarios) do
  local ok,value=pcall(scenario,changes)
  if ok then results[#results+1]=value
  else results[#results+1]={stats=array(),equipped=array(),issues=array({{code='scenario_calculation_failed'}}),issue_count=1,validation='indeterminate',equip_order=array(),active_weapon_set=baseline.active_weapon_set,main_skill_group=baseline.main_skill_group} end
 end
-io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection}))
+local components=array();local componentTargets={}
+for index,target in ipairs(job.component_targets or {}) do
+ local single={};for key,value in pairs(target) do single[key]=value end
+ single.aggregation='single_skill';job.target=single;load()
+ for _,component in ipairs(subjects.components(build,target)) do
+  assert(#componentTargets<100)
+  componentTargets[#componentTargets+1]={requested_index=index-1,target=component}
+ end
+end
+for index=(job.component_offset or 0)+1,math.min(#componentTargets,(job.component_offset or 0)+(job.component_limit or 3)) do
+ local component=componentTargets[index];job.target=component.target;load()
+ components[#components+1]={requested_index=component.requested_index,snapshot=inspect()}
+end
+io.stdout:write(json.encode({baseline=baseline,results=results,inspection=inspection,experiment_audit=experimentAudit,experiment_variants=experimentVariants,
+ components=components,component_total=#componentTargets}))

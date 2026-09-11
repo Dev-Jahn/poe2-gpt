@@ -4,8 +4,10 @@
 
 A self-hosted ChatGPT plugin and MCP server for **Path of Exile 2**: currency prices, official trade-site equipment search, private Path of Building calculations, and equipment upgrades within a budget.
 
-**Status: 0.13.0, experimental.** The code includes up to 38 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
+**Status: 0.14.0, experimental.** The code includes up to 100 MCP tools. Homelab deployment, authentication, and testing with your own character are separate installation steps. This repository does not provide a hosted endpoint or a published ChatGPT directory listing.
 
+
+0.14 adds immutable build experiments, explicit skill/actor selection, full-path and support comparisons, complete purchase evidence, recovery analysis and owner-authenticated plan downloads. See [workflow contracts and limits](docs/workflows.md). Hideout execution remains a future feature.
 ## Features
 
 Version 0.12 fixes empty inspection pages, adds zero-cost equipment removal to

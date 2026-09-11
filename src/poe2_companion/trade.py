@@ -24,6 +24,7 @@ from pydantic import Field, field_validator, model_validator
 
 from .builds import DTO, BuildError, bounded_dto
 from .game_terms import name_fields
+from .workflow_metrics import measured, span, count
 from .equipment import (Currency, DatasetID, LeagueName, Number, OptimizeRequest, Price, Stat,
                         Candidate, Dataset, EquipmentService, UpgradeResult, unique, Slot, Metric)
 
@@ -45,7 +46,7 @@ SearchID = Annotated[str, Field(pattern=r"^ts_[0-9a-f]{32}$",max_length=35)]
 SAFE_ERRORS = {"trade_rate_limited", "trade_interactive_verification_required", "trade_authentication_required",
     "trade_schema_changed", "trade_invalid_query", "trade_unavailable", "trade_response_too_large",
     "trade_unknown_filter", "trade_unknown_league", "trade_search_expired", "trade_wrong_league",
-    "trade_search_not_found", "trade_no_optimizable_candidates", "trade_unknown_stat"}
+    "trade_search_not_found", "trade_no_optimizable_candidates", "trade_unknown_stat", "trade_repeated_query_failed"}
 
 
 class TradeError(Exception):
@@ -124,6 +125,7 @@ class TradeSearchRequest(DTO):
 
 class TradePageRequest(DTO):
     search_id: SearchID
+    cached_only: bool = False
     offset: Annotated[int, Field(ge=0,le=49)] = 0
     limit: Annotated[int, Field(ge=1,le=5)] = 5
 
@@ -215,6 +217,12 @@ class TradeListing(DTO):
     availability_guaranteed: Literal[False] = False
 
 
+class SearchRelaxation(DTO):
+    field: Literal['properties','stats','stat_groups','base_type','exact_name','price_max']
+    action: Literal['review_optional_thresholds','review_identity_constraint','review_budget_without_automatic_increase']
+    new_search_performed: Literal[False] = False
+
+
 class TradeSearchResult(DTO):
     search_id: SearchID
     league: LeagueName
@@ -230,6 +238,14 @@ class TradeSearchResult(DTO):
     items: list[TradeListing]
     next_offset: int | None
     unavailable_or_unparsed_in_page: int
+    page_offset: int = 0
+    deferred_listing_count: int = 0
+    cache_state: Literal['complete_page','partial_cached_page'] = 'complete_page'
+    provider_action: Literal['none','retry_same_page_after_cooldown','operator_configuration_required','explicit_fetch_required'] = 'none'
+    retry_after_seconds: int | None = None
+    empty_result_scope: Literal['exact_query_filters_only'] = 'exact_query_filters_only'
+    relaxation_suggestions: Annotated[list[SearchRelaxation], Field(max_length=3)] = Field(default_factory=list)
+    market_has_no_matching_items_globally: Literal[False] = False
     direct_website_api: Literal[True] = True
     documented_developer_api: Literal[False] = False
 
@@ -361,6 +377,7 @@ class TradeClient:
         self.metadata: dict = {}
         self.searches: OrderedDict[str,dict] = OrderedDict()
         self.query_cache: OrderedDict[str,str] = OrderedDict()
+        self.failed_queries: OrderedDict[str,tuple[int,float]] = OrderedDict()
         self.blocked = None
         self.ko_blocked = None
         self.ko_metadata = None
@@ -372,6 +389,7 @@ class TradeClient:
     async def request(self, method: str, path: str, body=None):
         return await self._request(method,path,body)
 
+    @measured('network')
     async def _request(self, method: str, path: str, body=None, *, korean=False):
         # All paths are constructed by this module; there is no URL-taking MCP tool.
         # The Korean host is used only for its fixed public stat-name catalog.
@@ -388,9 +406,11 @@ class TradeClient:
                 if delay > 5:
                     raise TradeError("trade_rate_limited",math.ceil(delay))
                 if delay:
-                    await asyncio.sleep(delay)
+                    with span('rate_wait'):
+                        await asyncio.sleep(delay)
                 gate.consume()
                 try:
+                    count('upstream_request')
                     async with self.client.stream(method,endpoint+path,json=body) as response:
                         gate.observe(response.headers)
                         if response.status_code in (401,403):
@@ -416,7 +436,8 @@ class TradeClient:
                                 raise TradeError("trade_response_too_large")
                             chunks.append(chunk)
                         try:
-                            data = json.loads(b"".join(chunks))
+                            with span('parse'):
+                                data = json.loads(b"".join(chunks))
                         except (ValueError,RecursionError):
                             raise TradeError("trade_schema_changed") from None
                         if isinstance(data,dict) and isinstance(data.get("error"),dict):
@@ -563,12 +584,21 @@ class TradeClient:
             return await self._search(request)
 
     async def _search(self, request: TradeSearchRequest):
-        body = await self.query(request)
         cache_key=json.dumps(request.model_dump(),sort_keys=True)
         cached=self.query_cache.get(cache_key)
         if cached and cached in self.searches and self.clock()-self.searches[cached]["created"]<60:
             return await self.page(TradePageRequest(search_id=cached))
-        raw = await self.request("POST","/search/"+quote(request.league,safe=""),body)
+        failed,until=self.failed_queries.get(cache_key,(0,0.0))
+        if self.clock()>=until: failed=0
+        if failed>=2: raise TradeError('trade_repeated_query_failed',max(1,math.ceil(until-self.clock())))
+        try:
+            body = await self.query(request)
+            raw = await self.request("POST","/search/"+quote(request.league,safe=""),body)
+        except TradeError:
+            self.failed_queries[cache_key]=(failed+1,self.clock()+60)
+            while len(self.failed_queries)>64: self.failed_queries.popitem(last=False)
+            raise
+        self.failed_queries.pop(cache_key,None)
         query_id, ids, total=raw.get("id"),raw.get("result"),raw.get("total")
         # Current trade2 can return a long URL-safe compressed SEARCH token.
         # Keep it opaque; this is not a PoB payload and must never be decoded.
@@ -628,15 +658,31 @@ class TradeClient:
     async def page(self, request: TradePageRequest):
         entry=self.retained(request.search_id)
         ids=entry["ids"][request.offset:request.offset+request.limit]
-        await self.fetch(entry,ids)
+        delay=self.gate.delay()
+        wait=max(0,math.ceil(self.gate.until-self.gate.clock()),math.ceil(delay) if delay>5 else 0)
+        cached=request.cached_only or self.blocked is not None or wait>0
+        if not cached: await self.fetch(entry,ids)
+        suggestions=[]
+        if entry['total']==0:
+            for field in ('properties','stats','stat_groups','base_type','exact_name','price_max'):
+                if getattr(entry['request'],field):
+                    action: Literal['review_optional_thresholds','review_identity_constraint','review_budget_without_automatic_increase']='review_optional_thresholds' if field in {'properties','stats','stat_groups'} else 'review_budget_without_automatic_increase' if field=='price_max' else 'review_identity_constraint'
+                    suggestions.append(SearchRelaxation(field=field,action=action))
+                    if len(suggestions)==3: break
         for count in range(len(ids),-1,-1):
             selected_ids=ids[:count]
-            rows=[entry["rows"][i] for i in selected_ids if entry["rows"][i] is not None]
+            rows=[entry["rows"][i] for i in selected_ids if entry["rows"].get(i) is not None]
+            deferred=sum(i not in entry["rows"] for i in selected_ids)
             result=TradeSearchResult(search_id=request.search_id,league=entry["request"].league,category=entry["request"].category,
                 website_url=search_url(entry),status_filter=entry['request'].status,
                 instant_buyout_only=entry['request'].status=='securable',
                 search_retrieved_at_epoch=entry["created"],total_matches=entry["total"],retained_ids=len(entry["ids"]),query_results_fully_retained=entry["exhaustive"],
-                items=rows,next_offset=request.offset+count if request.offset+count<len(entry["ids"]) else None,unavailable_or_unparsed_in_page=len(selected_ids)-len(rows))
+                items=rows,next_offset=request.offset+count if request.offset+count<len(entry["ids"]) else None,
+                page_offset=request.offset,deferred_listing_count=deferred,
+                cache_state='partial_cached_page' if deferred else 'complete_page',retry_after_seconds=wait or None,
+                provider_action=('operator_configuration_required' if self.blocked else 'retry_same_page_after_cooldown' if wait else 'explicit_fetch_required') if deferred else 'none',
+                relaxation_suggestions=suggestions,
+                unavailable_or_unparsed_in_page=len(selected_ids)-len(rows)-deferred)
             try:
                 return bounded_dto(result)
             except BuildError:

@@ -1,0 +1,698 @@
+{
+  "schema_revision": "workflow-acceptance-map-v1",
+  "scope": "generic_public_contracts_and_synthetic_fixtures",
+  "mapping_is_not_a_test_pass": true,
+  "historical_private_inputs": "not_identified_or_replayed",
+  "host_evidence": "scripted_authenticated_http_mcp; installed ChatGPT host and user gameplay are separate release observations",
+  "cases": [
+    {
+      "case_id": "MCP-001-T01",
+      "tests": [
+        "tests/test_workflow_capabilities.py::test_mcp_inventory_distinguishes_configuration_from_host_and_schema"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-001-T02",
+      "tests": [
+        "tests/test_workflow_discovery.py::test_every_configured_tool_has_a_valid_nested_example_and_bounded_inventory"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-001-T03",
+      "tests": [
+        "tests/test_engine.py::test_every_calculation_verifies_worker_provenance_without_health_call",
+        "tests/test_engine.py::test_public_engine_metadata_schema_is_stable_across_pin_updates"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-002-T01",
+      "tests": [
+        "tests/test_workflow_static_real.py::test_static_load_busy_worker_unknown_modifier_and_hot_pages"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-002-T02",
+      "tests": [
+        "tests/test_workflow_static_real.py::test_static_load_busy_worker_unknown_modifier_and_hot_pages",
+        "tests/test_workflow_telemetry_real.py::test_private_static_metrics_are_opt_in_and_hot_cache_survives_busy_loader"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-002-T03",
+      "tests": [
+        "tests/test_workflow_discovery.py::test_disabled_and_busy_engine_retain_saved_projection_without_derived_claims"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-003-T01",
+      "tests": [
+        "tests/test_workflow_subjects_real.py::test_explicit_instance_subject_and_ineligible_candidate",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-003-T02",
+      "tests": [
+        "tests/test_workflow_subjects_real.py::test_explicit_instance_subject_and_ineligible_candidate",
+        "tests/test_workflow_subjects_real.py::test_hollow_copy_has_its_own_actor_identity",
+        "tests/test_workflow_subjects_real.py::test_vessel_copy_binds_original_instance_and_explicit_owner"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-003-T03",
+      "tests": [
+        "tests/test_workflow_subjects_real.py::test_explicit_instance_subject_and_ineligible_candidate",
+        "tests/test_workflow_components_real.py::test_native_gem_components_remain_separate_receipts"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-004-T01",
+      "tests": [
+        "tests/test_workflow_experiments_real.py::test_joint_native_edit_and_independent_clones",
+        "tests/test_workflow_portfolio_real.py::test_support_alternatives_share_worker_but_not_mutations"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-004-T02",
+      "tests": [
+        "tests/test_workflow_defences_real.py::test_joint_buffer_and_ghost_dance_loss_has_native_bound_recovery"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-004-T03",
+      "tests": [
+        "tests/test_workflow_experiments_real.py::test_joint_native_edit_and_independent_clones"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-005-T01",
+      "tests": [
+        "tests/test_metric_coverage_real.py::test_leech_uncertainty_allows_proven_resource_but_blocks_damage_and_unknown"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-005-T02",
+      "tests": [
+        "tests/test_metric_coverage_real.py::test_leech_uncertainty_allows_proven_resource_but_blocks_damage_and_unknown",
+        "tests/test_workflow_recovery.py::test_native_binding_does_not_borrow_other_skill_or_fill_missing_metrics"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-005-T03",
+      "tests": [
+        "tests/test_workflow_purchases.py::test_single_fx_snapshot_crossing_frontier_and_restart"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-006-T01",
+      "tests": [
+        "tests/test_workflow_decisions.py::test_restart_preserves_historical_decision_not_live_calculation",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-006-T02",
+      "tests": [
+        "tests/test_workflow_observations.py::test_reports_remain_pending_and_conflicts_do_not_merge",
+        "tests/test_workflow_progression.py::test_reported_revision_and_conflict_require_explicit_resolution"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-006-T03",
+      "tests": [
+        "tests/test_characters.py::test_request_time_updates_and_return_to_previous_snapshot",
+        "tests/test_characters.py::test_account_resolution_import_dedup_and_private_projection"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-007-T01",
+      "tests": [
+        "tests/test_workflow_risks.py::test_critical_proxy_and_blind_rules_are_scoped_not_global",
+        "tests/test_workflow_risks.py::test_guaranteed_target_exception_is_a_separate_unproven_scenario"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-007-T02",
+      "tests": [
+        "tests/test_workflow_risks.py::test_critical_proxy_and_blind_rules_are_scoped_not_global",
+        "tests/test_hit_buffs_real.py::test_thrill_global_attack_buff_requires_compatible_enabled_source"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-007-T03",
+      "tests": [
+        "tests/test_hit_buffs_real.py::test_blindside_forbids_own_blind_but_keeps_external_blind_benefits",
+        "tests/test_workflow_risks.py::test_native_self_conflicts_are_reported_without_manually_requesting_rules"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-007-T04",
+      "tests": [
+        "tests/test_workflow_risks.py::test_converted_supply_cannot_feed_original_charge_consumer",
+        "tests/test_stonefist_real.py::test_charge_regulation_quality_changes_actual_consumption_interval"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-008-T01",
+      "tests": [
+        "tests/test_workflow_recovery.py::test_hits_reset_recharge_and_recovery_never_exceeds_deficit",
+        "tests/test_workflow_recovery.py::test_cannot_attack_window_preserves_existing_leech_but_blocks_new_spend"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-008-T02",
+      "tests": [
+        "tests/test_workflow_recovery.py::test_native_binding_does_not_borrow_other_skill_or_fill_missing_metrics",
+        "tests/test_workflow_subjects_real.py::test_explicit_instance_subject_and_ineligible_candidate"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-008-T03",
+      "tests": [
+        "tests/test_workflow_defences_real.py::test_joint_buffer_and_ghost_dance_loss_has_native_bound_recovery",
+        "tests/test_workflow_transform_dependencies.py::test_joint_belt_loss_outputs_correction_requirements_not_only_item_delta"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-008-T04",
+      "tests": [
+        "tests/test_workflow_recovery.py::test_full_mana_unknown_expiry_has_materially_different_affordability",
+        "tests/test_workflow_recovery.py::test_copied_es_leech_stops_at_mid_interval_mana_saturation"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-009-T01",
+      "tests": [
+        "tests/test_workflow_catalog.py::test_candidate_generation_includes_full_regular_and_existing_weapon_branches",
+        "tests/test_workflow_passive_portfolio_real.py::test_native_path_portfolio_regular_and_weapon_branches_charge_every_node"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-009-T02",
+      "tests": [
+        "tests/test_workflow_catalog.py::test_entire_weapon_cluster_is_a_path_source_and_refunds_keep_connectivity",
+        "tests/test_workflow_catalog.py::test_other_weapon_branch_cannot_be_used_as_free_travel"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-009-T03",
+      "tests": [
+        "tests/test_workflow_catalog.py::test_entire_weapon_cluster_is_a_path_source_and_refunds_keep_connectivity",
+        "tests/test_workflow_passive_portfolio_real.py::test_native_path_portfolio_regular_and_weapon_branches_charge_every_node"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-009-T04",
+      "tests": [
+        "tests/test_workflow_execution.py::test_click_order_allocates_from_root_and_refunds_from_leaf_without_extra_nodes",
+        "tests/test_game_terms.py::test_unknown_names_stay_english_and_trade_base_has_verified_label"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-010-T01",
+      "tests": [
+        "tests/test_workflow_portfolio_real.py::test_isolated_support_is_scenario_specific_and_new_gem_does_not_inherit_sockets",
+        "tests/test_workflow_progression.py::test_unknown_quests_and_separate_point_pools"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-010-T02",
+      "tests": [
+        "tests/test_workflow_portfolio_real.py::test_isolated_support_is_scenario_specific_and_new_gem_does_not_inherit_sockets"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-010-T03",
+      "tests": [
+        "tests/test_workflow_purchases.py::test_missing_socket_bill_and_stale_price_do_not_certify_budget",
+        "tests/test_workflow_portfolio_real.py::test_support_alternatives_share_worker_but_not_mutations"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-011-T01",
+      "tests": [
+        "tests/test_stonefist_real.py::test_glove_exemption_does_not_erase_other_requirements_or_guess_transform",
+        "tests/test_workflow_transform_dependencies.py::test_unknown_transform_has_only_conditional_intervals_and_exact_variant_links"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-011-T02",
+      "tests": [
+        "tests/test_stonefist_real.py::test_stonefist_import_preserves_exact_transformed_affixes",
+        "tests/test_workflow_transform_dependencies.py::test_unknown_transform_has_only_conditional_intervals_and_exact_variant_links"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-011-T03",
+      "tests": [
+        "tests/test_workflow_transform_dependencies.py::test_unknown_transform_has_only_conditional_intervals_and_exact_variant_links"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-012-T01",
+      "tests": [
+        "tests/test_workflow_transition_real.py::test_owned_bridge_is_required_then_removed",
+        "tests/test_workflow_transition_real.py::test_mixed_gem_upgrade_uses_preceding_equipment_not_final_stats",
+        "tests/test_engine_real.py::test_real_calculation_slots_attributes_order_unknown_and_levels"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-012-T02",
+      "tests": [
+        "tests/test_workflow_transform_dependencies.py::test_joint_belt_loss_outputs_correction_requirements_not_only_item_delta"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-012-T03",
+      "tests": [
+        "tests/test_workflow_requirements_real.py::test_native_maxima_support_sum_and_disabled_instance"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-013-T01",
+      "tests": [
+        "tests/test_localization.py::test_exact_bilingual_identity_and_ambiguity",
+        "tests/test_game_terms.py::test_korean_currency_search_quotes_and_reference_preserve_identity"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-013-T02",
+      "tests": [
+        "tests/test_workflow_purchases.py::test_single_fx_snapshot_crossing_frontier_and_restart",
+        "tests/test_workflow_currency.py::test_proposal_does_not_spend_and_execution_retry_is_idempotent"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-013-T03",
+      "tests": [
+        "tests/test_workflow_market.py::test_cooldown_and_blocked_metadata_preserve_cached_pages",
+        "tests/test_workflow_market.py::test_same_failed_query_stops_after_two_attempts"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-013-T04",
+      "tests": [
+        "tests/test_workflow_market.py::test_zero_query_explains_constraints_and_does_not_relax_buyout"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-014-T01",
+      "tests": [
+        "tests/test_workflow_purchases.py::test_single_fx_snapshot_crossing_frontier_and_restart",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-014-T02",
+      "tests": [
+        "tests/test_workflow_transition_real.py::test_mixed_gem_upgrade_uses_preceding_equipment_not_final_stats",
+        "tests/test_workflow_purchases.py::test_missing_socket_bill_and_stale_price_do_not_certify_budget"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-014-T03",
+      "tests": [
+        "tests/test_equipment.py::test_large_search_space_rejected_without_silent_pruning",
+        "tests/test_review_011.py::test_keep_equip_unequip_space_and_budget_are_explicit"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-015-T01",
+      "tests": [
+        "tests/test_workflow_decisions.py::test_restart_preserves_historical_decision_not_live_calculation",
+        "tests/test_diagnostics.py::test_complete_immutable_diagnostic_pages_and_isolation"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-015-T02",
+      "tests": [
+        "tests/test_workflow_exports.py::test_authenticated_download_matches_mcp_hash_and_rejects_other_owner",
+        "tests/test_workflow_exports.py::test_changed_render_object_cannot_export_under_old_plan_hash"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-015-T03",
+      "tests": [
+        "tests/test_workflow_decisions.py::test_restart_preserves_historical_decision_not_live_calculation",
+        "tests/test_workflow_decisions.py::test_opt_in_and_quota_are_enforced"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-016-T01",
+      "tests": [
+        "tests/test_localization.py::test_exact_bilingual_identity_and_ambiguity",
+        "tests/test_workflow_catalog_real.py::test_full_native_catalog_and_requirements_without_calculation"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-016-T02",
+      "tests": [
+        "tests/test_game_terms.py::test_unknown_names_stay_english_and_trade_base_has_verified_label"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-016-T03",
+      "tests": [
+        "tests/test_workflow_execution.py::test_click_order_allocates_from_root_and_refunds_from_leaf_without_extra_nodes",
+        "tests/test_workflow_execution.py::test_native_order_receipt_includes_helper_and_new_adverse_report_invalidates_route"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-017-T01",
+      "tests": [
+        "tests/test_workflow_execution.py::test_unconfirmed_instill_unlock_returns_only_preceding_action"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-017-T02",
+      "tests": [
+        "tests/test_workflow_execution.py::test_rollback_requires_actual_success_report_and_preserves_unchanged_fields",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-017-T03",
+      "tests": [
+        "tests/test_workflow_execution.py::test_native_order_receipt_includes_helper_and_new_adverse_report_invalidates_route",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-018-T01",
+      "tests": [
+        "tests/test_workflow_telemetry_real.py::test_private_static_metrics_are_opt_in_and_hot_cache_survives_busy_loader",
+        "tests/test_workflow_telemetry.py::test_bounded_identical_retry_admission_cancellation_and_deadline"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-018-T02",
+      "tests": [
+        "tests/test_workflow_market.py::test_same_failed_query_stops_after_two_attempts",
+        "tests/test_workflow_telemetry.py::test_bounded_identical_retry_admission_cancellation_and_deadline",
+        "tests/test_workflow_telemetry.py::test_runtime_pages_all_tool_counters_and_errors_within_mcp_wire_limit"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-018-T03",
+      "tests": [
+        "tests/test_workflow_telemetry.py::test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not_execute"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-019-T01",
+      "tests": [
+        "tests/test_workflow_guides.py::test_requested_starter_cannot_inherit_endgame_and_instructions_are_inert",
+        "tests/test_workflow_guides.py::test_variant_stage_and_machine_prose_conflicts_remain_separate"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-019-T02",
+      "tests": [
+        "tests/test_workflow_guides.py::test_requested_starter_cannot_inherit_endgame_and_instructions_are_inert"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-019-T03",
+      "tests": [
+        "tests/test_workflow_guides.py::test_guide_provider_does_not_follow_redirect_or_accept_arbitrary_hosts",
+        "tests/test_workflow_guides.py::test_requested_starter_cannot_inherit_endgame_and_instructions_are_inert"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-020-T01",
+      "tests": [
+        "tests/test_accounts.py::test_authenticated_mcp_empty_contract_and_cross_subject_isolation"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-020-T02",
+      "tests": [
+        "tests/test_accounts.py::test_member_accounts_callbacks_and_intents_are_isolated",
+        "tests/test_workflow_exports.py::test_authenticated_download_matches_mcp_hash_and_rejects_other_owner",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-020-T03",
+      "tests": [
+        "tests/test_accounts.py::test_handoff_uses_owned_listing_and_keeps_selected_account"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-021-T01",
+      "tests": [
+        "tests/test_workflow_economics.py::test_same_tier_map_has_different_recovery_risk_and_no_ritual_no_hit_preset"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-021-T02",
+      "tests": [
+        "tests/test_workflow_economics.py::test_same_tier_map_has_different_recovery_risk_and_no_ritual_no_hit_preset",
+        "tests/test_workflow_defences_real.py::test_joint_buffer_and_ghost_dance_loss_has_native_bound_recovery"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-021-T03",
+      "tests": [
+        "tests/test_workflow_economics.py::test_run_profit_is_observed_net_and_unsold_asks_remain_hypothetical"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-022-T01",
+      "tests": [
+        "tests/test_workflow_progression.py::test_unknown_quests_and_separate_point_pools"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-022-T02",
+      "tests": [
+        "tests/test_workflow_progression.py::test_unknown_quests_and_separate_point_pools",
+        "tests/test_workflow_catalog_real.py::test_native_weapon_branches_use_shared_ordinary_budget_and_explicit_unlock_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-022-T03",
+      "tests": [
+        "tests/test_workflow_portfolio_real.py::test_isolated_support_is_scenario_specific_and_new_gem_does_not_inherit_sockets",
+        "tests/test_workflow_requirements_real.py::test_native_maxima_support_sum_and_disabled_instance"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-023-T01",
+      "tests": [
+        "tests/test_workflow_economics.py::test_sale_compares_retained_identity_rolls_and_asks_without_sale_guarantee"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-023-T02",
+      "tests": [
+        "tests/test_workflow_economics.py::test_unknown_crafting_odds_produce_threshold_and_maximum_loss_only"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-023-T03",
+      "tests": [
+        "tests/test_workflow_economics.py::test_reward_identity_is_exact_and_proposed_pool_stays_partial"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-024-T01",
+      "tests": [
+        "tests/test_workflow_currency.py::test_repricing_over_budget_requires_new_confirmation_without_spending"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-024-T02",
+      "tests": [
+        "tests/test_workflow_currency.py::test_proposal_does_not_spend_and_execution_retry_is_idempotent"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-024-T03",
+      "tests": [
+        "tests/test_workflow_allocation.py::test_exchange_spread_historical_buckets_and_equipment_opportunity"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-025-T01",
+      "tests": [
+        "tests/test_build_boundary.py::test_mcp_never_exposes_raw_tools_resources_or_payload_errors",
+        "tests/test_characters.py::test_attachment_preserves_bytes_and_blocks_ssrf_redirects_and_payloads",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-025-T02",
+      "tests": [
+        "tests/test_review_011.py::test_empty_inspection_over_actual_mcp_session_and_one_private_request_per_page",
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence",
+        "tests/test_workflow_exports.py::test_authenticated_download_matches_mcp_hash_and_rejects_other_owner"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    },
+    {
+      "case_id": "MCP-025-T03",
+      "tests": [
+        "tests/test_workflow_host_replay_real.py::test_four_authenticated_mcp_tasks_with_discovered_identity_and_native_evidence",
+        "tests/test_workflow_telemetry.py::test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not_execute"
+      ],
+      "execution_evidence": "requires_exact_tree_test_run",
+      "historical_private_fixture_replayed": false
+    }
+  ]
+}

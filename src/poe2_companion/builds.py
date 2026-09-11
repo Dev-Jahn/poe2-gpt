@@ -21,21 +21,22 @@ BASE_CLASSES = ("Warrior", "Mercenary", "Ranger", "Huntress", "Monk", "Druid",
                 "Sorceress", "Witch", "Marauder", "Duelist", "Shadow", "Templar", "Unknown")
 ClassName = Literal["Warrior", "Mercenary", "Ranger", "Huntress", "Monk", "Druid",
                     "Sorceress", "Witch", "Marauder", "Duelist", "Shadow", "Templar", "Unknown"]
-StatName = Literal["Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergyShield", "Armour", "Evasion",
+StatName = Literal['ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage',"Life", "LifeUnreserved", "Mana", "ManaUnreserved", "EnergyShield", "Armour", "Evasion",
                    "FireResistTotal", "ColdResistTotal", "LightningResistTotal", "ChaosResistTotal",
                    "FireResistOverCap", "ColdResistOverCap", "LightningResistOverCap", "ChaosResistOverCap",
                    "PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken",
-                   "LifeRegen", "ManaRegen", "EnergyShieldRegen", "LifeLeechRate", "ManaLeechRate", "EnergyShieldLeechRate", "TotalEHP",
+                   "LifeRegen", "ManaRegen", "EnergyShieldRegen", "LifeRegenRecovery", "ManaRegenRecovery", "EnergyShieldRegenRecovery", "LifeLeechRate", "ManaLeechRate", "EnergyShieldLeechRate", "TotalEHP",
                    "FireResist", "ColdResist", "LightningResist", "ChaosResist", "BlockChance", "SpellBlockChance",
                    "Str", "Dex", "Int", "TotalDPS", "CombinedDPS", "FullDPS", "Speed", "CritChance", "CritMultiplier",
                    "MinionTotalDPS", "MinionCombinedDPS", "MinionSpeed", "DeflectionRating"]
 STAT_NAMES = set(get_args(StatName))
 OPTIONAL_DERIVED_STAT_NAMES = {
+    'ManaCost','ESCost','LifeCost','ManaPerSecondCost','ESPerSecondCost','AreaOfEffectRadius','EnergyShieldRecharge','EnergyShieldRechargeDelay','Spirit','SpiritUnreserved','HitChance','AverageDamage',
     'FireResistTotal', 'ColdResistTotal', 'LightningResistTotal', 'ChaosResistTotal',
     'FireResistOverCap', 'ColdResistOverCap', 'LightningResistOverCap', 'ChaosResistOverCap',
     'PhysicalMaximumHitTaken', 'FireMaximumHitTaken', 'ColdMaximumHitTaken',
     'LightningMaximumHitTaken', 'ChaosMaximumHitTaken', 'TotalEHP',
-    'LifeRegen', 'ManaRegen', 'EnergyShieldRegen', 'LifeLeechRate', 'ManaLeechRate', 'EnergyShieldLeechRate',
+    'LifeRegen', 'ManaRegen', 'EnergyShieldRegen', 'LifeRegenRecovery', 'ManaRegenRecovery', 'EnergyShieldRegenRecovery', 'LifeLeechRate', 'ManaLeechRate', 'EnergyShieldLeechRate',
 }
 EquipmentSlot = Literal["helmet", "body_armour", "gloves", "boots", "belt", "amulet",
     "ring_left", "ring_right", "ring_third", "weapon_main", "weapon_off",
@@ -185,8 +186,14 @@ def check_id(value: str):
 ProjectionDTO = TypeVar('ProjectionDTO', bound=DTO)
 
 
+def tool_json_bytes(value: DTO) -> int:
+    # Account for ordinary host JSON rendering, including ASCII escapes and
+    # separators. Compact wire JSON alone underestimates the public contract.
+    return len(json.dumps(value.model_dump(mode='json'),allow_nan=False).encode('utf-8'))
+
+
 def bounded_dto(value: ProjectionDTO) -> ProjectionDTO:
-    if len(value.model_dump_json().encode("utf-8")) > MAX_TOOL_JSON_BYTES:
+    if tool_json_bytes(value) > MAX_TOOL_JSON_BYTES:
         raise BuildError("projection_response_too_large")
     return value
 
@@ -272,6 +279,6 @@ class BuildReader:
         page = BuildEquipment(build_id=build_id, items=result, total=total, detail=detail,
             page_scope="properties_then_modifiers" if detail else "items", page_total=page_total,
             next_offset=offset+limit if offset+limit < page_total else None)
-        if len(page.model_dump_json().encode("utf-8")) > MAX_TOOL_JSON_BYTES and limit > 1:
+        if tool_json_bytes(page) > MAX_TOOL_JSON_BYTES and limit > 1:
             return self.equipment(build_id, slot, offset, max(1, limit // 2))
         return bounded_dto(page)

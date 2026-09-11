@@ -4,10 +4,14 @@ services:
       POE2_ENGINE_SOCKET: /engine-socket/pob.sock
       POE2_CHARACTER_SOCKET: /character-socket/characters.sock
       POE2_BUILD_PROJECTION_DIR: /build-projections
+      POE2_DECISION_DIR: /workflow-state
+      POE2_DECISION_KEY_FILE: /workflow-keys/decision.key
     volumes:
       - character-socket:/character-socket:ro
       - engine-socket:/engine-socket:ro
       - build-projections:/build-projections:ro
+      - workflow-state:/workflow-state
+      - workflow-keys:/workflow-keys
     depends_on:
       character-provider:
         condition: service_healthy
@@ -83,3 +87,5 @@ volumes:
   engine-coordination:
   character-socket:
   character-state:
+  workflow-state:
+  workflow-keys:

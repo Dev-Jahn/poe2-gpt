@@ -46,13 +46,14 @@ async def test_instant_buyout_is_default_and_override_is_preserved(status):
         await client.close()
 
 
-async def test_empty_inspection_over_actual_mcp_session_and_one_worker_per_page(tmp_path):
+async def test_empty_inspection_over_actual_mcp_session_and_one_private_request_per_page(tmp_path):
     calls=[]
     def respond(request):
-        query=json.loads(request.content)['inspection']
+        assert request.url.path=='/inspect'
+        query=json.loads(request.content)
         calls.append(query)
         page=InspectionPage(build_id=BID,section=query['section'],records=[],total=0)
-        return httpx.Response(200,json=WorkerResult(baseline=snapshot(),results=[],inspection=page).model_dump(mode='json'))
+        return httpx.Response(200,json=page.model_dump(mode='json'))
     engine=EngineClient('/unused',http=httpx.AsyncClient(transport=httpx.MockTransport(respond),base_url='http://worker'))
     scout=Scout(user_agent='test',transport=httpx.MockTransport(Backend()),interval=0)
     server=build_server(scout,engine=engine,build_reader=BuildReader(tmp_path))

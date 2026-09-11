@@ -36,7 +36,7 @@ Tools declare typed input schemas and operation-specific annotations. Inspect th
 | `import_pob_attachment` | ChatGPT `.txt` file reference → private import | Character socket + host fileParams support |
 | `refresh_character` | Explicit Ninja refresh with cooldown | Character socket + per-user Ninja session |
 
-The minimal configuration exposes 9 tools; all optional services together expose 38. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
+The minimal configuration exposes 11 tools; all optional services together expose 100. Disabling trade removes its search and recommendation tools. Worker tools do not require the separate projection or manual equipment dataset services.
 
 
 
@@ -109,3 +109,8 @@ completes. Registration/default selection write private state; handoff preparati
 writes a receipt and can fetch retained listings. Handoffs open the official site
 and never execute a game action. See [accounts](accounts.md) for authentication,
 expiry, configuration and the remaining travel-integration boundary.
+
+
+## 0.14 build workflows
+
+See [workflow contracts and limits](workflows.md) for discovery, explicit subjects, full changesets, passive/support portfolios, recovery, purchase evidence, encrypted state, guides, currency allocation, execution and authenticated plan exports. Complete per-tool schemas and examples are supplied by `describe_tool_schema`; runtime inventory is paginated by `get_capabilities`.
