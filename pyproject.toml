@@ -12,7 +12,7 @@ license-files = ["LICENSE", "NOTICE"]
 authors = [{name = "Jahn"}]
 keywords = ["poe2", "mcp", "chatgpt", "path-of-building"]
 requires-python = ">=3.11"
-dependencies = ["mcp==1.29.1", "httpx[socks]==0.28.1", "defusedxml==0.7.1", "PyJWT[crypto]==2.13.0", "cryptography>=46,<51"]
+dependencies = ["mcp==2.2.0", "httpx[socks]==0.28.1", "defusedxml==0.7.1", "PyJWT[crypto]==2.13.0", "cryptography>=46,<51"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "pytest-asyncio>=1,<2"]
