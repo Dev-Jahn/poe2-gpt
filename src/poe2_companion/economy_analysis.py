@@ -238,7 +238,8 @@ async def plan(request: AllocationRequest,store: DecisionStore,owner: str,scout:
 def page(request: AllocationPageRequest,store: DecisionStore,owner: str) -> AllocationPage:
     value=store.get_artifact(owner,'currency_allocation',request.allocation_id,AllocationDocument)
     current=get_portfolio(store,owner,value.request.portfolio_id)
-    text=canonical(value.model_dump(mode='json'));end=request.offset+request.limit
+    # Do not insert new default fields into an old artifact's hashed payload.
+    text=canonical(value.model_dump(mode='json',exclude_unset=True));end=request.offset+request.limit
     return bounded_dto(AllocationPage(allocation_id=request.allocation_id,artifact_digest=value.result.artifact_digest,
         content=text[request.offset:end],total=len(text),next_offset=end if end<len(text) else None,
         source_portfolio_revision_changed=current.revision!=value.result.portfolio_revision))

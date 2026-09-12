@@ -79,3 +79,23 @@ async def test_full_week_history_is_retained_and_losslessly_recoverable(client,m
     assert not (await plan(query,store,'alice',scout)).requested_history_window_fully_covered
     row['price_logs'].insert(1,row['price_logs'][0].copy())
     with pytest.raises(WorkflowError,match='history_duplicate_bucket'):await plan(query,store,'alice',scout)
+
+    # Reproduce the actual serialized shape stored by 0.14.0, whose lost
+    # buckets cannot be recovered or silently replaced with new defaults.
+    from poe2_companion.capabilities import canonical,digest
+    key=(store.owner_key('alice'),'currency_allocation',result.allocation_id)
+    expires,payload=store.artifacts[key]
+    legacy=json.loads(payload)
+    legacy.pop('history_buckets')
+    for field in ('history_bucket_count','history_buckets_truncated','history_details_tool'):
+        legacy['result'].pop(field)
+    legacy['result']['artifact_digest']='0'*64
+    legacy['result']['artifact_digest']=digest(legacy)
+    store.artifacts[key]=(expires,canonical(legacy).encode())
+    request.offset=0;fragments=[]
+    while True:
+        part=page(request,store,'alice');fragments.append(part.content)
+        assert part.artifact_digest==legacy['result']['artifact_digest']
+        if part.next_offset is None:break
+        request.offset=part.next_offset
+    assert ''.join(fragments)==canonical(legacy)
