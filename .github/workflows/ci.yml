@@ -29,6 +29,7 @@ jobs:
       - run: ruff check src scripts
       - run: mypy
       - run: python scripts/check_release.py
+      - run: python scripts/check_tool_catalog.py
       - run: python -m pytest -q -rs --cov --cov-report=term:skip-covered
       - run: python -m build
       - name: Verify offline catalog and tool examples are packaged

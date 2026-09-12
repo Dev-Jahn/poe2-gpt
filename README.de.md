@@ -4,7 +4,7 @@
 
 Ein selbst gehostetes ChatGPT-Plugin und ein MCP-Server für **Path of Exile 2**: Währungspreise, Ausrüstungssuche auf der offiziellen Handelsseite, private Path-of-Building-Berechnungen und Ausrüstungsverbesserungen innerhalb eines Budgets.
 
-**Status: 0.14.0, experimentell.** Bis zu 100 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
+**Status: 0.14.1, experimentell.** Bis zu 100 MCP-Werkzeuge sind implementiert. Homelab-Bereitstellung, Authentifizierung und Tests mit dem eigenen Charakter erfolgen bei der Installation. Dieses Repository stellt weder einen gehosteten Endpunkt noch einen veröffentlichten ChatGPT-Verzeichniseintrag bereit.
 
 
 0.14 ergänzt unveränderliche Build-Experimente, explizite Fertigkeits-/Akteurauswahl, vollständige Pfad- und Support-Vergleiche, Kaufbelege, Erholungsanalyse und geschützte Plan-Downloads. [Abläufe und Grenzen](docs/workflows.md). Versteckreisen bleiben eine zukünftige Funktion.

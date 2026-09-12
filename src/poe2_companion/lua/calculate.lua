@@ -306,7 +306,7 @@ local function inspect(expected, order, sequenceOk)
  end
  local truncated=false
  local mechanicCount=#mechanics
- local combat=job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
+ local combat=binding.status~='unavailable' and job.combat_scenario and stonefist.simulate(build,env,out,job.combat_scenario) or nil
  local equipmentValidity,coverage=dofile(companionRoot..'metric_coverage.lua').inspect(env,out,stats,uniqueIssues,mechanics,status)
  return {requirements=dofile(companionRoot..'requirements.lua').project(build),subject=binding,stats=stats,equipped=equipped,issues=uniqueIssues,issue_count=count,issues_truncated=truncated,validation=status,equipment_validity=equipmentValidity,metric_coverage=coverage,equip_order=array(order),active_weapon_set=build.itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1,main_skill_group=build.mainSocketGroup or 0,selected_skill=selectedSkill,full_dps_enabled=fullDpsEnabled,mechanics=mechanics,mechanic_count=mechanicCount,mechanics_truncated=mechanicCount>#mechanics,combat_scenario=combat,combat_scenario_status=combat and combat.status or nil}
 end

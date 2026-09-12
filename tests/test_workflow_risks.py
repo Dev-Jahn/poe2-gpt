@@ -1,5 +1,6 @@
 from poe2_companion.engine_models import EngineSnapshot
 from poe2_companion.risk_analysis import RiskRequest,analyze
+import pytest
 
 
 def snapshot():
@@ -67,3 +68,35 @@ def test_full_effect_graph_is_losslessly_paged_under_ordinary_json_limit():
         if result.next_effect_offset is None:break
         assert result.next_effect_offset>query.effect_offset;query.effect_offset=result.next_effect_offset
     assert len(edges)==result.effect_graph_total==17
+
+
+@pytest.mark.parametrize('code,overall,requirements,mechanics',[
+    ('level_requirement','fail','fail','pass'),
+    ('attribute_requirement','fail','fail','pass'),
+    ('missing_combat_assumption','indeterminate','pass','indeterminate'),
+    ('slot_incompatible','fail','pass','pass'),
+    ('skill_unusable','fail','pass','fail'),
+    ('unknown_gem','indeterminate','indeterminate','indeterminate'),
+])
+def test_axes_are_derived_from_their_own_evidence(code,overall,requirements,mechanics):
+    value=EngineSnapshot.model_validate({**snapshot().model_dump(),'issues':[{'code':code}],'validation':overall})
+    result=analyze(RiskRequest(calculation_id='calc_'+'1'*32,automatic_checks=False),value)
+    assert (result.axes.requirements,result.axes.mechanics)==(requirements,mechanics)
+
+
+@pytest.mark.parametrize('field',['issues_truncated','requirements_truncated','mechanics_truncated'])
+def test_partial_evidence_cannot_be_certified_by_an_aggregate_pass(field):
+    value=snapshot().model_dump()
+    value.update(issues=[],issue_count=0,validation='pass',**{field:True})
+    result=analyze(RiskRequest(calculation_id='calc_'+'1'*32,automatic_checks=False),EngineSnapshot.model_validate(value))
+    assert not result.certified
+    if field!='mechanics_truncated':assert result.axes.requirements=='indeterminate'
+    if field!='requirements_truncated':assert result.axes.mechanics=='indeterminate'
+
+
+def test_partial_native_mechanic_is_indeterminate_without_an_issue():
+    value=snapshot().model_dump()
+    value.update(issues=[],issue_count=0,validation='pass')
+    value['mechanics'][0]['status']='partial'
+    result=analyze(RiskRequest(calculation_id='calc_'+'1'*32,automatic_checks=False),EngineSnapshot.model_validate(value))
+    assert result.axes.requirements=='pass' and result.axes.mechanics=='indeterminate' and not result.certified

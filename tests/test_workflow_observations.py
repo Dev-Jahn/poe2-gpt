@@ -39,3 +39,19 @@ def test_post_application_resource_report_advances_observed_without_source_confi
     saved=store.get('alice',doc.experiment_id)
     assert saved.state=='observed' and saved.source_confirmation=='pending_source_confirmation'
     assert saved.applied_edit_indices==[0] and row.observation_id in saved.observation_ids
+
+
+def test_resource_reports_compare_only_within_the_same_encounter():
+    store=DecisionStore('owner')
+    mapping={'kind':'resource_outcome','resource':'energy_shield','maximum':1000.,
+        'minimum_during_encounter':900.,'encounter':'mapping','outcome':'stable'}
+    boss={**mapping,'encounter':'boss_no_adds','minimum_during_encounter':300.}
+    combined=record(store,'alice',request(values=[mapping,boss]))
+    separate=record(store,'alice',request(values=[boss]))
+    ids=[combined.observation_id,separate.observation_id]
+    assert page(store,'alice',ObservationPageRequest(observation_ids=ids)).conflicting_fields==[]
+    changed=record(store,'alice',request(values=[{**boss,'outcome':'depleted','minimum_during_encounter':0.}]))
+    result=page(store,'alice',ObservationPageRequest(observation_ids=[*ids,changed.observation_id]))
+    assert result.conflicting_fields==['resource_outcome:energy_shield:boss_no_adds']
+    with pytest.raises(WorkflowError,match='duplicate_observation_field'):
+        record(store,'alice',request(values=[mapping,mapping]))

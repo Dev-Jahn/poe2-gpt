@@ -103,9 +103,11 @@ async def sale(request: SaleRequest, trade: TradeClient, scout: Scout) -> SaleAn
             same=False;differences.append('different_or_unknown_unique_identity')
         if request.subject.item_level is None or item.get('ilvl') is None: differences.append('item_level_not_fully_known')
         elif item['ilvl']!=request.subject.item_level: differences.append('different_item_level')
+        if request.subject.item_level is not None and item.get('ilvl')!=request.subject.item_level: same=False
         socketed=item.get('socketedItems')
         if request.subject.rune_count is None or not isinstance(socketed,list): differences.append('rune_state_not_fully_known')
         elif len(socketed)!=request.subject.rune_count: differences.append('different_rune_count')
+        if request.subject.rune_count is not None and (not isinstance(socketed,list) or len(socketed)!=request.subject.rune_count): same=False
         current={s.metric:s.value for s in row.item_stats}
         deltas=[AggregateStat(metric=s.metric,value=current[s.metric]-s.value) for s in request.subject.item_stats if s.metric in current]
         if any(s.value for s in deltas): differences.append('different_recognized_roll_values')

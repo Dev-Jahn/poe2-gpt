@@ -59,7 +59,8 @@ class MapRequest(DTO):
 class MapInteraction(DTO):
     rule_id: RuleID
     source: Literal['waystone','tablet']
-    status: Literal['source_semantics_matched','source_or_roll_unverified']
+    status: Literal['source_semantics_matched','hypothetical_source_semantics_matched','source_or_roll_unverified']
+    evidence: Literal['user_transcribed_item','user_supplied_hypothesis']
     effective_magnitude_percent: float
     explanation: str
     source_url: str
@@ -92,9 +93,11 @@ def analyze(request: MapRequest, snapshot: EngineSnapshot | None = None) -> MapA
         matched=mod.source=='waystone' and low<=mod.magnitude_percent<=high
         magnitude=mod.magnitude_percent*mod.effect_multiplier
         interactions.append(MapInteraction(rule_id=mod.rule_id,source=mod.source,
-            status='source_semantics_matched' if matched else 'source_or_roll_unverified',
+            status=('hypothetical_source_semantics_matched' if mod.evidence=='user_supplied_hypothesis' else 'source_semantics_matched') if matched else 'source_or_roll_unverified',
+            evidence=mod.evidence,
             effective_magnitude_percent=magnitude,explanation=explanation,source_url=RULE_SOURCE,source_checked_on=RULE_RETRIEVED))
         if not matched: actions.append('verify_modifier_source_or_roll')
+        if mod.evidence=='user_supplied_hypothesis': actions.append('confirm_hypothetical_modifier_on_actual_item')
         if mod.rule_id=='map:less_life_es_recovery':
             actions.append('compare_deficit_limited_recovery_under_hits')
             if scenario and not request.recovery_parameters_already_include_map_modifiers:

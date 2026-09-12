@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.1
+
+- Suppress combat scenarios when an explicitly requested skill/actor cannot bind.
+- Scope resource observation conflicts to the encounter and compare sale item levels/rune counts exactly when supplied.
+- Keep trace completion retries stable across restarts, including closed traces.
+- Retain full requested currency history in the paged artifact; label the bounded first-eight-bucket preview.
+- Derive requirement and mechanic status from their own evidence and preserve hypothetical map modifier provenance.
+- Report configured catalog/schema sizes without claiming to observe host model context; enforce an offline catalog growth budget in CI.
+
+See [follow-up scope and validation](docs/workflow-014-followup.md).
+
 ## 0.14.0
 
 - Add calculation-free profiles, complete schema examples and explicit subject/component targeting.
