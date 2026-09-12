@@ -111,6 +111,7 @@ class TraceDocument(DTO):
     created_at_epoch: int
     deadline_epoch: int
     expires_at_epoch: int
+    closed_at_epoch: int | None = None
     status: Literal['active','finished','cancelled','budget_exhausted'] = 'active'
     calls: Annotated[list[TraceCall], Field(max_length=32)] = Field(default_factory=list)
     user_reported_goal_completed: bool | None = None
@@ -130,7 +131,7 @@ class TraceSummary(DTO):
     token_estimate: int
     token_estimation_method: Literal['ceil_ascii_json_bytes_divided_by_four_not_billed_tokens'] = 'ceil_ascii_json_bytes_divided_by_four_not_billed_tokens'
     tool_elapsed_ms: float
-    wall_elapsed_seconds: int
+    wall_elapsed_seconds: int | None
     phase_totals_ms: dict[str,float]
     phase_counts: dict[str,int]
     unmeasured_phases: list[str]
@@ -184,6 +185,12 @@ def seal(value: TraceDocument) -> None:
     value.artifact_digest=digest(value.model_dump(mode='json',exclude={'artifact_digest'}))
 
 
+def close_trace(value: TraceDocument, status: Literal['finished','cancelled','budget_exhausted']) -> None:
+    if value.status=='active':
+        value.status=status
+        value.closed_at_epoch=int(time.time())
+
+
 def goal_evidence(value: TraceDocument) -> bool:
     wanted={'inspect_build':'inspection_available','evaluate_changes':'validated_experiment',
         'recommend_purchase':'qualified_recommendation','explain_rejection':'diagnostic_available'}[value.request.goal]
@@ -199,11 +206,12 @@ def summary(value: TraceDocument) -> TraceSummary:
         bucket='le_100' if call.elapsed_ms<=100 else 'le_1000' if call.elapsed_ms<=1000 else 'le_10000' if call.elapsed_ms<=10000 else 'gt_10000'
         histogram[bucket]+=1
     output=sum(c.output_bytes for c in value.calls)
+    endpoint=int(time.time()) if value.status=='active' else value.closed_at_epoch
     stop=goal_evidence(value) or len(value.calls)>=value.request.maximum_calls or output>=value.request.maximum_output_bytes or int(time.time())>=value.deadline_epoch
     return bounded_dto(TraceSummary(trace_id=value.trace_id,revision=value.revision,artifact_digest=value.artifact_digest,
         status=value.status,goal=value.request.goal,tool_calls=len(value.calls),successful_calls=sum(not c.is_error for c in value.calls),
         failed_calls=sum(c.is_error for c in value.calls),output_bytes=output,token_estimate=sum(c.token_estimate for c in value.calls),
-        tool_elapsed_ms=sum(c.elapsed_ms for c in value.calls),wall_elapsed_seconds=max(0,int(time.time())-value.created_at_epoch),
+        tool_elapsed_ms=sum(c.elapsed_ms for c in value.calls),wall_elapsed_seconds=max(0,endpoint-value.created_at_epoch) if endpoint is not None else None,
         phase_totals_ms=phases,phase_counts=counts,latency_histogram_ms=histogram,
         unmeasured_phases=[p for p in ['queue','worker_round_trip','worker_execution','worker_cpu','parse','network','rate_wait','validation'] if p not in phases],
         goal_evidence_available=goal_evidence(value),user_reported_goal_completed=value.user_reported_goal_completed,
@@ -269,7 +277,7 @@ class WorkflowTelemetry:
         if goal_evidence(value): raise WorkflowError('workflow_goal_evidence_available_stop_exploration')
         if (len(value.calls)>=value.request.maximum_calls or int(time.time())>=value.deadline_epoch
                 or sum(c.output_bytes for c in value.calls)+8192>value.request.maximum_output_bytes):
-            value.status='budget_exhausted';self.save(owner,value)
+            close_trace(value,'budget_exhausted');self.save(owner,value)
             raise WorkflowError('workflow_budget_exhausted_review_retained_evidence')
         if sum(c.input_digest==input_digest and c.is_error for c in value.calls)>=2:
             raise WorkflowError('workflow_identical_failure_retry_limit')
@@ -288,7 +296,7 @@ class WorkflowTelemetry:
             data,failed=result_payload(result)
         except asyncio.CancelledError:
             data={'code':'workflow_cancelled','cancellation_scope':'mcp_request_private_worker_has_independent_bounded_timeout'};failed=True
-            value.status='cancelled'
+            close_trace(value,'cancelled')
         except TimeoutError:
             data={'code':'workflow_step_deadline_exceeded','next_action':'review_retained_evidence_then_retry_once'};failed=True
         except Exception:
@@ -318,7 +326,7 @@ class WorkflowTelemetry:
             call=next((c for c in value.calls if c.step_id==request.step_id),None)
             if call is None: raise WorkflowError('workflow_step_unavailable')
             text=call.result_json
-        else: text=canonical(value.model_dump(mode='json'))
+        else: text=canonical(value.model_dump(mode='json',exclude_unset=True))
         end=request.offset+request.limit
         return bounded_dto(TracePage(trace_id=value.trace_id,artifact_digest=value.artifact_digest,content=text[request.offset:end],
             total=len(text),next_offset=end if end<len(text) else None))
@@ -328,7 +336,7 @@ class WorkflowTelemetry:
         if (owner,request.trace_id) in self.running: raise WorkflowError('workflow_busy_retry_after_one_second')
         if value.status!='active' and value.user_reported_goal_completed==request.user_reported_goal_completed:
             return summary(value)
-        if value.status=='active': value.status='finished'
+        close_trace(value,'finished')
         value.user_reported_goal_completed=request.user_reported_goal_completed
         self.save(owner,value)
         return summary(value)
@@ -342,5 +350,5 @@ class WorkflowTelemetry:
             except asyncio.CancelledError: pass
             value=self.get(owner,identifier)
         elif value.status=='active':
-            value.status='cancelled';self.save(owner,value)
+            close_trace(value,'cancelled');self.save(owner,value)
         return summary(value)

@@ -1,6 +1,7 @@
 """Task budgets and completion evidence are distinct from tool success."""
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
@@ -20,7 +21,9 @@ def search_step(trace,identifier='s1'):
         'request':{'league':'Forbidden Rites','category':'accessory.ring'}})
 
 
-async def test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not_execute(tmp_path):
+async def test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not_execute(tmp_path,monkeypatch):
+    clock=[time.time()]
+    monkeypatch.setattr('poe2_companion.workflow_telemetry.time.time',lambda:clock[0])
     store=DecisionStore('m',tmp_path/'state',tmp_path/'keys'/'key')
     telemetry=WorkflowTelemetry(store)
     started=telemetry.begin('alice',BeginTrace(goal='recommend_purchase',persist_trace=True))
@@ -42,9 +45,11 @@ async def test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not
     finished=telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=True))
     assert finished.user_reported_goal_completed and not finished.goal_evidence_available
     receipt=telemetry.get('alice',started.trace_id)
+    clock[0]+=10
     store.close();store=DecisionStore('m',tmp_path/'state',tmp_path/'keys'/'key');telemetry=WorkflowTelemetry(store)
     assert telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=True))==finished
     assert telemetry.get('alice',started.trace_id)==receipt
+    assert finished.wall_elapsed_seconds==0
     corrected=telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=False))
     assert not corrected.user_reported_goal_completed and corrected.artifact_digest!=finished.artifact_digest
     assert telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=False))==corrected
@@ -52,6 +57,43 @@ async def test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not
     assert json.loads(piece.content)=={'items':[],'all_unknown':True}
     with pytest.raises(WorkflowError): telemetry.get('bob',started.trace_id)
     store.close()
+
+
+async def test_all_closed_trace_durations_stop_and_legacy_closed_time_stays_unknown(monkeypatch):
+    from poe2_companion.capabilities import canonical,digest
+    clock=[time.time()]
+    monkeypatch.setattr('poe2_companion.workflow_telemetry.time.time',lambda:clock[0])
+    store=DecisionStore('m');telemetry=WorkflowTelemetry(store)
+    active=telemetry.begin('alice',BeginTrace(goal='inspect_build',maximum_calls=1))
+    clock[0]+=5
+    assert summary(telemetry.get('alice',active.trace_id)).wall_elapsed_seconds==5
+    cancelled=await telemetry.cancel('alice',active.trace_id)
+    budget=telemetry.begin('alice',BeginTrace(goal='recommend_purchase',maximum_calls=1))
+    async def invoke(tool,args):return [],{'items':[]}
+    await telemetry.run('alice',search_step(budget.trace_id),invoke)
+    with pytest.raises(WorkflowError,match='budget_exhausted'):
+        await telemetry.run('alice',search_step(budget.trace_id,'s2'),invoke)
+    exhausted=summary(telemetry.get('alice',budget.trace_id))
+    clock[0]+=10
+    assert summary(telemetry.get('alice',active.trace_id))==cancelled
+    assert summary(telemetry.get('alice',budget.trace_id))==exhausted
+    key=(store.owner_key('alice'),'workflow_trace',active.trace_id)
+    expires,payload=store.artifacts[key]
+    legacy=json.loads(payload);legacy.pop('closed_at_epoch')
+    legacy['user_reported_goal_completed']=False
+    legacy['artifact_digest']=digest({k:v for k,v in legacy.items() if k!='artifact_digest'})
+    store.artifacts[key]=(expires,canonical(legacy).encode())
+    finish=FinishTrace(trace_id=active.trace_id,user_reported_goal_completed=False)
+    first=telemetry.finish('alice',finish)
+    assert first.wall_elapsed_seconds is None
+    clock[0]+=10
+    assert telemetry.finish('alice',finish)==first
+    fragments=[];query=TracePageRequest(trace_id=active.trace_id)
+    while True:
+        part=telemetry.page('alice',query);fragments.append(part.content)
+        if part.next_offset is None:break
+        query.offset=part.next_offset
+    assert ''.join(fragments)==canonical(legacy)
 
 
 async def test_bounded_identical_retry_admission_cancellation_and_deadline():

@@ -7,12 +7,14 @@ This patch addresses the seven post-merge review findings on PR #19. It does not
 | Wrong subject combat output | Unavailable explicit targets expose no combat scenario, selected skill, stats or mechanics, including replacement calculations. | `test_workflow_subjects_real.py` |
 | Cross-encounter observation collisions | Resource keys include encounter; conflicting reports within the same encounter still block. | `test_workflow_observations.py` |
 | Inexact sale identity | A supplied item level or rune count must match, including rejecting unavailable listing metadata from the matched price band. | `test_workflow_economics.py` |
-| Non-idempotent completion | An unchanged closed trace returns the retained revision/digest across restarts; corrected user completion reports still produce a revision. | `test_workflow_telemetry.py` |
+| Non-idempotent completion | An unchanged closed trace returns the retained revision/digest and frozen elapsed time across clock changes and restarts; corrected user completion reports still produce a revision. | `test_workflow_telemetry.py` |
 | Lost history | Full-window buckets are stored in the allocation document. The bounded result shows the first eight, total count, truncation flag and `get_currency_allocation` recovery tool. Coverage checks use all retained buckets. | `test_workflow_allocation.py` |
 | Conflated validation axes | Requirement failures/unknowns and mechanic failures/unknowns are assessed independently. Truncated evidence cannot certify success. | `test_workflow_risks.py` |
 | Lost map assumptions | Every interaction preserves input evidence; hypotheses have a distinct matched status and confirmation action. | `test_workflow_economics.py` |
 
 The history regression covers 169 hourly points across a full inclusive seven-day window, missing intervals, duplicates and lossless artifact pagination. Pre-0.14.1 allocations have unknown preview completeness and no recoverable full-history field; replan to obtain the new evidence.
+
+Terminal traces retain their close timestamp. Older closed traces have no reliable close time and report null elapsed time; their existing serialized artifact and digest remain unchanged. Active traces continue reporting live elapsed time.
 
 ## Tool catalog and model context
 
