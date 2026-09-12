@@ -41,7 +41,13 @@ async def test_zero_errors_does_not_complete_goal_and_duplicate_success_does_not
     assert outcome('recommend_pob_trade_upgrades',{'feasible':True},False)=='qualified_recommendation'
     finished=telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=True))
     assert finished.user_reported_goal_completed and not finished.goal_evidence_available
+    receipt=telemetry.get('alice',started.trace_id)
     store.close();store=DecisionStore('m',tmp_path/'state',tmp_path/'keys'/'key');telemetry=WorkflowTelemetry(store)
+    assert telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=True))==finished
+    assert telemetry.get('alice',started.trace_id)==receipt
+    corrected=telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=False))
+    assert not corrected.user_reported_goal_completed and corrected.artifact_digest!=finished.artifact_digest
+    assert telemetry.finish('alice',FinishTrace(trace_id=started.trace_id,user_reported_goal_completed=False))==corrected
     piece=telemetry.page('alice',TracePageRequest(trace_id=started.trace_id,step_id='s1'))
     assert json.loads(piece.content)=={'items':[],'all_unknown':True}
     with pytest.raises(WorkflowError): telemetry.get('bob',started.trace_id)
@@ -72,6 +78,9 @@ async def test_bounded_identical_retry_admission_cancellation_and_deadline():
         await telemetry.run('alice',search_step(other.trace_id,'s2'),blocked)
     cancelled=await telemetry.cancel('alice',other.trace_id)
     assert cancelled.status=='cancelled' and cancelled.failed_calls==1 and task.done()
+    closed=telemetry.finish('alice',FinishTrace(trace_id=other.trace_id,user_reported_goal_completed=False))
+    assert closed.status=='cancelled' and not closed.user_reported_goal_completed
+    assert telemetry.finish('alice',FinishTrace(trace_id=other.trace_id,user_reported_goal_completed=False))==closed
     deadline=telemetry.begin('alice',BeginTrace(goal='recommend_purchase',step_timeout_seconds=1))
     timed=await telemetry.run('alice',search_step(deadline.trace_id),blocked)
     assert timed.is_error and 'workflow_step_deadline_exceeded' in timed.result_json_fragment

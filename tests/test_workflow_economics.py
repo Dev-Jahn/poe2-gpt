@@ -88,3 +88,44 @@ async def test_reward_identity_is_exact_and_proposed_pool_stays_partial(client):
     assert proposed.result_scope=='supplied_options_only_partial_pool'
     observed=await rewards(request.model_copy(update={'choice_source':'user_observed_reward_menu'}),scout)
     assert observed.highest_estimated_choice_index==0 and not observed.actual_sale_value_guaranteed
+
+
+@pytest.mark.parametrize('evidence,status',[
+    ('user_transcribed_item','source_semantics_matched'),
+    ('user_supplied_hypothesis','hypothetical_source_semantics_matched'),
+])
+def test_map_analysis_retains_evidence_even_when_source_is_unverified(evidence,status):
+    modifier={'rule_id':'map:less_life_es_recovery','magnitude_percent':35.,'evidence':evidence}
+    query=MapRequest(tier=15,encounter='mapping',game_patch='0.5.5',modifiers=[modifier])
+    result=analyze(query)
+    assert result.interactions[0].evidence==evidence and result.interactions[0].status==status
+    query.modifiers[0].source='tablet'
+    unverified=analyze(query)
+    assert unverified.interactions[0].evidence==evidence
+    assert unverified.interactions[0].status=='source_or_roll_unverified'
+    if evidence=='user_supplied_hypothesis':
+        assert 'confirm_hypothetical_modifier_on_actual_item' in result.required_actions
+
+
+@pytest.mark.parametrize('field,value,difference',[
+    ('ilvl',79,'different_item_level'),('ilvl',None,'item_level_not_fully_known'),
+    ('socketedItems',[{'baseType':'unknown'}],'different_rune_count'),
+    ('socketedItems',None,'rune_state_not_fully_known'),
+])
+async def test_sale_excludes_different_or_unknown_supplied_identity_fields(client,field,value,difference):
+    scout,_,_=client
+    backend=TradeBackend([listing(1,amount=10),listing(2,amount=100)])
+    trade=TradeClient('test',transport=httpx.MockTransport(backend),interval=0,clock=lambda:NOW)
+    try:
+        found=await trade.search(TradeSearchRequest(category='accessory.ring'))
+        retained=trade.retained(found.search_id)
+        retained['engine_items']={f'{1:064x}':{'ilvl':80,'socketedItems':[]},
+            f'{2:064x}':{'ilvl':80,'socketedItems':[],field:value}}
+        query=SaleRequest(league='Forbidden Rites',reference_currency='exalted',subject={
+            'base_type':'Gold Ring','rarity':'rare','corrupted':False,'item_level':80,'rune_count':0,
+            'evidence':'user_transcribed_item'},comparables=[{'search_id':found.search_id,'listing_ref':f'{i:064x}'} for i in (1,2)])
+        result=await sale(query,trade,scout)
+        assert result.matched_asking_count==1
+        assert (result.asking_price_low,result.asking_price_median,result.asking_price_high)==(10,10,10)
+        assert not result.comparables[1].identity_matches and difference in result.comparables[1].differences
+    finally:await trade.close()

@@ -96,7 +96,7 @@ class ObservationPage(DTO):
 def keys(record: ObservationRecord) -> dict[str,ObservationValue]:
     result={}
     for value in record.request.values:
-        suffix=value.unlock if isinstance(value,UnlockObservation) else value.skill_instance_id if isinstance(value,GemObservation) else value.resource if isinstance(value,ResourceObservation) else ''
+        suffix=value.unlock if isinstance(value,UnlockObservation) else value.skill_instance_id if isinstance(value,GemObservation) else value.resource+':'+value.encounter if isinstance(value,ResourceObservation) else ''
         result[value.kind+(':'+suffix if suffix else '')]=value
     return result
 

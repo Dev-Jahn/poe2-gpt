@@ -23,10 +23,16 @@ async def test_explicit_instance_subject_and_ineligible_candidate(real_engine):
     assert result.baseline.selected_skill.skill_id=='FireballPlayer'
     assert result.results[0].subject.evaluated==result.baseline.subject.evaluated
     assert all(v.value==0 for v in deltas(result.baseline,result.results[0]))
-    missing=await real_engine.calculate(WorkerRequest(build_id=BID,target={**target,'skill_instance_id':'skill:s1:g9:n1'}))
+    combat={'horizon_seconds':2,'gain_roll_model':'independent_nonrecursive_per_event','events':[]}
+    valid=await real_engine.calculate(WorkerRequest(build_id=BID,target=target,combat_scenario=combat))
+    assert valid.baseline.combat_scenario_status=='calculated'
+    missing=await real_engine.calculate(WorkerRequest(build_id=BID,target={**target,'skill_instance_id':'skill:s1:g9:n1'},combat_scenario=combat,scenarios=[[]]))
     assert missing.baseline.subject.status=='unavailable'
     assert missing.baseline.subject.reason=='instance_not_found'
     assert missing.baseline.stats==[]
+    for row in [missing.baseline,*missing.results]:
+        assert row.combat_scenario is None and row.combat_scenario_status is None
+        assert row.selected_skill is None and row.mechanics==[]
     assert deltas(result.baseline,missing.baseline)==[]
     other=await real_engine.calculate(WorkerRequest(build_id=BID,target={**target,'skill_instance_id':'skill:s1:g3:n1'}))
     assert other.baseline.subject.evaluated.skill_instance_id=='skill:s1:g3:n1'

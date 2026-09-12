@@ -359,7 +359,8 @@ def build_server(scout: Scout, host="127.0.0.1", port=8000, allowed_hosts: list[
             allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *(allowed_hosts or [])],
             allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *["https://"+h for h in (allowed_hosts or [])]]),
         instructions=("Use market tools for PoE2 market prices instead of web snippets. "
-            "For build workflows, first use get_capabilities and describe_tool_schema when available; distinguish server configuration from tools the host actually exposes. "
+            "For build workflows, use get_capabilities to distinguish server configuration from tools the host actually exposes. "
+            "Use host-provided tool declarations first; call describe_tool_schema only for the selected tool when nested fields or constraints are missing. Do not preload every tool schema. "
             "Use get_build_profile to discover stable skill instances and sets before choosing an explicit target; saved main skill, requested actor and evaluated subject are separate. "
             "Use create_build_experiment for joint gem, passive and equipment changes, and compare complete same-scenario purchase plans including preparation costs. "
             "Keep coverage-qualified recommendations separate from conditional research candidates. Do not replace unknown costs, rules, unlocks or observations with favorable defaults. "

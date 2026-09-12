@@ -101,6 +101,37 @@ class RiskResult(DTO):
     critical_chance_scope: Literal['selected_subject_and_configured_target_not_all_enemies'] = 'selected_subject_and_configured_target_not_all_enemies'
 
 
+REQUIREMENT_FAILURES = {'level_requirement','attribute_requirement','gem_level_requirement','class_requirement','reservation_invalid'}
+REQUIREMENT_UNCERTAINTIES = {'unknown_item_base','unknown_gem','unknown_rune','unknown_passive',
+    'unparsed_modifier','unparsed_passive','engine_item_warning','custom_modifiers_present','ignored_limits',
+    'unsupported_tree_version','unsupported_item_transformation','granted_skill_source_unresolved',
+    'scenario_calculation_failed','configuration_override','unsupported_weapon_context','unsupported_slot'}
+MECHANIC_FAILURES = {'skill_unusable','companion_limit_exceeded','duplicate_companion_type',
+    'unique_companion_limit_exceeded','unique_companion_not_allowed'}
+# These are placement/requirement findings, not proof that a mechanic failed.
+NON_MECHANIC_ISSUES = REQUIREMENT_FAILURES | {'slot_incompatible','item_not_equipped',
+    'duplicate_physical_item','equip_sequence_unverified','unsupported_slot'}
+
+
+def validation_axes(snapshot: EngineSnapshot) -> tuple[Literal['pass','fail','indeterminate'], Literal['pass','fail','indeterminate']]:
+    codes: set[str]={issue.code for issue in snapshot.issues}
+    incomplete_issues=snapshot.issues_truncated
+    requirements: Literal['pass','fail','indeterminate'] = 'pass'
+    if codes & REQUIREMENT_FAILURES or (snapshot.requirements is not None and any(not s.satisfied for s in snapshot.requirements.sources)):
+        requirements='fail'
+    elif incomplete_issues or snapshot.requirements_truncated or codes & REQUIREMENT_UNCERTAINTIES:
+        requirements='indeterminate'
+    mechanics: Literal['pass','fail','indeterminate'] = 'pass'
+    if codes & MECHANIC_FAILURES:
+        mechanics='fail'
+    elif (incomplete_issues or snapshot.mechanics_truncated or codes - NON_MECHANIC_ISSUES
+            or any(m.status in {'partial','unsupported','requires_configuration'} for m in snapshot.mechanics)
+            or snapshot.combat_scenario_status=='unsupported'
+            or snapshot.subject is None or snapshot.subject.status=='unavailable'):
+        mechanics='indeterminate'
+    return requirements,mechanics
+
+
 def analyze(request: RiskRequest, snapshot: EngineSnapshot) -> RiskResult:
     values={s.name:s.value for s in snapshot.stats}
     mechanics={(m.mechanic,v.name):v.value for m in snapshot.mechanics for v in m.metrics}
@@ -164,15 +195,14 @@ def analyze(request: RiskRequest, snapshot: EngineSnapshot) -> RiskResult:
         limitation: Literal['requested_subject_unavailable','unresolved_dependency'] | None = 'requested_subject_unavailable' if identity=='unavailable' else 'unresolved_dependency' if name not in verified else None
         if identity=='unavailable':value=None;coverage='unavailable'
         metrics.append(ScopedMetric(name=name,value=value,coverage=coverage,limitation=limitation))
-    requirement_codes={'level_requirement','attribute_requirement','gem_level_requirement','class_requirement','reservation_invalid'}
-    requirements: Literal['pass','fail','indeterminate'] = 'fail' if any(i.code in requirement_codes for i in snapshot.issues) else 'pass' if snapshot.validation=='pass' else 'indeterminate'
+    requirements,mechanic_status=validation_axes(snapshot)
     end=request.effect_offset+request.effect_limit
     result=RiskResult(calculation_id=request.calculation_id,subject=snapshot.subject,
         axes=ValidationAxes(identity=identity,equipment=snapshot.equipment_validity or snapshot.validation,
-            requirements=requirements,mechanics=snapshot.validation,scenario_evidence=request.event_evidence),
+            requirements=requirements,mechanics=mechanic_status,scenario_evidence=request.event_evidence),
         metrics=metrics,findings=findings,effect_graph=edges[request.effect_offset:end],effect_graph_total=len(edges),
         next_effect_offset=end if end<len(edges) else None,
-        certified=snapshot.validation=='pass' and identity=='matched' and not findings)
+        certified=snapshot.validation=='pass' and requirements=='pass' and mechanic_status=='pass' and identity=='matched' and not findings)
     while tool_json_bytes(result)>8192 and result.effect_graph:
         result.effect_graph.pop();result.next_effect_offset=request.effect_offset+len(result.effect_graph)
     return bounded_dto(result)

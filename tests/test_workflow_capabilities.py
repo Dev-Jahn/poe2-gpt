@@ -22,6 +22,11 @@ async def test_mcp_inventory_distinguishes_configuration_from_host_and_schema():
             Draft202012Validator(schemas['get_capabilities'].outputSchema).validate(data)
             assert data['host_inventory_status']=='unknown'
             assert data['configured_tool_count']==len(listed)
+            serialized=json.dumps({'tools':[t.model_dump(mode='json',exclude_none=True) for t in sorted(listed,key=lambda t:t.name)]},sort_keys=True,separators=(',',':'),ensure_ascii=True).encode()
+            assert data['tool_catalog_bytes']==len(serialized)
+            assert data['tool_catalog_bytes']>data['input_schema_bytes']+data['output_schema_bytes']
+            assert data['description_bytes']>0
+            assert data['model_context_loading']=='host_controlled_not_observable_by_server'
             assert any(f['name']=='private_engine' and f['disable_reason']=='not_configured' for f in data['features'])
             mismatch=await session.call_tool('get_capabilities',{'request':{'host_tool_names':['get_capabilities']}})
             assert mismatch.structuredContent['host_inventory_status']=='differs_from_reported_inventory'

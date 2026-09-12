@@ -35,6 +35,12 @@ class Capabilities(DTO):
     engine_compatibility: str
     tool_schema_hash: str
     configured_tool_count: int
+    tool_catalog_bytes: int
+    input_schema_bytes: int
+    output_schema_bytes: int
+    description_bytes: int
+    catalog_size_encoding: Literal['compact_sorted_ascii_json_utf8'] = 'compact_sorted_ascii_json_utf8'
+    model_context_loading: Literal['host_controlled_not_observable_by_server'] = 'host_controlled_not_observable_by_server'
     configured_tools: list[ToolName]
     host_inventory_status: Literal['unknown', 'matches_reported_inventory', 'differs_from_reported_inventory']
     missing_from_reported_host: list[ToolName]
@@ -97,6 +103,10 @@ async def inventory(server, request: CapabilitiesRequest, configured: dict[str, 
         engine_data_commit=ENGINE_DATA_COMMIT, engine_compatibility=ENGINE_COMPATIBILITY,
         tool_schema_hash=digest([{'name':t.name,'input':t.inputSchema,'output':t.outputSchema} for t in tools]),
         configured_tool_count=len(names), configured_tools=names[request.offset:end], host_inventory_status=status,
+        tool_catalog_bytes=len(canonical({'tools':[t.model_dump(mode='json',exclude_none=True) for t in tools]}).encode()),
+        input_schema_bytes=sum(len(canonical(t.inputSchema).encode()) for t in tools),
+        output_schema_bytes=sum(len(canonical(t.outputSchema).encode()) for t in tools),
+        description_bytes=sum(len((t.description or '').encode()) for t in tools),
         missing_from_reported_host=missing[request.offset:end],missing_from_reported_host_count=len(missing),
         next_offset=end if end<len(names) else None,features=[Feature(name=name, implemented=True,
             configured=enabled, disable_reason=None if enabled else 'not_configured',

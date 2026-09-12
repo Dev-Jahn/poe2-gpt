@@ -95,6 +95,9 @@ class AllocationResult(DTO):
     aggregate_unit_price: float | None
     current_price_observed_at: None = None
     history_buckets: Annotated[list[HistoryBucket],Field(max_length=8)]
+    history_bucket_count: int | None = None
+    history_buckets_truncated: bool | None = None
+    history_details_tool: Literal['get_currency_allocation'] = 'get_currency_allocation'
     history_scope: Literal['available_scout_hourly_buckets_within_requested_same_league_window'] = 'available_scout_hourly_buckets_within_requested_same_league_window'
     history_price_unit: Literal['reference_currency_per_item_using_same_bucket_fx'] = 'reference_currency_per_item_using_same_bucket_fx'
     history_conversion_source: str = 'https://github.com/poe2scout/poe2scout/blob/0e3f718b709dfa0c92eeeea7425b4e63a209b97c/net/Poe2scout.Api/EconomyCache.cs'
@@ -124,6 +127,9 @@ class AllocationDocument(DTO):
     result: AllocationResult
     quote: CurrencyQuote
     history_retrieved_at: str
+    # The bounded result is only a preview. Existing artifact pagination returns
+    # every bucket here; None distinguishes pre-fix artifacts with unknown loss.
+    history_buckets: Annotated[list[HistoryBucket],Field(max_length=10000)] | None = None
     created_at_epoch: int
     expires_at_epoch: int
 
@@ -179,7 +185,7 @@ async def plan(request: AllocationRequest,store: DecisionStore,owner: str,scout:
         except (ValueError,OverflowError):continue
         if request.history_start_epoch<=epoch<=request.history_end_epoch:
             buckets.append(HistoryBucket(bucket_at_epoch=epoch,price=row['price'],source_quantity=row['quantity']))
-    buckets=sorted(buckets,key=lambda b:b.bucket_at_epoch)[-8:]
+    buckets=sorted(buckets,key=lambda b:b.bucket_at_epoch)
     if len({b.bucket_at_epoch for b in buckets})!=len(buckets):raise WorkflowError('history_duplicate_bucket')
     complete=all(h.quantity==0 or units.get(k) is not None for k,h in holdings.items())
     total=sum(h.quantity*(units.get(k) or 0) for k,h in holdings.items()) if complete else None
@@ -210,7 +216,8 @@ async def plan(request: AllocationRequest,store: DecisionStore,owner: str,scout:
                 affordable_after_allocation=remaining-request.reserve_amount>=price if remaining is not None and price is not None else None))
     result=AllocationResult(allocation_id='allocation_'+secrets.token_hex(16),portfolio_id=portfolio.portfolio_id,
         portfolio_revision=portfolio.revision,league=portfolio.league,reference_currency=request.reference_currency,
-        target_category=target[0],target_item_id=target[1],aggregate_unit_price=units[target],history_buckets=buckets,
+        target_category=target[0],target_item_id=target[1],aggregate_unit_price=units[target],history_buckets=buckets[:8],
+        history_bucket_count=len(buckets),history_buckets_truncated=len(buckets)>8,
         requested_history_window_fully_covered=bool(buckets) and buckets[0].bucket_at_epoch<=request.history_start_epoch and buckets[-1].bucket_at_epoch>=request.history_end_epoch
             and all(b.bucket_at_epoch-a.bucket_at_epoch==3600 for a,b in zip(buckets,buckets[1:])),
         estimated_total_holdings=total,purchase_units=quantity,allocated_cost_including_fee=cost,holding_value_remaining=remaining,budget_status=budget,
@@ -220,7 +227,7 @@ async def plan(request: AllocationRequest,store: DecisionStore,owner: str,scout:
         liquidity=liquidity,equipment_opportunities=opportunities,future_cases=[AllocationCase(key=c.key,sell_price_per_unit=c.sell_price_per_unit,
             net_gain_or_loss=quantity*c.sell_price_per_unit-cost) for c in request.future_price_cases] if quantity is not None and cost is not None else [],artifact_digest='0'*64)
     if any(v is not None and (not math.isfinite(v) or abs(v)>1e15) for v in [total,cost,remaining,*[c.net_gain_or_loss for c in result.future_cases]]):raise WorkflowError('allocation_value_out_of_range')
-    value=AllocationDocument(request=request,result=result,quote=quote,history_retrieved_at=category['retrieved_at'],
+    value=AllocationDocument(request=request,result=result,quote=quote,history_retrieved_at=category['retrieved_at'],history_buckets=buckets,
         created_at_epoch=now,expires_at_epoch=min(portfolio.expires_at_epoch,now+(30*86400 if request.persist_plan else 3600)))
     result.artifact_digest=digest(value.model_dump(mode='json'))
     bounded_dto(result)

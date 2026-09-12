@@ -1,6 +1,7 @@
 """Observed exchange quotes and gear opportunity costs remain game proposals."""
 from datetime import datetime,timezone
 import time
+import json
 from types import SimpleNamespace
 import pytest
 from poe2_companion.currency_portfolio import PortfolioCreate,create,get
@@ -45,3 +46,36 @@ async def test_exchange_spread_historical_buckets_and_equipment_opportunity(clie
     stale=await plan(request,store,'alice',scout)
     assert stale.liquidity=='quote_stale_or_missing' and stale.immediate_round_trip_loss is None
     assert not stale.exchange_execution_guaranteed
+
+
+async def test_full_week_history_is_retained_and_losslessly_recoverable(client,monkeypatch):
+    from poe2_companion.builds import tool_json_bytes
+    scout,_,_=client;store=DecisionStore('m');now=int(time.time())
+    ids={i['ApiId']:i['ItemId'] for i in fixture('currency')['Items']}
+    pf=await create(PortfolioCreate(league='Forbidden Rites',observed_at_epoch=now,
+        holdings=[{'category':'currency','item_id':ids['divine'],'quantity':34.}]),store,'alice',scout)
+    category=await scout.category('currency','Forbidden Rites','divine',False)
+    row=next(r for r in category['data']['items'] if r['item_id']==ids['chaos'])
+    start=now//3600*3600-7*86400
+    row['price_logs']=[{'time':datetime.fromtimestamp(start+i*3600,timezone.utc).isoformat(),
+        'price':float(i+1),'quantity':10} for i in range(169)]
+    async def full_category(*args):return category
+    monkeypatch.setattr(scout,'category',full_category)
+    query=AllocationRequest(portfolio_id=pf.portfolio_id,expected_revision=1,target_category='currency',
+        target_item_id=ids['chaos'],intended_spend=20.,history_start_epoch=start,history_end_epoch=start+7*86400)
+    result=await plan(query,store,'alice',scout)
+    assert result.requested_history_window_fully_covered
+    assert result.history_bucket_count==169 and result.history_buckets_truncated and len(result.history_buckets)==8
+    assert result.history_buckets[0].bucket_at_epoch==start and tool_json_bytes(result)<=8192
+    fragments=[];request=AllocationPageRequest(allocation_id=result.allocation_id)
+    while True:
+        part=page(request,store,'alice');fragments.append(part.content)
+        assert part.artifact_digest==result.artifact_digest and tool_json_bytes(part)<=8192
+        if part.next_offset is None:break
+        request.offset=part.next_offset
+    recovered=json.loads(''.join(fragments))['history_buckets']
+    assert len(recovered)==169 and [b['price'] for b in recovered]==list(range(1,170))
+    row['price_logs'].pop(1)
+    assert not (await plan(query,store,'alice',scout)).requested_history_window_fully_covered
+    row['price_logs'].insert(1,row['price_logs'][0].copy())
+    with pytest.raises(WorkflowError,match='history_duplicate_bucket'):await plan(query,store,'alice',scout)

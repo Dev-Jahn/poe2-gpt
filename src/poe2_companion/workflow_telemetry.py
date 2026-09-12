@@ -326,6 +326,8 @@ class WorkflowTelemetry:
     def finish(self, owner: str, request: FinishTrace) -> TraceSummary:
         value=self.get(owner,request.trace_id)
         if (owner,request.trace_id) in self.running: raise WorkflowError('workflow_busy_retry_after_one_second')
+        if value.status!='active' and value.user_reported_goal_completed==request.user_reported_goal_completed:
+            return summary(value)
         if value.status=='active': value.status='finished'
         value.user_reported_goal_completed=request.user_reported_goal_completed
         self.save(owner,value)
