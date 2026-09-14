@@ -16,7 +16,7 @@ dependencies = ["mcp==1.29.1", "httpx[socks]==0.28.1", "defusedxml==0.7.1", "PyJ
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "pytest-asyncio>=1,<2"]
-quality = ["ruff==0.15.1", "mypy==1.19.1", "pytest-cov==7.0.0"]
+quality = ["ruff==0.15.1", "mypy==1.19.1", "pytest-cov==7.1.0"]
 
 [project.urls]
 Homepage = "https://github.com/Dev-Jahn/poe2-gpt"
