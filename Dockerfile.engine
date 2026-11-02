@@ -1,4 +1,4 @@
-FROM python:3.14-slim AS engine-build
+FROM python:3.15-slim AS engine-build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY scripts/install_lua_runtime.py scripts/install_pob_engine.py scripts/patch_stonefist.py scripts/patch_companions.py scripts/patch_skill_coverage.py scripts/patch_weapon_context.py scripts/patch_spirit_vessel.py scripts/patch_granted_skills.py scripts/patch_companion_states.py scripts/patch_martial_mechanics.py scripts/patch_damage_rules.py scripts/patch_upstream_fixes.py scripts/patch_hit_buffs.py scripts/patch_curse_mechanics.py scripts/patch_beast_auras.py /install/
 COPY scripts/data /install/data
@@ -6,7 +6,7 @@ COPY scripts/patch_leech_distribution.py /install/
 COPY src/poe2_companion/lua/leech_distribution.lua /install/
 RUN python /install/install_lua_runtime.py && python /install/install_pob_engine.py /opt/pob
 
-FROM python:3.14-slim AS runtime
+FROM python:3.15-slim AS runtime
 WORKDIR /app
 COPY --from=engine-build /opt/pob /opt/pob
 COPY --from=engine-build /opt/lua /opt/lua
